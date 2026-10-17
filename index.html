@@ -1411,10 +1411,10 @@ const TOUR = [
   ['!', 'Важно', 'P2Pro — только калькулятор. Мы не биржа: не проводим сделки, не храним деньги и не даём гарантий. На P2P много мошенников, поэтому отпускайте USDT только после того, как деньги пришли в банк.']
 ];
 // Видео-руководство: ролик лежит в guide/, главы перематывают на нужный момент
-const GUIDE = [['Расчёт сделки', 4.3], ['Круг', 33], ['Треугольник', 46.8], ['История', 67.6], ['Аналитика', 81], ['Инструменты', 97.1], ['Профиль', 119.5]];
+const GUIDE = [['Расчёт сделки', 6.9], ['Круг', 39.6], ['Треугольник', 55.9], ['История', 80.1], ['Аналитика', 97.5], ['Инструменты', 115.3], ['Профиль', 138]];
 function showGuide() {
   sheet(`<h3>Видео-руководство</h3>
-    <video id="guideVideo" class="guide-video" src="guide/P2Pro-guide.mp4" poster="guide/poster.jpg" controls playsinline preload="metadata"></video>
+    <video id="guideVideo" class="guide-video" src="guide/P2Pro-guide.mp4?v=2" poster="guide/poster.jpg?v=2" controls playsinline preload="metadata"></video>
     <div class="guide-ch">${GUIDE.map(([n, t], i) => `<button class="chip" data-gch="${t}"><b>${i + 1}</b> ${n}</button>`).join('')}</div>
     <button class="btn" data-close>Закрыть</button>`);
 }
@@ -1422,7 +1422,7 @@ function showTour(i) {
   const [ic, t, d] = TOUR[i], last = i === TOUR.length - 1;
   S.settings.onboarded = true; persist();
   sheet(`<div class="tour-art" aria-hidden="true">${ic}</div><h3>${t}</h3><p>${d}</p>
-    ${i === 0 ? '<button class="btn primary" data-guide>▶ Смотреть видео-обзор · 2 мин</button>' : ''}
+    ${i === 0 ? '<button class="btn primary" data-guide>▶ Смотреть видео-обзор · 3 мин</button>' : ''}
     <div class="dots">${TOUR.map((_, j) => `<i class="${j === i ? 'on' : ''}"></i>`).join('')}</div>
     <div class="row2"><button class="btn" data-close>${last ? 'Закрыть' : 'Пропустить'}</button><button class="btn primary" ${last ? 'data-close' : `data-tour="${i + 1}"`}>${last ? 'Начать' : 'Далее'}</button></div>`);
 }
