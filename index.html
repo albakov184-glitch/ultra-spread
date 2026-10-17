@@ -1003,7 +1003,7 @@ img { max-width: 100%; }
         <div class="seg sm"><button data-theme-set="system" class="on">Авто</button><button data-theme-set="dark">Тёмная</button><button data-theme-set="light">Светлая</button></div></div>
     </div>
 
-    <!-- Тест-панель: только на время тестов. Перед запуском поставить TEST_PANEL = false -->
+    <!-- Тест-панель: видна только владельцу (ADMIN_EMAIL). Перед запуском поставить TEST_PANEL = false -->
     <div class="card test-panel" id="testPanel" hidden>
       <div class="card-h"><span class="card-t">🧪 Тест-панель</span><span class="muted small">видна только в тестовой версии</span></div>
       <span class="label">Тариф — сразу, без оплаты</span>
@@ -2605,7 +2605,9 @@ function closeAuth(quiet) {
 }
 const SYNC_TEXT = { ok: '☁ Синхронизировано', wait: 'Синхронизация…', off: 'Нет сети — сохраним, когда появится', err: 'Не удалось синхронизировать — повторим через минуту', local: 'Нет связи с сервером — работаем офлайн' };
 function renderAcc() {
-  const u = me(); $('topAvatar').hidden = !u; $('accCard').hidden = !u; if (!u) return;
+  const u = me(); $('topAvatar').hidden = !u; $('accCard').hidden = !u;
+  try { renderTestPanel(); } catch (e) {}
+  if (!u) return;
   const ini = (u.name || u.email).trim()[0].toUpperCase();
   $('topAvatar').textContent = ini; $('accAva').textContent = ini; $('accName').textContent = u.name; $('accMail').textContent = u.email;
   $('accSince').textContent = 'С нами с ' + new Date(u.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + (syncState ? ' · ' + SYNC_TEXT[syncState] : '');
@@ -2711,7 +2713,7 @@ function subHtml() {
     ${st.autoRenew ? '<button class="btn ghost-neg" data-sub="cancel">Отменить подписку</button>' : ''}`;
 }
 function showSub() {
-  sheet(`<h3>Моя подписка</h3><div class="sub-box app" style="gap:12px">${subHtml()}</div><button class="btn" data-plan="free" style="font-size:13px">Выключить демо-PRO сейчас</button>`);
+  sheet(`<h3>Моя подписка</h3><div class="sub-box app" style="gap:12px">${subHtml()}</div>${tpOn() ? '<button class="btn" data-plan="free" style="font-size:13px">Выключить демо-PRO сейчас</button>' : '<button class="btn" data-close>Закрыть</button>'}`);
 }
 function refreshSub() {
   renderProfile(); render();
@@ -2738,15 +2740,17 @@ document.addEventListener('click', e => {
 
 /* ================= ТЕСТ-ПАНЕЛЬ ================= */
 // Быстро переключать тариф и состояния, пока идут тесты. Перед запуском — false
-const TEST_PANEL = true;
+// Видна только владельцу (по почте аккаунта). Сервер тоже пускает к демо-функциям только эту почту — см. supabase/03-admin.sql
+const TEST_PANEL = true, ADMIN_EMAIL = 'albakov184@gmail.com';
+const tpOn = () => TEST_PANEL && me()?.email?.toLowerCase() === ADMIN_EMAIL;
 function renderTestPanel() {
-  const el = $('testPanel'); el.hidden = !TEST_PANEL; if (!TEST_PANEL) return;
+  const el = $('testPanel'); el.hidden = !tpOn(); if (!tpOn()) return;
   const st = S.settings, cur = st.pro ? st.proPeriod || 'm' : 'free';
   el.querySelectorAll('#tpPlan [data-tp]').forEach(b => b.classList.toggle('on', b.dataset.tp === cur));
   $('tpState').textContent = st.pro ? `Сейчас: PRO, осталось ${subDaysLeft()} дн., автопродление ${st.autoRenew ? 'вкл' : 'выкл'}` : 'Сейчас: Free';
 }
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-tp]'); if (!b || !TEST_PANEL) return;
+  const b = e.target.closest('[data-tp]'); if (!b || !tpOn()) return;
   const st = S.settings, a = b.dataset.tp, now = Date.now(), per = st.proPeriod || 'm', auto = st.pro ? st.autoRenew : true;
   // Подписка на сервере: тест-панель ставит срок через демо-функцию базы
   const set = (p, until, msg, clear, au) => subDo('demo_set_sub', { p_period: p, p_until: until ? new Date(until).toISOString() : null, p_auto: au, p_clear: !!clear }, msg).then(() => { subCheck(); renderTestPanel(); });
