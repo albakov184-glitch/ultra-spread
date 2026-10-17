@@ -2358,22 +2358,22 @@ async function cloudStart() {
   if (!SH || SH.owner !== U.id) { if (SH?.owner) wipeLocal(); SH = { owner: U.id, at: null, t: {}, c: {}, s: '' }; shSave(); }
   syncMark('wait');
   await syncNow(true);
+  if (syncState === 'ok') cleanMigrated();
 }
-// Сделки, сохранённые на устройстве до появления аккаунтов. Переносим их в аккаунт только с согласия
+// У каждого аккаунта только свои сделки. Всё, что лежало на устройстве до входа (из версии без аккаунтов), удаляем
 const hasLegacy = () => !SH && (S.trades.length > 0 || S.cps.length > 0);
-function askMigrate() {
-  return new Promise(res => {
-    const n = S.trades.length;
-    sheet(`<h3>Перенести сделки в аккаунт?</h3>
-      <span class="muted">На этом устройстве есть ${n} ${plural(n, 'сделка', 'сделки', 'сделок')}${S.cps.length ? ' и контрагенты' : ''} — они были сохранены до появления аккаунтов. Добавить их в ${esc(U.email)}?</span>
-      <div class="row2"><button class="btn" id="mgNo">Не переносить</button><button class="btn primary" id="mgYes">Перенести</button></div>`);
-    const sc = $('scrim'), fresh = sc.cloneNode(true); sc.replaceWith(fresh);   // мимо окна не закрывается — нужен ответ
-    $('mgYes').onclick = () => { closeSheet(); res(true); };
-    $('mgNo').onclick = () => { closeSheet(); res(false); };
-  });
+// Разовая чистка: в аккаунты, созданные до 18.10.2026, старые сделки устройства успели перенестись сами — убираем их
+const CLEAN_BEFORE = Date.parse('2026-10-18T00:00:00Z');
+function cleanMigrated() {
+  const created = Date.parse(U.created), flag = KEY + '.clean1.' + U.id;
+  if (!(created < CLEAN_BEFORE) || lsGet(flag)) return;
+  const n = S.trades.length, c = S.cps.length;
+  S.trades = S.trades.filter(t => Date.parse(t.ts) >= created);
+  S.cps = S.cps.filter(x => x.ts >= created);
+  if (S.trades.length !== n || S.cps.length !== c) { persist(); render(); }
+  lsSet(flag, 1);
 }
-// Не переносим: копию оставляем в памяти браузера на всякий случай, с экрана убираем
-function dropLegacy() { lsSet(KEY + '.legacy', { trades: S.trades, cps: S.cps, at: Date.now() }); wipeLocal(); }
+lsSet(KEY + '.legacy', null);
 function wipeLocal() {
   const keep = { theme: S.settings.theme, incog: S.settings.incog, a2hsSeen: S.settings.a2hsSeen };
   S.trades = []; S.cps = []; S.settings = { ...structuredClone(DEFAULT.settings), ...keep }; S.draft = structuredClone(DEFAULT.draft);
@@ -2585,14 +2585,7 @@ async function loginDone(user, btn) {
   lsSet(REM_KEY, auRemember || auMode === 'up');
   try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
   btn.dataset.ok = 1;
-  if (fresh && hasLegacy()) {
-    btn.innerHTML = `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`; await wait(600);
-    closeAuth(true);
-    const yes = await askMigrate(); if (!yes) dropLegacy();
-    await Promise.race([cloudStart(), wait(8000)]);
-    if (yes) toast('Сделки перенесены в аккаунт');
-    render(); return afterAuth();
-  }
+  if (fresh && hasLegacy()) wipeLocal();
   btn.innerHTML = fresh ? '<span class="au-spin"></span>Загружаем ваши сделки…' : `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`;
   await Promise.race([cloudStart(), wait(8000)]);
   if (fresh) { btn.innerHTML = `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`; await wait(700); } else await wait(500);
@@ -2660,7 +2653,7 @@ function bootAccount() {
       try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
       if (FROM_SIGNUP) setTimeout(() => toast('Почта подтверждена — добро пожаловать!'), 600);
       const first = SH?.owner !== U.id;
-      if (first && hasLegacy() && !(await askMigrate())) dropLegacy();
+      if (first && hasLegacy()) wipeLocal();
       const st = cloudStart(); if (first) await Promise.race([st, wait(8000)]);
       render(); return afterAuth();
     }
