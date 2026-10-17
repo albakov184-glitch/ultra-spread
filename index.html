@@ -600,6 +600,14 @@ html, body { overscroll-behavior-y: contain; }
 .pay-row:last-child { border-bottom: 0; }
 .pay-row span { color: var(--muted); font-size: 12.5px; display: block; }
 .pay-row b { font-family: var(--f-mono); font-weight: 500; white-space: nowrap; }
+.social { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2);
+  color: var(--fg); text-decoration: none; transition: transform .15s, border-color .2s; }
+.social:active { transform: scale(.98); }
+.social:hover { border-color: color-mix(in srgb, #E1306C 50%, var(--line)); }
+.social img { width: 44px; height: 44px; border-radius: 12px; flex: none; }
+.social span { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); line-height: 1.3; }
+.social span b { display: block; color: var(--fg); font-size: 15px; }
+.social svg { color: var(--muted); flex: none; }
 .test-panel { border-style: dashed; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .btn.ghost-neg { color: var(--neg); background: transparent; border: 1px solid color-mix(in srgb, var(--neg) 35%, transparent); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -956,6 +964,15 @@ img { max-width: 100%; }
       <div class="card-h"><span class="card-t">Справка</span><div style="display:flex;gap:6px"><button class="btn slim" data-guide style="padding:8px 12px;font-size:13px">▶ Видео</button><button class="btn slim" id="tourBtn" style="padding:8px 12px;font-size:13px">Обзор</button></div></div>
       <button class="btn block" id="installBtn">📲 Установить на экран «Домой»</button>
       <div id="glossary"></div>
+    </div>
+
+    <div class="card">
+      <span class="card-t">Мы в соцсетях</span>
+      <a class="social" href="https://www.instagram.com/movsar.io/" target="_blank" rel="noopener">
+        <img src="icons/instagram.png" alt="" width="44" height="44">
+        <span><b>Instagram</b>@movsar.io · новости P2Pro и P2P</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>
+      </a>
     </div>
 
     <div class="card">
