@@ -1245,9 +1245,9 @@ function renderResult() {
   $('rGross').previousElementSibling.textContent = tri ? (d.triParts ? 'Получаю от продавцов' : 'Получаю от продавца') : 'Сумма продажи';
   if (d.mode === 'circle') {
     const buy = +d.buy || 0, sum = +d.sum || 0, qty = buy > 0 ? sum / buy : 0;
-    const sold = d.sales.reduce((a, x) => a + (+x.qty || 0), 0);
+    const sold = d.sales.filter(x => +x.rate > 0 && +x.qty > 0).reduce((a, x) => a + +x.qty, 0);
     $('soldInfo').textContent = `Продано ${nf2.format(sold)} USDT`;
-    $('leftInfo').innerHTML = qty ? (sold > qty + 1e-9 ? `<span class="neg">Больше купленного на ${nf2.format(sold - qty)}</span>` : `Осталось ${nf2.format(qty - sold)} из ${nf2.format(qty)}`) : '';
+    $('leftInfo').innerHTML = qty ? (sold > qty + 0.005 ? `<span class="neg">Больше купленного на ${nf2.format(sold - qty)}</span>` : `Осталось ${nf2.format(Math.max(0, qty - sold))} из ${nf2.format(qty)}`) : '';
   }
   if (tri && d.triParts) {
     const total = +d.sum || 0, m = d.sellers.reduce((a, x) => a + (+x.sum || 0), 0);
@@ -1315,7 +1315,7 @@ function buildTrade() {
   const tri = d.mode === 'tri', parts = tri && d.triParts;
   if ((st.feeExType === 'pct' || tri) && (+d.feeEx < 0 || +d.feeEx >= 100)) return { err: 'Комиссия биржи должна быть от 0 до 100%' };
   if (!tri && st.feeWdType === 'pct' && (+d.feeWd < 0 || +d.feeWd >= 100)) return { err: 'Комиссия вывода должна быть от 0 до 100%' };
-  if (d.mode === 'circle' && r.left < -1e-9) return { err: 'Продано больше USDT, чем куплено. Проверьте продажи' };
+  if (d.mode === 'circle' && r.left < -0.005) return { err: 'Продано больше USDT, чем куплено. Проверьте продажи' };
   if (parts && Math.abs(r.left) > 0.5) return { err: `Сумма продавцов (${nf0.format(r.matched)} ${SYM[st.cur]}) должна совпадать с суммой покупателя (${nf0.format(+d.sum)} ${SYM[st.cur]})` };
   const sellers = parts ? d.sellers.filter(x => +x.sum > 0 && +x.rate > 0).map(x => ({ sum: +x.sum, rate: +x.rate, cp: (x.cp || '').trim(), note: (x.note || '').trim() })) : null;
   return { t: {
@@ -1325,7 +1325,7 @@ function buildTrade() {
     cp: (d.cp || '').trim(), cp2: tri && !parts ? (d.cp2 || '').trim() : '', sellers,
     cpNote: (d.cpNote || '').trim(), cp2Note: tri && !parts ? (d.cp2Note || '').trim() : '',
     sales: d.mode === 'circle' ? d.sales.filter(x => +x.rate > 0 && +x.qty > 0).map(x => ({ rate: +x.rate, qty: +x.qty })) : null,
-    feeEx: +d.feeEx || 0, feeExType: tri ? 'pct' : st.feeExType, feeWd: +d.feeWd || 0, feeWdType: tri ? 'fixed' : st.feeWdType,
+    feeEx: +d.feeEx || 0, feeExType: tri ? 'pct' : st.feeExType, feeWd: tri ? 0 : +d.feeWd || 0, feeWdType: tri ? 'fixed' : st.feeWdType,
     qty: r.qty, soldQty: r.soldQty, gross: r.gross, cost: r.cost, commEx: r.commEx, commWd: r.commWd, comm: r.comm,
     profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: false
   } };
@@ -1429,7 +1429,7 @@ function tradeText(t) {
 function openTrade(id) {
   const t = S.trades.find(x => String(x.id) === String(id)); if (!t) return;
   const s = SYM[t.cur];
-  const feeLbl = (v, type, wd) => type === 'pct' ? v + '%' : v + (wd ? ' USDT' : ' ' + s);
+  const feeLbl = (v, type, wd) => (v = +v || 0, type === 'pct' ? v + '%' : v + (wd ? ' USDT' : ' ' + s));
   sheet(`
     <div class="card-h"><h3>${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)}</h3><span class="tag">${esc(t.ex)} · ${esc(t.bank)}</span></div>
     <div class="result" style="border:0;background:var(--surface-2)">
@@ -1528,7 +1528,7 @@ function drawChart(T, c) {
       interaction: { intersect: false, mode: 'index' },
       plugins: { legend: { display: false }, tooltip: { callbacks: { title: it => fmtDay(keys[it[0].dataIndex]), label: it => ' ' + money(it.raw, c, true) } } },
       scales: { x: { grid: { display: false }, border: { color: line }, ticks: { color: mut, maxRotation: 0, autoSkipPadding: 14, font: { size: 10 } } },
-        y: { grid: { color: line }, border: { display: false }, ticks: { color: mut, font: { size: 10 }, maxTicksLimit: 5, callback: v => hid(nf0.format(v)) } } } }
+        y: { grid: { color: line }, border: { display: false }, ticks: { color: mut, font: { size: 10 }, maxTicksLimit: 5, callback: v => hid((v % 1 ? nf2 : nf0).format(v)) } } } }
   });
 }
 function monthReport() {
@@ -1555,7 +1555,7 @@ function monthReportText() {
 
 /* ================= ИНСТРУМЕНТЫ ================= */
 let tool = 'price', pxLast = null, comboCache = [], cpStatus = 'bad';
-const presetOf = ex => S.settings.feePresets[ex] || { ex: 0, wd: 0 };
+const presetOf = ex => { const p = S.settings.feePresets[ex] || {}; return { ex: +p.ex || 0, wd: +p.wd || 0 }; };
 const feesFor = (ex, wd) => ({ feeEx: presetOf(ex).ex, feeExType: 'pct', feeWd: wd ? presetOf(ex).wd : 0, feeWdType: 'fixed' });
 const ago = ts => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'только что' : m < 60 ? `${m} мин назад` : m < 1440 ? `${Math.round(m / 60)} ч назад` : `${Math.round(m / 1440)} дн назад`; };
 
@@ -1566,7 +1566,7 @@ function sellFor(buy, sum, target, fees) {
 }
 // Цена покупки при известной продаже: прибыль убывает с ростом цены покупки, поэтому ищем делением пополам
 function buyFor(sell, sum, target, fees) {
-  let lo = sell * 0.3, hi = sell * 1.5;
+  let lo = sell * 0.01, hi = sell * 1.5;
   for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (compute({ mode: 'deal', buy: mid, sell, sum, ...fees }).profit > target) lo = mid; else hi = mid; }
   return (lo + hi) / 2;
 }
@@ -1917,7 +1917,7 @@ function renderProfile() {
   if (!document.activeElement?.dataset?.preset) {
     $('feeTable').innerHTML = '<span class="label">Биржа</span><span class="label">P2P, %</span><span class="label">Вывод, USDT</span>' +
       st.exchanges.map(x => { const fp = st.feePresets[x] || { ex: 0, wd: 1 };
-        return `<span>${esc(x)}</span>` + ['ex', 'wd'].map(k => `<input class="limit-in" style="width:100%;padding:8px" type="text" inputmode="decimal" step="0.01" data-preset="${esc(x)}" data-pk="${k}" value="${fp[k]}" aria-label="${esc(x)}: ${k === 'ex' ? 'комиссия P2P' : 'вывод'}">`).join(''); }).join('');
+        return `<span>${esc(x)}</span>` + ['ex', 'wd'].map(k => `<input class="limit-in" style="width:100%;padding:8px" type="text" inputmode="decimal" step="0.01" data-preset="${esc(x)}" data-pk="${k}" value="${+fp[k] || 0}" aria-label="${esc(x)}: ${k === 'ex' ? 'комиссия P2P' : 'вывод'}">`).join(''); }).join('');
   }
   $('exEdit').innerHTML = st.exchanges.map(x => `<span class="chip on">${esc(x)}<button data-rm-ex="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
   $('bankEdit').innerHTML = st.banks.map(x => `<span class="chip on">${esc(x)}<button data-rm-bank="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
@@ -2107,7 +2107,7 @@ document.addEventListener('click', e => {
     if (ds.act === 'copy') { const inc = S.settings.incog; S.settings.incog = false; const txt = tradeText(t); S.settings.incog = inc; return copy(txt); }
     if (ds.act === 'card') return showCard('deal', t.id);
     if (ds.act === 'repeat') { closeSheet(); return repeat(t); }
-    if (ds.act === 'del') return confirmSheet('Удалить сделку?', `${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)} · ${money(t.profit, t.cur, true)}`, 'Удалить', () => { S.trades = S.trades.filter(x => x !== t); persist(); render(); toast('Сделка удалена'); }, true);
+    if (ds.act === 'del') return confirmSheet('Удалить сделку?', `${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)} · ${money(t.profit, t.cur, true)}`, 'Удалить', () => { S.trades = S.trades.filter(x => String(x.id) !== String(t.id)); persist(); render(); toast('Сделка удалена'); }, true);
   }
   if (ds.close !== undefined) return closeSheet();
   if (ds.sp) { sPeriod = ds.sp; return renderStats(); }
@@ -2169,11 +2169,11 @@ document.addEventListener('click', e => {
   if (b.id === 'wipeBtn') return confirmSheet('Удалить всю историю?', `Будет удалено сделок: ${S.trades.length}. Отменить это нельзя.`, 'Удалить всё', () => { S.trades = []; persist(); render(); toast('История очищена'); }, true);
 });
 function repeat(t) {
-  Object.assign(S.draft, { mode: t.mode || 'deal', ex: t.ex, bank: t.bank === '—' ? S.draft.bank : t.bank, buy: String(t.buy), sell: t.mode === 'circle' ? '' : String(t.sell), sum: String(t.sum), feeEx: String(t.feeEx), feeWd: String(t.feeWd), note: '',
+  Object.assign(S.draft, { mode: t.mode || 'deal', ex: t.ex, bank: t.bank === '—' ? S.draft.bank : t.bank, buy: String(t.buy), sell: t.mode === 'circle' ? '' : String(t.sell), sum: String(t.sum), feeEx: String(+t.feeEx || 0), feeWd: String(+t.feeWd || 0), note: '',
     cp: '', cp2: '', cpNote: '', cp2Note: '', triParts: !!t.sellers,
     sellers: t.sellers ? t.sellers.map(x => ({ sum: String(x.sum), rate: String(x.rate), cp: '', note: '' })) : [{ sum: '', rate: '', cp: '', note: '' }, { sum: '', rate: '', cp: '', note: '' }],
     sales: t.sales ? t.sales.map(x => ({ rate: String(x.rate), qty: String(x.qty) })) : [{ rate: '', qty: '' }] });
-  S.settings.cur = t.cur; S.settings.feeExType = t.feeExType; S.settings.feeWdType = t.feeWdType;
+  S.settings.cur = t.cur; if (t.mode !== 'tri') { S.settings.feeExType = t.feeExType; S.settings.feeWdType = t.feeWdType; }   // у треугольника типы комиссий свои
   persist(); show('calc'); toast('Данные сделки подставлены');
 }
 $('importFile').addEventListener('change', e => {
@@ -2196,6 +2196,7 @@ function importJson(text) {
       const fresh = trades.filter(ok).filter(t => !ids.has(String(t.id)) && ids.add(String(t.id)))
         .map(t => ({ ...t, id: String(t.id), sum: +t.sum, buy: +t.buy, sell: +t.sell, profit: +t.profit, cur: SYM[t.cur] ? t.cur : 'RUB', mode: ['deal', 'circle', 'tri'].includes(t.mode) ? t.mode : 'deal',
           ex: str(t.ex) || '—', bank: str(t.bank) || '—', note: str(t.note), cp: str(t.cp), cp2: str(t.cp2), cpNote: str(t.cpNote), cp2Note: str(t.cp2Note),
+          feeEx: +t.feeEx || 0, feeWd: +t.feeWd || 0, profitU: isFinite(+t.profitU) && t.profitU !== null ? +t.profitU : null,
           feeExType: t.feeExType === 'fixed' ? 'fixed' : 'pct', feeWdType: t.feeWdType === 'pct' ? 'pct' : 'fixed', comm: +t.comm || 0, commEx: +t.commEx || 0, commWd: +t.commWd || 0,
           qty: +t.qty || 0, soldQty: +t.soldQty || 0, gross: +t.gross || 0, cost: isFinite(+t.cost) ? +t.cost : +t.sum, profitPct: +t.profitPct || 0, spreadPct: +t.spreadPct || 0,
           sales: arr(t.sales)?.filter(x => x && isFinite(+x.qty) && isFinite(+x.rate)).map(x => ({ qty: +x.qty, rate: +x.rate })) || null,
@@ -2204,6 +2205,10 @@ function importJson(text) {
       const { pro, proUntil, proSince, proPeriod, payments, autoRenew, payMethod, incog, a2hsSeen, onboarded, ...rest } = (data.settings && typeof data.settings === 'object') ? data.settings : {};
       for (const k of ['exchanges', 'banks']) if (k in rest && !(Array.isArray(rest[k]) && rest[k].every(x => typeof x === 'string'))) delete rest[k];
       for (const k of ['limits', 'feePresets']) if (k in rest && (!rest[k] || typeof rest[k] !== 'object' || Array.isArray(rest[k]))) delete rest[k];
+      // Значения — только числа: строки из чужого файла иначе попали бы в разметку
+      if (rest.limits) rest.limits = Object.fromEntries(Object.entries(rest.limits).map(([b, v]) => [b, +v || 0]));
+      if (rest.feePresets) rest.feePresets = Object.fromEntries(Object.entries(rest.feePresets).filter(([, v]) => v && typeof v === 'object').map(([x, v]) => [x, { ex: +v.ex || 0, wd: +v.wd || 0 }]));
+      for (const k of ['goal', 'capital']) if (k in rest) rest[k] = +rest[k] || 0;
       if ('cur' in rest && !SYM[rest.cur]) delete rest.cur;
       for (const k of ['feeExType', 'feeWdType']) if (k in rest && !['pct', 'fixed'].includes(rest[k])) delete rest[k];
       const cps = (arr(data.cps) || []).filter(c => typeof c?.name === 'string' && c.name.trim())
@@ -2212,12 +2217,15 @@ function importJson(text) {
       S.settings = { ...S.settings, ...rest };
       cps.forEach(c => { if (!findCp(c.name)) S.cps.push(c); });
       persist(); applyTheme(); render();
-      toast(fresh.length ? `Загружено сделок: ${fresh.length}` : trades.length ? 'Эти сделки уже есть в истории' : 'В тексте нет сделок');
+      const bad = trades.length - trades.filter(ok).length;
+      toast(fresh.length ? `Загружено сделок: ${fresh.length}${bad ? `, пропущено повреждённых: ${bad}` : ''}` : bad ? `Не удалось прочитать сделок: ${bad}` : trades.length ? 'Эти сделки уже есть в истории' : 'В файле нет сделок');
       return true;
     } catch (err) { toast('Не получилось прочитать. Нужен экспорт P2Pro или старого калькулятора'); return false; }
 }
 // Перенос сделки из старого формата (calculationsHistory)
 function fromOld(c) {
+  const num = v => +String(v ?? '').replace(',', '.');   // в старых записях бывали числа с запятой
+  c = { ...c, buy: num(c.buy), sell: num(c.sell), sum: num(c.sum) };
   const inp = { mode: 'deal', buy: c.buy, sell: c.sell, sum: c.sum, feeEx: c.fee || 0, feeExType: c.feeTypeExchange === 'fixed' ? 'fixed' : 'pct',
     feeWd: c.withdrawFee || 0, feeWdType: c.feeTypeWithdraw === 'fixed' ? 'fixed' : 'pct' };
   const r = compute(inp);
@@ -2248,7 +2256,7 @@ let sb = null;
 try { sb = window.supabase?.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' } }) || null; } catch (e) {}
 if (URL_ERR || TOKEN_HASH) history.replaceState(null, '', APP_URL);
 
-const USER_KEY = KEY + '.user', SYNC_KEY = KEY + '.sync', REM_KEY = KEY + '.rem';
+const USER_KEY = KEY + '.user', SYNC_KEY = KEY + '.sync', REM_KEY = KEY + '.rem', BEAT_KEY = KEY + '.beat';
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 // Вошедший пользователь. Копия лежит в памяти браузера, чтобы приложение открывалось и без интернета
@@ -2261,16 +2269,21 @@ function setUser(user) {
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 // Что уже лежит в облаке: отпечаток каждой сделки, контрагента и настроек. Всё, что отличается, — ещё не отправлено
-let SH = lsGet(SYNC_KEY);
+// Карты отпечатков без прототипа: контрагент с ником «constructor» или «__proto__» — обычный ключ
+const bare = o => Object.assign(Object.create(null), o);
+const shFix = sh => sh && Object.assign(sh, { t: bare(sh.t), c: bare(sh.c) });
+let SH = shFix(lsGet(SYNC_KEY));
 const shSave = () => lsSet(SYNC_KEY, SH);
-const fp = o => { const s = JSON.stringify(o) || ''; let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
+// Отпечаток не зависит от порядка ключей: база (jsonb) возвращает объекты с переставленными ключами
+const canon = o => JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).sort().reduce((a, x) => (a[x] = v[x], a), Object.create(null)) : v);
+const fp = o => { const s = canon(o) || ''; let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
 // В облако идут только настройки расчёта. Тема, инкогнито и подписка — свои у каждого устройства или у сервера
 const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'capital', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
 const cloudSettings = () => Object.fromEntries(CLOUD_SET.filter(k => S.settings[k] !== undefined).map(k => [k, S.settings[k]]));
 const cpKey = c => String(c.name || '').trim().toLowerCase();
 
 function diff() {
-  const t = {}, c = {}, out = { t: [], c: [], s: null };
+  const t = Object.create(null), c = Object.create(null), out = { t: [], c: [], s: null };
   for (const x of S.trades) { const id = String(x.id), f = fp(x); t[id] = f; if (SH.t[id] !== f) out.t.push([id, f, x]); }
   for (const id in SH.t) if (!(id in t)) out.t.push([id, null, null]);
   for (const x of S.cps) { const k = cpKey(x); if (!k || k in c) continue; const f = fp(x); c[k] = f; if (SH.c[k] !== f) out.c.push([k, f, x]); }
@@ -2286,28 +2299,30 @@ async function upsertAll(tbl, rows, conflict) {
     if (error) throw error;
   }
 }
+// Вышли или сменили аккаунт, пока шёл запрос — результат старого аккаунта никуда не записываем
+function liveGuard() { const sh = SH, uid = U?.id; return () => { if (SH !== sh || U?.id !== uid) throw new Error('stale'); }; }
 async function pushChanges() {
-  const d = diff(), uid = U.id;
+  const d = diff(), uid = U.id, live = liveGuard();
   if (d.t.length) {
     await upsertAll('trades', d.t.map(([id, f, x]) => f ? { user_id: uid, id, ts: new Date(x.ts).toISOString(), data: x, deleted: false }
       : { user_id: uid, id, ts: new Date().toISOString(), data: {}, deleted: true }), 'user_id,id');
-    d.t.forEach(([id, f]) => f ? SH.t[id] = f : delete SH.t[id]);
+    live(); d.t.forEach(([id, f]) => f ? SH.t[id] = f : delete SH.t[id]);
   }
   if (d.c.length) {
     await upsertAll('counterparties', d.c.map(([k, f, x]) => ({ user_id: uid, name_key: k, data: f ? x : {}, deleted: !f })), 'user_id,name_key');
-    d.c.forEach(([k, f]) => f ? SH.c[k] = f : delete SH.c[k]);
+    live(); d.c.forEach(([k, f]) => f ? SH.c[k] = f : delete SH.c[k]);
   }
   if (d.s) {
     const { error } = await sb.from('profiles').upsert({ id: uid, settings: cloudSettings() }, { onConflict: 'id' });
     if (error) throw error;
-    SH.s = d.s;
+    live(); SH.s = d.s;
   }
   shSave();
 }
-async function fetchSince(tbl, since) {
+async function fetchSince(tbl, since, key) {
   let out = [];
   for (let from = 0; ; from += 1000) {
-    let q = sb.from(tbl).select('*').order('updated_at').range(from, from + 999);
+    let q = sb.from(tbl).select('*').order('updated_at').order(key).range(from, from + 999);   // второй ключ — чтобы страницы не теряли строки с одинаковым временем
     if (since) q = q.gte('updated_at', since);
     const { data, error } = await q; if (error) throw error;
     out = out.concat(data); if (data.length < 1000) return out;
@@ -2315,10 +2330,11 @@ async function fetchSince(tbl, since) {
 }
 // Забираем изменения с других устройств. Если здесь есть свои неотправленные правки той же записи — оставляем свои
 async function pullAll() {
-  const uid = U.id, since = SH.at ? new Date(Date.parse(SH.at) - 60000).toISOString() : null;
-  const [tr, cp, pr, sub] = await Promise.all([fetchSince('trades', since), fetchSince('counterparties', since),
+  const uid = U.id, live = liveGuard(), since = SH.at ? new Date(Date.parse(SH.at) - 60000).toISOString() : null;
+  const [tr, cp, pr, sub] = await Promise.all([fetchSince('trades', since, 'id'), fetchSince('counterparties', since, 'name_key'),
     sb.from('profiles').select('name, settings').eq('id', uid).maybeSingle(), sb.from('subscriptions').select('*').eq('user_id', uid).maybeSingle()]);
   if (pr.error) throw pr.error; if (sub.error) throw sub.error;
+  live();
   let maxAt = SH.at, changed = false;
   const merge = (rows, list, keyOf, keyCol, shMap) => {
     const map = new Map(list.map(x => [keyOf(x), x]));
@@ -2340,46 +2356,36 @@ async function pullAll() {
   }
   if (pr.data?.name && pr.data.name !== U.name) { U.name = pr.data.name; lsSet(USER_KEY, U); renderAcc(); }
   subApply(sub.data);
-  SH.at = maxAt; shSave(); persist(false);
+  SH.at = maxAt; SH.pulled = true; shSave(); persist(false);
   if (changed) render();
-  subCheck();
+  subFresh = true; subCheck();
 }
 
-let syncTimer = 0, syncing = null, syncAgain = false, syncState = '', lastPull = 0;
+let syncTimer = 0, syncing = null, syncAgain = false, syncAgainPull = false, syncState = '', lastPull = 0;
 function syncMark(s) { syncState = s; renderAcc(); if (s === 'err') { clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(true), 30000); } }
 function syncSoon(ms = 1500) { if (!U || !sb || !SH) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), ms); }
 async function syncNow(pull) {
   if (!U || !sb || !SH) return;
-  if (syncing) { syncAgain = true; return syncing; }
+  if (syncing) { syncAgain = true; syncAgainPull ||= !!pull; return syncing; }
+  // Пока облако ни разу не прочитано, ничего не отправляем: иначе настройки по умолчанию затрут настоящие
+  if (!SH.pulled) pull = true;
   syncing = (async () => {
     try { if (pull) { lastPull = Date.now(); await pullAll(); } await pushChanges(); syncMark('ok'); }
-    catch (e) { syncMark(navigator.onLine === false ? 'off' : 'err'); }
+    catch (e) { if (e?.message !== 'stale') syncMark(navigator.onLine === false ? 'off' : 'err'); }
   })();
   await syncing; syncing = null;
-  if (syncAgain) { syncAgain = false; syncSoon(300); }
+  if (syncAgain) { const p = syncAgainPull; syncAgain = syncAgainPull = false; p ? syncNow(true) : syncSoon(300); }
 }
 // Первый вход на этом устройстве: если тут остались данные другого аккаунта — убираем, они у него в облаке.
 // Если данные ничьи (из версии без аккаунтов) — они уедут в облако этого аккаунта
 async function cloudStart() {
   if (!U || !sb) return;
-  if (!SH || SH.owner !== U.id) { if (SH?.owner) wipeLocal(); SH = { owner: U.id, at: null, t: {}, c: {}, s: '' }; shSave(); }
+  if (!SH || SH.owner !== U.id) { if (SH?.owner) wipeLocal(); SH = shFix({ owner: U.id, at: null, t: {}, c: {}, s: '' }); shSave(); }
   syncMark('wait');
   await syncNow(true);
-  if (syncState === 'ok') cleanMigrated();
 }
 // У каждого аккаунта только свои сделки. Всё, что лежало на устройстве до входа (из версии без аккаунтов), удаляем
 const hasLegacy = () => !SH && (S.trades.length > 0 || S.cps.length > 0);
-// Разовая чистка: в аккаунты, созданные до 18.10.2026, старые сделки устройства успели перенестись сами — убираем их
-const CLEAN_BEFORE = Date.parse('2026-10-18T00:00:00Z');
-function cleanMigrated() {
-  const created = Date.parse(U.created), flag = KEY + '.clean1.' + U.id;
-  if (!(created < CLEAN_BEFORE) || lsGet(flag)) return;
-  const n = S.trades.length, c = S.cps.length;
-  S.trades = S.trades.filter(t => Date.parse(t.ts) >= created);
-  S.cps = S.cps.filter(x => x.ts >= created);
-  if (S.trades.length !== n || S.cps.length !== c) { persist(); render(); }
-  lsSet(flag, 1);
-}
 lsSet(KEY + '.legacy', null);
 function wipeLocal() {
   const keep = { theme: S.settings.theme, incog: S.settings.incog, a2hsSeen: S.settings.a2hsSeen };
@@ -2619,11 +2625,17 @@ $('logoutBtn').addEventListener('click', () => confirmSheet('Выйти из а�
   if (n) return confirmSheet('Не всё сохранено', `Нет связи с сервером: ${n} ${plural(n, 'изменение', 'изменения', 'изменений')} ещё не в облаке. Если выйти сейчас, они пропадут.`, 'Всё равно выйти', logout, true);
   logout();
 }));
-async function logout() {
+// Без сети Supabase не стирает свою копию входа — стираем сами, иначе после перезагрузки снова войдёт
+const SB_TOKEN = 'sb-' + new URL(SB_URL).hostname.split('.')[0] + '-auth-token';
+async function dropSession() {
   clearTimeout(syncTimer);
   try { await sb?.auth.signOut({ scope: 'local' }); } catch (e) {}
-  U = null; lsSet(USER_KEY, null); SH = null; lsSet(SYNC_KEY, null); syncState = '';
-  wipeLocal(); renderAcc(); render(); show('calc'); showAuth('in');
+  try { localStorage.removeItem(SB_TOKEN); } catch (e) {}
+  U = null; lsSet(USER_KEY, null); SH = null; lsSet(SYNC_KEY, null); syncState = ''; subFresh = false;
+  wipeLocal();
+}
+async function logout() {
+  await dropSession(); renderAcc(); render(); show('calc'); showAuth('in');
 }
 // Смена пароля по ссылке из письма «Сброс пароля»
 function showNewPass() {
@@ -2650,13 +2662,15 @@ function afterAuth() {
 }
 function bootAccount() {
   renderAcc();
+  setInterval(() => { if (U) lsSet(BEAT_KEY, Date.now()); }, 5000);
   // «Запомнить меня» выключено и браузер закрывали — выходим
-  let alive = true; try { alive = !!sessionStorage.getItem(REM_KEY); } catch (e) {}
+  // Вкладка живая, если в ней уже входили или другая открытая вкладка недавно отметилась
+  let alive = true; try { alive = !!sessionStorage.getItem(REM_KEY) || Date.now() - (lsGet(BEAT_KEY) || 0) < 20000; } catch (e) {}
   const verify = TOKEN_HASH && sb ? sb.auth.verifyOtp({ token_hash: TOKEN_HASH, type: TOKEN_TYPE }).then(r => { if (r.error) { URL_ERR = LINK_ERR; FROM_RECOVERY = FROM_SIGNUP = false; } }).catch(() => {}) : Promise.resolve();
   const session = sb ? verify.then(() => sb.auth.getSession()).then(r => r.data.session).catch(() => 'offline') : Promise.resolve('offline');
   runSplash(async () => {
     let s = await Promise.race([session, wait(6000).then(() => 'offline')]);
-    if (s && s !== 'offline' && lsGet(REM_KEY) === false && !alive && !FROM_RECOVERY && !FROM_SIGNUP) { await sb.auth.signOut({ scope: 'local' }).catch(() => {}); s = null; }
+    if (s && s !== 'offline' && lsGet(REM_KEY) === false && !alive && !FROM_RECOVERY && !FROM_SIGNUP) { await dropSession(); s = null; }
     if (s && s !== 'offline') {
       setUser(s.user); renderAcc();
       try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
@@ -2680,18 +2694,18 @@ const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', st
 const fmtLong = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '');
 const subDaysLeft = () => Math.max(0, Math.ceil(((S.settings.proUntil || 0) - Date.now()) / 864e5));
 // Срок вышел: при автопродлении в демо продлеваем сами (с настоящей оплатой это сделает платёжный сервис на сервере)
-let renewing = false, subWarned = false;
+let renewing = false, subWarned = false, subFresh = false;   // subFresh: подписка только что прочитана с сервера
 function subCheck() {
   const st = S.settings;
   if (!st.proUntil) { st.pro = false; return; }
   if (Date.now() > st.proUntil) {
     const was = st.pro; st.pro = false; persist(false);
-    if (st.autoRenew && st.proSince && me() && sb && !renewing) {
+    if (st.autoRenew && st.proSince && me() && sb && subFresh && !renewing) {
       renewing = true;
       cloudRpc('demo_activate_pro', { p_period: st.proPeriod, p_method: st.payMethod || 'card' })
         .then(r => { subApply(r); persist(false); render(); renderTestPanel(); toast(`PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)`); })
         .catch(() => {}).finally(() => renewing = false);
-    } else if (was) setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 600);
+    } else if (was && !(st.autoRenew && !subFresh)) setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 600);   // при автопродлении ждём ответа сервера
     return;
   }
   st.pro = true;
@@ -2837,7 +2851,13 @@ function monthCardData() {
 async function drawCard(d) {
   try { await Promise.all(['700 40px Unbounded', '500 24px Onest', '600 24px Onest', '500 30px "JetBrains Mono"'].map(f => document.fonts.load(f))); } catch (e) {}
   const W = 1080, H = 1350, L = 72, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-  const c = cv.getContext('2d'), box = (x, y, w, h, r) => { c.beginPath(); c.roundRect(x, y, w, h, r); };
+  const c = cv.getContext('2d'), box = (x, y, w, h, r) => {
+    c.beginPath();
+    if (c.roundRect) return c.roundRect(x, y, w, h, r);
+    // Старый Safari (iOS 15 и раньше) не знает roundRect
+    r = Math.max(0, Math.min(r, w / 2, Math.abs(h) / 2));
+    c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  };
   const fit = (txt, font, size, min, max) => { let f = size; c.font = font.replace('#', f); while (c.measureText(txt).width > max && f > min) { f -= 2; c.font = font.replace('#', f); } };
   c.fillStyle = '#0C0F14'; c.fillRect(0, 0, W, H);
   [[240, 230, 780, 'rgba(242,181,75,.26)'], [930, 1120, 640, d.neg ? 'rgba(255,107,107,.10)' : 'rgba(60,211,138,.11)']].forEach(([x, y, rad, col]) => {
