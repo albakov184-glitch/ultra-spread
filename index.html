@@ -1798,7 +1798,7 @@ function payIcon(k, z = 18) {
   const sv = (body, extra = '') => `<svg width="${z}" height="${z}" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${body}</svg>`;
   if (k === 'usdt') return sv('<circle cx="12" cy="12" r="12" fill="#26A17B"/><path fill="#fff" d="M6.4 5.9h11.2v2.7h-4.2v2.15c2.55.15 4.45.7 4.45 1.35s-1.9 1.2-4.45 1.35v4.7h-2.8v-4.7C8 13.3 6.15 12.75 6.15 12.1s1.85-1.2 4.45-1.35V8.6H6.4zm4.2 5.6c-1.95.12-3.3.42-3.3.6 0 .2 1.5.52 3.3.62V11.5zm2.8 0v1.22c1.8-.1 3.3-.42 3.3-.62 0-.18-1.35-.48-3.3-.6z"/>');
   if (k === 'stars') return sv('<defs><linearGradient id="stG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD84D"/><stop offset="1" stop-color="#F5A300"/></linearGradient></defs><path fill="url(#stG)" d="m12 1.8 3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8l-6.2 3.3 1.2-7-5.1-4.9 7-1z"/>');
-  if (k === 'sbp') return sv('<path fill="#5B57A2" d="M3 6.3 5.6 11v2.9L3 18.6z"/><path fill="#D90751" d="M13 9.3 15.4 8l6.3-.1-8.7 5.2z"/><path fill="#FAB718" d="M13 9.2V2L3 6.3l2.6 4.7z"/><path fill="#63B22F" d="M5.6 13.9 13 18.4v4L3 18.6z"/><path fill="#1487C9" d="m13 13.1 8.7 5.3-8.7 4z"/><path fill="#017F36" d="M13 13.1 5.6 13.9 13 18.4z"/><path fill="#984995" d="M5.6 11 13 9.2v3.9l-7.4.8z"/>');
+  if (k === 'sbp') return `<img src="icons/sbp.png" width="${z}" height="${z}" alt="" style="display:block">`;
   return sv('<rect x="2" y="5" width="20" height="14" rx="3" fill="#F2B54B"/><rect x="2" y="8.2" width="20" height="2.6" fill="#1B1405" opacity=".75"/><rect x="5" y="14" width="6" height="1.8" rx=".9" fill="#1B1405" opacity=".55"/>');
 }
 // Окно PRO. Оплата демо: реквизиты не нужны, деньги не списываются
