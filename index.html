@@ -6,9 +6,12 @@
 <meta name="theme-color" content="#0C0F14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23F2B54B'/%3E%3Ctext x='32' y='42' font-family='Arial' font-weight='700' font-size='26' text-anchor='middle' fill='%231B1405'%3EUS%3C/text%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23F2B54B'/%3E%3Ctext x='32' y='42' font-family='Arial' font-weight='700' font-size='26' text-anchor='middle' fill='%231B1405'%3EUS%3C/text%3E%3C/svg%3E">
-<title>Ultra Spread</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="P2Pro">
+<title>P2Pro</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -77,7 +80,7 @@ button { cursor: pointer; border: 0; background: none; }
 /* header */
 .top { display: flex; align-items: center; gap: 12px; padding-top: 4px; }
 .logo { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); flex: none;
-  display: grid; place-items: center; font-family: var(--f-display); font-weight: 700; font-size: 13px; }
+  display: grid; place-items: center; font-family: var(--f-display); font-weight: 800; font-size: 16px; letter-spacing: -0.04em; }
 .brand { font-family: var(--f-display); font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
 .brand-sub { font-size: 12px; color: var(--muted); }
 .plan-pill { margin-left: auto; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
@@ -348,9 +351,9 @@ img { max-width: 100%; }
 
 <div class="app">
   <header class="top">
-    <div class="logo" aria-hidden="true">US</div>
+    <div class="logo" aria-hidden="true">P2</div>
     <div>
-      <div class="brand">Ultra Spread</div>
+      <div class="brand">P2Pro</div>
       <div class="brand-sub">Учёт P2P-сделок</div>
     </div>
     <span class="plan-pill" id="planPill">Free</span>
@@ -675,7 +678,7 @@ img { max-width: 100%; }
 
     <div class="card">
       <span class="card-t">О приложении</span>
-      <p class="muted" style="margin:0;font-size:13px;line-height:1.55">Ultra Spread — только калькулятор и дневник сделок. Мы не биржа и не посредник: не проводим сделки, не храним деньги и криптовалюту, не даём гарантий и не отвечаем за сделки с контрагентами. Расчёты примерные, сверяйте их с данными биржи.</p>
+      <p class="muted" style="margin:0;font-size:13px;line-height:1.55">P2Pro — только калькулятор и дневник сделок. Мы не биржа и не посредник: не проводим сделки, не храним деньги и криптовалюту, не даём гарантий и не отвечаем за сделки с контрагентами. Расчёты примерные, сверяйте их с данными биржи.</p>
       <p class="muted" style="margin:0;font-size:13px;line-height:1.55">На P2P много мошенников. Отпускайте USDT только после того, как деньги пришли в банк (смотрите в приложении банка, а не на чек), не переходите в сторонние чаты и не принимайте оплату от третьих лиц.</p>
     </div>
 
@@ -1177,7 +1180,7 @@ function monthReport() {
   const now = new Date(), m = now.getMonth(), y = now.getFullYear();
   const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
   const month = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-  const lines = [`Отчёт Ultra Spread · ${month}`, ''];
+  const lines = [`Отчёт P2Pro · ${month}`, ''];
   ['RUB', 'USD'].forEach(c => {
     const X = T.filter(t => t.cur === c); if (!X.length) return;
     const p = X.reduce((a, t) => a + t.profit, 0), turn = X.reduce((a, t) => a + t.sum, 0), fee = X.reduce((a, t) => a + t.comm, 0);
@@ -1395,12 +1398,12 @@ function showInfo(k, anchor) {
   if (!up && r.bottom + h + 12 > innerHeight) pop.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 const TOUR = [
-  ['US', 'Ultra Spread', 'Калькулятор и дневник P2P-сделок. Считает чистую прибыль с учётом комиссий и хранит историю.'],
+  ['P2', 'P2Pro', 'Калькулятор и дневник P2P-сделок. Считает чистую прибыль с учётом комиссий и хранит историю.'],
   ['₽', 'Расчёт', 'Выберите биржу и банк, впишите курс покупки, продажи и сумму — прибыль посчитается сразу. Продаёте частями — включите режим «Круг».'],
   ['≡', 'История и аналитика', 'Все сделки по дням с поиском и фильтрами. В аналитике — прибыль за период, лучшие биржи и банки, график.'],
   ['⇅', 'Инструменты', 'Подбор курса для объявления, поиск выгодной связки между биржами и список контрагентов.'],
   ['i', 'Подсказки', 'Нажмите кружок «i» рядом с любым блоком, чтобы прочитать, как он работает. Этот обзор можно открыть снова: Профиль → Справка.'],
-  ['!', 'Важно', 'Ultra Spread — только калькулятор. Мы не биржа: не проводим сделки, не храним деньги и не даём гарантий. На P2P много мошенников, поэтому отпускайте USDT только после того, как деньги пришли в банк.']
+  ['!', 'Важно', 'P2Pro — только калькулятор. Мы не биржа: не проводим сделки, не храним деньги и не даём гарантий. На P2P много мошенников, поэтому отпускайте USDT только после того, как деньги пришли в банк.']
 ];
 function showTour(i) {
   const [ic, t, d] = TOUR[i], last = i === TOUR.length - 1;
@@ -1713,7 +1716,7 @@ $('importFile').addEventListener('change', e => {
       if (data.settings) S.settings = { ...S.settings, ...data.settings };
       if (Array.isArray(data.cps)) data.cps.forEach(c => { if (c?.name && !findCp(c.name)) S.cps.push(c); });
       persist(); applyTheme(); render(); toast(`Загружено сделок: ${fresh.length}`);
-    } catch (err) { toast('Не удалось прочитать файл. Нужен JSON-экспорт Ultra Spread'); }
+    } catch (err) { toast('Не удалось прочитать файл. Нужен JSON-экспорт P2Pro'); }
     e.target.value = '';
   };
   r.readAsText(f);
