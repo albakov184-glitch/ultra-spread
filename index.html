@@ -1011,7 +1011,7 @@ img { max-width: 100%; }
       <span class="label">Срок подписки</span>
       <div class="chips" style="flex-wrap:wrap"><button class="chip" data-tp="left2">Осталось 2 дня</button><button class="chip" data-tp="expire">Срок истёк</button><button class="chip" data-tp="full">Полный срок</button></div>
       <span class="label">Сбросить, чтобы увидеть снова</span>
-      <div class="chips" style="flex-wrap:wrap"><button class="chip" data-tp="onb">Выбор режима и обзор</button><button class="chip" data-tp="a2hs">Подсказку «На экран Домой»</button><button class="chip" data-tp="pays">Историю платежей</button><button class="chip" data-tp="splash">Заставку и вход</button></div>
+      <div class="chips" style="flex-wrap:wrap"><button class="chip" data-tp="onb">Выбор режима и обзор</button><button class="chip" data-tp="a2hs">Подсказку «На экран Домой»</button><button class="chip" data-tp="pays">Историю платежей</button><button class="chip" data-tp="splash">Заставку</button></div>
       <span class="muted small" id="tpState"></span>
     </div>
   </section>
@@ -1027,6 +1027,7 @@ img { max-width: 100%; }
   </div>
 </nav>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 /* ================= СОСТОЯНИЕ ================= */
 const KEY = 'ultraSpread.v2';
@@ -1068,8 +1069,8 @@ function load() {
   return null;
 }
 let persistWarned = 0;
-function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify(S)); return true; }
+function persist(sync = true) {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); if (sync) try { syncSoon(); } catch (e) {} return true; }
   catch (e) { if (Date.now() - persistWarned > 10000) { persistWarned = Date.now(); toast('Не удалось сохранить: память браузера заполнена. Сделайте резервную копию'); } return false; }
 }
 
@@ -1843,6 +1844,8 @@ async function payProcess() {
     <ul class="pp-steps">${steps.map((t, i) => `<li id="ppS${i}"><i></i>${t}</li>`).join('')}</ul>
     <span class="muted small">Демо-оплата: деньги не списываются</span></div>`);
   const arc = $('ppArc'); payBusy = true;
+  // Подписку включает сервер. Пока крутится кольцо, запрос уже идёт
+  const req = cloudRpc('demo_activate_pro', { p_period: payPeriod, p_method: payMethod }).then(r => ({ r }), e => ({ e }));
   try {
   for (let i = 0; i < steps.length; i++) {
     $('ppS' + i)?.classList.add('act');
@@ -1850,11 +1853,14 @@ async function payProcess() {
     await wait(i === 0 ? 1000 : 800);
     $('ppS' + i)?.classList.replace('act', 'done');
   }
-  const st = S.settings, now = Date.now(), add = PERIOD_DAYS[payPeriod] * 864e5;
-  if (st.pro && st.proUntil > now) st.proUntil += add; else { st.proSince = now; st.proUntil = now + add; }
-  st.pro = true; st.proPeriod = payPeriod; st.payMethod = payMethod; st.autoRenew = true;
-  (st.payments ||= []).unshift({ ts: now, amount: PERIOD_PRICE[payPeriod], period: payPeriod, method: payMethod });
-  persist(); render();
+  const res = await req;
+  if (res.e) {
+    sheet(`<div class="pw-hero"><h3>Не получилось подключить PRO</h3><p>Нет связи с сервером. Деньги не списаны — попробуйте ещё раз.</p></div>
+      <div class="row2"><button class="btn" data-close>Закрыть</button><button class="btn primary" data-open-plans="">Ещё раз</button></div>`);
+    return;
+  }
+  subApply(res.r); const st = S.settings;
+  persist(false); render();
   if ($('ppRing')) {
     $('ppRing').classList.add('ok'); $('ppTitle').textContent = 'Оплата прошла';
     $('ppIcon').innerHTML = '<svg class="pp-check" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
@@ -2111,7 +2117,7 @@ document.addEventListener('click', e => {
   if (ds.openPlans !== undefined) return openPlans(ds.openPlans);
   if (ds.period) { payPeriod = ds.period; document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('on', x.dataset.period === payPeriod)); $('payBtn').textContent = payLabel(); return; }
   if (ds.plan === 'pro') return showCheckout();
-  if (ds.plan) { st.pro = false; persist(); closeSheet(); render(); return toast('Вы на тарифе Free'); }
+  if (ds.plan) { closeSheet(); return subDo('demo_reset_pro', {}, 'Вы на тарифе Free'); }
   if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return; }
   if (b.id === 'payBtn') return payProcess();
   if (ds.tour) return showTour(+ds.tour);
@@ -2219,24 +2225,172 @@ function fromOld(c) {
     profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: !!c.isFavorite };
 }
 
-/* ================= ЗАСТАВКА И АККАУНТ ================= */
-// Тестовый режим: сервера нет, аккаунт живёт только на этом устройстве, пароль хранится в виде хеша
-const ACC_KEY = KEY + '.acc';
-let A = (() => { try { return JSON.parse(localStorage.getItem(ACC_KEY)) || { users: {}, session: null }; } catch (e) { return { users: {}, session: null }; } })();
-function accSave() { try { localStorage.setItem(ACC_KEY, JSON.stringify(A)); } catch (e) {} }
-const me = () => A.session && A.users[A.session];
-const wait = ms => new Promise(r => setTimeout(r, ms));
-async function passHash(mail, pass) {
-  const data = new TextEncoder().encode('p2pro:' + mail + ':' + pass);
-  if (window.crypto?.subtle) return [...new Uint8Array(await crypto.subtle.digest('SHA-256', data))].map(x => x.toString(16).padStart(2, '0')).join('');
-  let h = 0; for (const c of data) h = (h * 31 + c) | 0; return 'x' + h;
+/* ================= ОБЛАКО (Supabase) ================= */
+// Ключ publishable публичный — его видно в коде любого сайта на Supabase. Чужие данные закрывают правила RLS в базе
+const SB_URL = 'https://liddntvlxlupwfhpuwnp.supabase.co', SB_KEY = 'sb_publishable_hY4TW4KD0KO_mNgNKWqIVw_9cyAgDj3';
+const APP_URL = location.origin + location.pathname;
+// Ссылки из писем приходят с #…type=signup / type=recovery / error=…; читаем до того, как Supabase очистит адрес
+const URL_HASH = location.hash, FROM_RECOVERY = /type=recovery/.test(URL_HASH), FROM_SIGNUP = /type=signup/.test(URL_HASH);
+const URL_ERR = /error_code=otp_expired/.test(URL_HASH) ? 'Ссылка из письма устарела — войдите или запросите новое письмо'
+  : /error=/.test(URL_HASH) ? 'Ссылка из письма не сработала — попробуйте ещё раз' : '';
+let sb = null;
+try { sb = window.supabase?.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' } }) || null; } catch (e) {}
+if (URL_ERR) history.replaceState(null, '', APP_URL);
+
+const USER_KEY = KEY + '.user', SYNC_KEY = KEY + '.sync', REM_KEY = KEY + '.rem';
+const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+// Вошедший пользователь. Копия лежит в памяти браузера, чтобы приложение открывалось и без интернета
+let U = lsGet(USER_KEY);
+const me = () => U;
+function setUser(user) {
+  U = { id: user.id, email: user.email, name: user.user_metadata?.name || (U?.id === user.id && U.name) || user.email.split('@')[0], created: user.created_at };
+  lsSet(USER_KEY, U);
 }
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+// Что уже лежит в облаке: отпечаток каждой сделки, контрагента и настроек. Всё, что отличается, — ещё не отправлено
+let SH = lsGet(SYNC_KEY);
+const shSave = () => lsSet(SYNC_KEY, SH);
+const fp = o => { const s = JSON.stringify(o) || ''; let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
+// В облако идут только настройки расчёта. Тема, инкогнито и подписка — свои у каждого устройства или у сервера
+const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'capital', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
+const cloudSettings = () => Object.fromEntries(CLOUD_SET.filter(k => S.settings[k] !== undefined).map(k => [k, S.settings[k]]));
+const cpKey = c => String(c.name || '').trim().toLowerCase();
+
+function diff() {
+  const t = {}, c = {}, out = { t: [], c: [], s: null };
+  for (const x of S.trades) { const id = String(x.id), f = fp(x); t[id] = f; if (SH.t[id] !== f) out.t.push([id, f, x]); }
+  for (const id in SH.t) if (!(id in t)) out.t.push([id, null, null]);
+  for (const x of S.cps) { const k = cpKey(x); if (!k || k in c) continue; const f = fp(x); c[k] = f; if (SH.c[k] !== f) out.c.push([k, f, x]); }
+  for (const k in SH.c) if (!(k in c)) out.c.push([k, null, null]);
+  const sf = fp(cloudSettings()); if (SH.s !== sf) out.s = sf;
+  return out;
+}
+const pendingCount = () => { if (!SH) return 0; const d = diff(); return d.t.length + d.c.length + (d.s ? 1 : 0); };
+
+async function upsertAll(tbl, rows, conflict) {
+  for (let i = 0; i < rows.length; i += 400) {
+    const { error } = await sb.from(tbl).upsert(rows.slice(i, i + 400), { onConflict: conflict });
+    if (error) throw error;
+  }
+}
+async function pushChanges() {
+  const d = diff(), uid = U.id;
+  if (d.t.length) {
+    await upsertAll('trades', d.t.map(([id, f, x]) => f ? { user_id: uid, id, ts: new Date(x.ts).toISOString(), data: x, deleted: false }
+      : { user_id: uid, id, ts: new Date().toISOString(), data: {}, deleted: true }), 'user_id,id');
+    d.t.forEach(([id, f]) => f ? SH.t[id] = f : delete SH.t[id]);
+  }
+  if (d.c.length) {
+    await upsertAll('counterparties', d.c.map(([k, f, x]) => ({ user_id: uid, name_key: k, data: f ? x : {}, deleted: !f })), 'user_id,name_key');
+    d.c.forEach(([k, f]) => f ? SH.c[k] = f : delete SH.c[k]);
+  }
+  if (d.s) {
+    const { error } = await sb.from('profiles').upsert({ id: uid, settings: cloudSettings() }, { onConflict: 'id' });
+    if (error) throw error;
+    SH.s = d.s;
+  }
+  shSave();
+}
+async function fetchSince(tbl, since) {
+  let out = [];
+  for (let from = 0; ; from += 1000) {
+    let q = sb.from(tbl).select('*').order('updated_at').range(from, from + 999);
+    if (since) q = q.gte('updated_at', since);
+    const { data, error } = await q; if (error) throw error;
+    out = out.concat(data); if (data.length < 1000) return out;
+  }
+}
+// Забираем изменения с других устройств. Если здесь есть свои неотправленные правки той же записи — оставляем свои
+async function pullAll() {
+  const uid = U.id, since = SH.at ? new Date(Date.parse(SH.at) - 60000).toISOString() : null;
+  const [tr, cp, pr, sub] = await Promise.all([fetchSince('trades', since), fetchSince('counterparties', since),
+    sb.from('profiles').select('name, settings').eq('id', uid).maybeSingle(), sb.from('subscriptions').select('*').eq('user_id', uid).maybeSingle()]);
+  if (pr.error) throw pr.error; if (sub.error) throw sub.error;
+  let maxAt = SH.at, changed = false;
+  const merge = (rows, list, keyOf, keyCol, shMap) => {
+    const map = new Map(list.map(x => [keyOf(x), x]));
+    for (const r of rows) {
+      if (!maxAt || r.updated_at > maxAt) maxAt = r.updated_at;
+      const k = r[keyCol], local = map.get(k);
+      if (local ? fp(local) !== shMap[k] : k in shMap) continue;   // своя правка ещё не ушла
+      if (r.deleted) { if (local) { map.delete(k); changed = true; } delete shMap[k]; }
+      else { if (!local || fp(local) !== fp(r.data)) { map.set(k, r.data); changed = true; } shMap[k] = fp(r.data); }
+    }
+    return [...map.values()];
+  };
+  const trades = merge(tr, S.trades, x => String(x.id), 'id', SH.t), cps = merge(cp, S.cps, cpKey, 'name_key', SH.c);
+  if (changed) { S.trades = trades.sort((a, b) => new Date(b.ts) - new Date(a.ts)); S.cps = cps.sort((a, b) => (b.ts || 0) - (a.ts || 0)); }
+  const cs = pr.data?.settings;
+  if (cs && Object.keys(cs).length && (!SH.s || SH.s === fp(cloudSettings()))) {
+    CLOUD_SET.forEach(k => { if (cs[k] !== undefined) S.settings[k] = cs[k]; });
+    SH.s = fp(cloudSettings()); changed = true;
+  }
+  if (pr.data?.name && pr.data.name !== U.name) { U.name = pr.data.name; lsSet(USER_KEY, U); renderAcc(); }
+  subApply(sub.data);
+  SH.at = maxAt; shSave(); persist(false);
+  if (changed) render();
+  subCheck();
+}
+
+let syncTimer = 0, syncing = null, syncAgain = false, syncState = '', lastPull = 0;
+function syncMark(s) { syncState = s; renderAcc(); if (s === 'err') { clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(true), 30000); } }
+function syncSoon(ms = 1500) { if (!U || !sb || !SH) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), ms); }
+async function syncNow(pull) {
+  if (!U || !sb || !SH) return;
+  if (syncing) { syncAgain = true; return syncing; }
+  syncing = (async () => {
+    try { if (pull) { lastPull = Date.now(); await pullAll(); } await pushChanges(); syncMark('ok'); }
+    catch (e) { syncMark(navigator.onLine === false ? 'off' : 'err'); }
+  })();
+  await syncing; syncing = null;
+  if (syncAgain) { syncAgain = false; syncSoon(300); }
+}
+// Первый вход на этом устройстве: если тут остались данные другого аккаунта — убираем, они у него в облаке.
+// Если данные ничьи (из версии без аккаунтов) — они уедут в облако этого аккаунта
+async function cloudStart() {
+  if (!U || !sb) return;
+  if (!SH || SH.owner !== U.id) { if (SH?.owner) wipeLocal(); SH = { owner: U.id, at: null, t: {}, c: {}, s: '' }; shSave(); }
+  syncMark('wait');
+  await syncNow(true);
+}
+function wipeLocal() {
+  const keep = { theme: S.settings.theme, incog: S.settings.incog, a2hsSeen: S.settings.a2hsSeen };
+  S.trades = []; S.cps = []; S.settings = { ...structuredClone(DEFAULT.settings), ...keep }; S.draft = structuredClone(DEFAULT.draft);
+  persist(false);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastPull > 20000) syncNow(true); else if (document.visibilityState === 'hidden') syncNow(); });
+addEventListener('online', () => syncNow(true));
+addEventListener('offline', () => U && syncMark('off'));
+
+// Подписка живёт на сервере: здесь только её копия для показа
+function subApply(r) {
+  const st = S.settings, until = r?.pro_until ? Date.parse(r.pro_until) : 0;
+  st.pro = until > Date.now(); st.proUntil = until || null; st.proSince = r?.pro_since ? Date.parse(r.pro_since) : null;
+  st.proPeriod = r?.period === 'y' ? 'y' : 'm'; st.autoRenew = r ? !!r.auto_renew : true; st.payMethod = r?.pay_method || 'card';
+  st.payments = (r?.payments || []).map(p => ({ ...p, ts: Date.parse(p.ts) || Date.now() }));
+}
+async function cloudRpc(fn, args) {
+  if (!sb || !U) throw new Error('offline');
+  const { data, error } = await sb.rpc(fn, args || {});
+  if (error) throw error;
+  return data;
+}
+// Подписку меняем на сервере, потом показываем его ответ
+async function subDo(fn, args, okMsg) {
+  try { const r = await cloudRpc(fn, args); if (r && typeof r === 'object') subApply(r); persist(false); render(); renderTestPanel(); if (okMsg) toast(okMsg); return true; }
+  catch (e) { toast('Нет связи с сервером — попробуйте ещё раз'); return false; }
+}
+
+/* ================= ЗАСТАВКА И АККАУНТ ================= */
 const svg = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const AI = {
   mail: svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/>'),
   lock: svg('<rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'),
   user: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>'),
   shield: svg('<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+  key: svg('<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>'),
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   eyeOff: svg('<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7c1.8 0 3.3-.5 4.6-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'),
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
@@ -2251,16 +2405,25 @@ function runSplash(done) {
   setTimeout(() => { el.classList.add('out'); done(); setTimeout(() => el.remove(), 500); }, T);
 }
 
-let auMode = 'in', auRemember = true, auAgree = false;
+let auMode = 'in', auRemember = lsGet(REM_KEY) !== false, auAgree = false, auMail = '';
 function authHtml(m) {
   const pass = (ac, ph) => `<label class="au-f" id="fPass">${AI.lock}<input id="auPass" type="password" autocomplete="${ac}" placeholder="${ph}"><button type="button" class="au-eye" data-au="eye" aria-label="Показать пароль">${AI.eye}</button></label>`;
-  const mail = `<label class="au-f" id="fMail">${AI.mail}<input id="auMail" type="email" inputmode="email" autocomplete="email" placeholder="Эл. почта"></label>`;
+  const mail = `<label class="au-f" id="fMail">${AI.mail}<input id="auMail" type="email" inputmode="email" autocomplete="email" placeholder="Эл. почта" value="${esc(auMail)}"></label>`;
   if (m === 'in') return `<div class="au-ic">${AI.shield}</div><h2>С возвращением</h2><p class="au-sub">Войдите, чтобы продолжить</p>
     ${mail}${pass('current-password', 'Пароль')}<div class="au-err" id="auErr" role="alert"></div>
     <div class="au-row"><button type="button" class="au-sw" role="switch" aria-checked="${auRemember}" data-au="rem"><i></i>Запомнить меня</button><button type="button" class="au-link" data-au="forgot">Забыли пароль?</button></div>
     <button class="au-btn" id="auGo" type="submit">Войти ${AI.arrow}</button>
     <div class="au-or">или</div><button type="button" class="au-alt" data-au="tg">${AI.tg} Telegram <small>· скоро</small></button>
     <div class="au-foot">Нет аккаунта? <button type="button" class="au-link" data-au="up">Создать</button></div>`;
+  if (m === 'forgot') return `<div class="au-ic">${AI.key}</div><h2>Сброс пароля</h2><p class="au-sub">Пришлём на почту ссылку, по ней вы зададите новый пароль</p>
+    ${mail}<div class="au-err" id="auErr" role="alert"></div>
+    <button class="au-btn" id="auGo" type="submit">Прислать ссылку ${AI.arrow}</button>
+    <div class="au-foot">Вспомнили? <button type="button" class="au-link" data-au="in">Войти</button></div>`;
+  if (m === 'mail' || m === 'sent') return `<div class="au-ic">${AI.mail}</div><h2>Проверьте почту</h2>
+    <p class="au-sub">Отправили письмо на <b style="color:#E8ECF2">${esc(auMail)}</b>.<br>${m === 'mail' ? 'Нажмите в нём ссылку — аккаунт подтвердится, и вы сразу войдёте.' : 'Откройте ссылку из письма и задайте новый пароль.'}</p>
+    <div class="au-err" id="auErr" role="alert"></div>
+    ${m === 'mail' ? `<button type="button" class="au-btn" id="auGo" data-au="resend">Отправить ещё раз</button>` : ''}
+    <div class="au-foot">Письма нет — загляните в «Спам». <button type="button" class="au-link" data-au="in">Войти</button></div>`;
   return `<div class="au-ic">${AI.user}</div><h2>Создать аккаунт</h2><p class="au-sub">Бесплатно, за 30 секунд</p>
     <label class="au-f" id="fName">${AI.user}<input id="auName" type="text" autocomplete="nickname" placeholder="Имя или ник" maxlength="32"></label>
     ${mail}${pass('new-password', 'Пароль, от 6 символов')}
@@ -2277,7 +2440,7 @@ function showAuth(m) {
     el.innerHTML = `<div class="glow"></div><div class="grid"></div><div class="au-brand"><div class="logo">P2</div><b>P2Pro</b></div>
       <div class="au-wrap" id="auWrap"><span class="au-cn tl"></span><span class="au-cn br"></span><span class="au-dia" id="auDia"></span><span class="au-orb" id="auOrb"></span>
         <form class="au-card" id="auCard" novalidate><div class="au-in" id="auIn"></div></form></div>
-      <p class="au-note">Тестовая версия: аккаунт хранится только на этом устройстве.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.</p>`;
+      <p class="au-note">Сделки хранятся в облаке и открываются на любом устройстве.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.</p>`;
     document.body.appendChild(el);
     el.addEventListener('submit', e => { e.preventDefault(); submitAuth(); });
     el.addEventListener('click', authClick);
@@ -2287,10 +2450,11 @@ function showAuth(m) {
   auMode = m; $('auIn').innerHTML = authHtml(m); $('auIn').className = 'au-in'; $('auCard').className = 'au-card'; $('auCard').style.height = '';
   el.classList.remove('out'); document.documentElement.style.overflow = 'hidden';
 }
-// Смена «Вход ⇄ Регистрация» как в референсе: форма тает, уголки слетаются в ромб, вспышка, из неё проявляется новая форма
+// Смена экранов как в референсе: форма тает, уголки слетаются в ромб, вспышка, из неё проявляется новая форма
 let auBusy = false;
 async function flipAuth(m) {
   if (auBusy) return;
+  auMail = $('auMail')?.value.trim() || auMail;
   if (reduceMotion) { auMode = m; $('auIn').innerHTML = authHtml(m); return; }
   auBusy = true;
   const card = $('auCard'), inn = $('auIn'), wrap = $('auWrap'), dia = $('auDia'), orb = $('auOrb');
@@ -2317,12 +2481,21 @@ async function flipAuth(m) {
 function authClick(e) {
   const b = e.target.closest('[data-au]'); if (!b) return;
   const a = b.dataset.au;
-  if (a === 'in' || a === 'up') return flipAuth(a);
+  if (a === 'in' || a === 'up' || a === 'forgot') return flipAuth(a);
   if (a === 'eye') { const i = $('auPass'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = show ? AI.eyeOff : AI.eye; b.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль'); return; }
   if (a === 'rem') { auRemember = !auRemember; return b.setAttribute('aria-checked', auRemember); }
   if (a === 'agree') { auAgree = !auAgree; b.setAttribute('aria-checked', auAgree); return $('auErr').textContent = ''; }
-  if (a === 'forgot') { const er = $('auErr'); er.style.color = '#8691A2'; er.textContent = 'Сервера пока нет, поэтому пароль не восстановить. Создайте аккаунт заново — сделки на этом устройстве сохранятся.'; return; }
+  if (a === 'resend') return resendMail(b);
   if (a === 'tg') return toast('Вход через Telegram @P2ProAppBot — скоро');
+}
+async function resendMail(b) {
+  auMail = $('auMail')?.value.trim().toLowerCase() || auMail;
+  if (!sb || !auMail || b.disabled) return;
+  b.disabled = true;
+  const { error } = await sb.auth.resend({ type: 'signup', email: auMail, options: { emailRedirectTo: APP_URL } }).catch(e => ({ error: e }));
+  b.disabled = false;
+  if (error) return auErr(authErrText(error));
+  const er = $('auErr'); er.style.color = '#3CD38A'; er.textContent = 'Письмо отправлено ещё раз';
 }
 function strength() {
   const v = $('auPass').value;
@@ -2336,49 +2509,137 @@ function auErr(msg, field) {
   if (field) { $(field).classList.add('bad'); $(field).querySelector('input').focus(); }
   const c = $('auCard'); c.classList.add('ready'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
 }
+function authErrText(e) {
+  const m = (e?.message || '') + ' ' + (e?.code || '');
+  if (/invalid login|invalid_credentials/i.test(m)) return 'Неверная почта или пароль';
+  if (/not confirmed|email_not_confirmed/i.test(m)) return 'Почта не подтверждена — нажмите ссылку в письме';
+  if (/already registered|already exists|user_already_exists/i.test(m)) return 'Аккаунт с этой почтой уже есть — войдите';
+  if (/rate limit|too many|over_email_send_rate|security purposes/i.test(m)) return 'Слишком много попыток. Подождите пару минут и попробуйте снова';
+  if (/weak|password should|weak_password/i.test(m)) return 'Пароль слишком простой — добавьте цифры и буквы';
+  if (/invalid.*email|email_address_invalid/i.test(m)) return 'Проверьте адрес почты';
+  if (/fetch|network|offline|load failed/i.test(m)) return 'Нет связи с сервером. Проверьте интернет';
+  return 'Не получилось: ' + (e?.message || 'попробуйте ещё раз');
+}
 let auSending = false;
 async function submitAuth() {
-  const btn = $('auGo'); if (btn.disabled || auSending || auBusy) return;
+  const btn = $('auGo'); if (!btn || btn.disabled || auSending || auBusy || btn.dataset.au) return;
   auSending = true;
-  try { await submitAuthInner(btn); } finally { auSending = false; }
+  const label = btn.innerHTML;
+  try { await submitAuthInner(btn); } finally { auSending = false; if ($('auGo') === btn && btn.disabled && !btn.dataset.ok) { btn.disabled = false; btn.innerHTML = label; } }
 }
 async function submitAuthInner(btn) {
-  const mail = $('auMail').value.trim().toLowerCase(), pass = $('auPass').value, name = $('auName')?.value.trim();
+  const mail = $('auMail').value.trim().toLowerCase(), pass = $('auPass')?.value || '', name = $('auName')?.value.trim();
+  auMail = mail;
   if (auMode === 'up' && !name) return auErr('Введите имя или ник', 'fName');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return auErr('Проверьте адрес почты', 'fMail');
-  if (pass.length < 6) return auErr('Пароль — минимум 6 символов', 'fPass');
+  if (auMode !== 'forgot' && pass.length < 6) return auErr('Пароль — минимум 6 символов', 'fPass');
   if (auMode === 'up' && !auAgree) return auErr('Отметьте согласие ниже');
-  const h = await passHash(mail, pass), u = A.users[mail];
-  if (auMode === 'in' && !u) return auErr('Такого аккаунта нет — создайте его', 'fMail');
-  if (auMode === 'in' && u.hash !== h) return auErr('Неверный пароль', 'fPass');
-  if (auMode === 'up' && u) return auErr('Аккаунт уже есть — войдите', 'fMail');
-  btn.disabled = true; btn.innerHTML = `<span class="au-spin"></span>${auMode === 'in' ? 'Входим…' : 'Создаём аккаунт…'}`;
-  await wait(1000);
-  if (auMode === 'up') A.users[mail] = { name, email: mail, hash: h, created: new Date().toISOString() };
-  A.session = mail; A.remember = auRemember || auMode === 'up'; accSave();
-  try { sessionStorage.setItem(ACC_KEY, '1'); } catch (e) {}
-  btn.innerHTML = `✓ Добро пожаловать, ${esc(A.users[mail].name.split(' ')[0])}`;
-  await wait(1000);
-  $('auCard').classList.add('ready', 'done'); $('auth').classList.add('out'); document.documentElement.style.overflow = '';
+  if (!sb) return auErr('Нет связи с сервером. Проверьте интернет и обновите страницу');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="au-spin"></span>${{ in: 'Входим…', up: 'Создаём аккаунт…', forgot: 'Отправляем…' }[auMode]}`;
+  try {
+    if (auMode === 'forgot') {
+      const { error } = await sb.auth.resetPasswordForEmail(mail, { redirectTo: APP_URL });
+      if (error) return auErr(authErrText(error));
+      btn.dataset.ok = 1; return flipAuth('sent');
+    }
+    if (auMode === 'up') {
+      const { data, error } = await sb.auth.signUp({ email: mail, password: pass, options: { data: { name }, emailRedirectTo: APP_URL } });
+      if (error) return auErr(authErrText(error), /already/i.test(error.message) ? 'fMail' : null);
+      // Supabase не говорит прямо, что почта занята: возвращает пользователя без способов входа
+      if (data.user && !data.session && !data.user.identities?.length) return auErr('Аккаунт с этой почтой уже есть — войдите', 'fMail');
+      if (!data.session) { lsSet(REM_KEY, true); btn.dataset.ok = 1; return flipAuth('mail'); }
+      return loginDone(data.session.user, btn);
+    }
+    const { data, error } = await sb.auth.signInWithPassword({ email: mail, password: pass });
+    if (error) {
+      auErr(authErrText(error), /invalid/i.test(error.message) ? 'fPass' : null);
+      if (/not confirmed/i.test(error.message)) $('auErr').insertAdjacentHTML('beforeend', ' <button type="button" class="au-link" data-au="resend">Отправить письмо снова</button>');
+      return;
+    }
+    return loginDone(data.user, btn);
+  } catch (e) { auErr(authErrText(e)); }
+}
+async function loginDone(user, btn) {
+  const fresh = !SH || SH.owner !== user.id;
+  setUser(user);
+  lsSet(REM_KEY, auRemember || auMode === 'up');
+  try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
+  btn.dataset.ok = 1;
+  btn.innerHTML = fresh ? '<span class="au-spin"></span>Загружаем ваши сделки…' : `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`;
+  await Promise.race([cloudStart(), wait(8000)]);
+  if (fresh) { btn.innerHTML = `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`; await wait(700); } else await wait(500);
+  closeAuth();
+}
+function closeAuth() {
+  $('auCard')?.classList.add('ready', 'done'); $('auth')?.classList.add('out'); document.documentElement.style.overflow = '';
   renderAcc(); render();
   setTimeout(() => { $('auth')?.remove(); afterAuth(); }, 450);
 }
+const SYNC_TEXT = { ok: '☁ Синхронизировано', wait: 'Синхронизация…', off: 'Нет сети — сохраним, когда появится', err: 'Не удалось синхронизировать — повторим через минуту', local: 'Нет связи с сервером — работаем офлайн' };
 function renderAcc() {
   const u = me(); $('topAvatar').hidden = !u; $('accCard').hidden = !u; if (!u) return;
   const ini = (u.name || u.email).trim()[0].toUpperCase();
   $('topAvatar').textContent = ini; $('accAva').textContent = ini; $('accName').textContent = u.name; $('accMail').textContent = u.email;
-  $('accSince').textContent = 'С нами с ' + new Date(u.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + ' · данные хранятся на этом устройстве';
+  $('accSince').textContent = 'С нами с ' + new Date(u.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + (syncState ? ' · ' + SYNC_TEXT[syncState] : '');
 }
 $('topAvatar').addEventListener('click', () => show('prof'));
-$('logoutBtn').addEventListener('click', () => confirmSheet('Выйти из аккаунта?', 'История сделок останется на этом устройстве.', 'Выйти', () => {
-  A.session = null; accSave(); renderAcc(); show('calc'); showAuth('in');
+$('logoutBtn').addEventListener('click', () => confirmSheet('Выйти из аккаунта?', 'Сделки сохранены в облаке — после входа они вернутся. С этого устройства они уберутся.', 'Выйти', async () => {
+  await Promise.race([syncNow(), wait(5000)]);
+  const n = pendingCount();
+  if (n) return confirmSheet('Не всё сохранено', `Нет связи с сервером: ${n} ${plural(n, 'изменение', 'изменения', 'изменений')} ещё не в облаке. Если выйти сейчас, они пропадут.`, 'Всё равно выйти', logout, true);
+  logout();
 }));
-function afterAuth() { if (!S.settings.work) showWork(); else if (!S.settings.onboarded) showTour(0); else setTimeout(maybeA2HS, 4000); }
+async function logout() {
+  clearTimeout(syncTimer);
+  try { await sb?.auth.signOut({ scope: 'local' }); } catch (e) {}
+  U = null; lsSet(USER_KEY, null); SH = null; lsSet(SYNC_KEY, null); syncState = '';
+  wipeLocal(); renderAcc(); render(); show('calc'); showAuth('in');
+}
+// Смена пароля по ссылке из письма «Сброс пароля»
+function showNewPass() {
+  sheet(`<h3>Новый пароль</h3><span class="muted">Для ${esc(U?.email || '')}. Не меньше 6 символов.</span>
+    <div class="inp"><input id="npPass" type="password" autocomplete="new-password" placeholder="Новый пароль"></div>
+    <button class="btn primary" id="npGo">Сохранить пароль</button>`);
+  $('npGo').onclick = async () => {
+    const b = $('npGo'), p = $('npPass').value;
+    if (p.length < 6) return toast('Пароль — минимум 6 символов');
+    b.disabled = true; b.textContent = 'Сохраняем…';
+    const { error } = await sb.auth.updateUser({ password: p }).catch(e => ({ error: e }));
+    if (error) { b.disabled = false; b.textContent = 'Сохранить пароль'; return toast(authErrText(error)); }
+    closeSheet(); toast('Пароль изменён');
+  };
+}
+sb?.auth.onAuthStateChange((ev, session) => {
+  // Сессия кончилась на сервере (сменили пароль на другом устройстве и т. п.) — просим войти заново
+  if (ev === 'SIGNED_OUT' && U) setTimeout(() => { if (U) { U = null; lsSet(USER_KEY, null); renderAcc(); showAuth('in'); } });
+  if (ev === 'USER_UPDATED' && session?.user && U) setUser(session.user);
+});
+function afterAuth() {
+  if (FROM_RECOVERY && sb) return showNewPass();
+  if (!S.settings.work) showWork(); else if (!S.settings.onboarded) showTour(0); else setTimeout(maybeA2HS, 4000);
+}
 function bootAccount() {
-  let alive = true; try { alive = !!sessionStorage.getItem(ACC_KEY); } catch (e) {}
-  if (A.session && (!A.users[A.session] || (A.remember === false && !alive))) { A.session = null; accSave(); }
   renderAcc();
-  runSplash(() => me() ? afterAuth() : showAuth(Object.keys(A.users).length ? 'in' : 'up'));
+  // «Запомнить меня» выключено и браузер закрывали — выходим
+  let alive = true; try { alive = !!sessionStorage.getItem(REM_KEY); } catch (e) {}
+  const session = sb ? sb.auth.getSession().then(r => r.data.session).catch(() => 'offline') : Promise.resolve('offline');
+  runSplash(async () => {
+    let s = await Promise.race([session, wait(6000).then(() => 'offline')]);
+    if (s && s !== 'offline' && lsGet(REM_KEY) === false && !alive && !FROM_RECOVERY && !FROM_SIGNUP) { await sb.auth.signOut({ scope: 'local' }).catch(() => {}); s = null; }
+    if (s && s !== 'offline') {
+      setUser(s.user); renderAcc();
+      try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
+      if (FROM_SIGNUP) setTimeout(() => toast('Почта подтверждена — добро пожаловать!'), 600);
+      const first = SH?.owner !== U.id;
+      const st = cloudStart(); if (first) await Promise.race([st, wait(8000)]);
+      render(); return afterAuth();
+    }
+    if (s === 'offline' && U) { syncState = 'local'; renderAcc(); return afterAuth(); }   // нет связи, но вход был: работаем с тем, что на устройстве
+    if (U) { U = null; lsSet(USER_KEY, null); renderAcc(); }
+    showAuth(SH || lsGet(REM_KEY) !== null ? 'in' : 'up');
+    if (URL_ERR) auErr(URL_ERR);
+  });
 }
 
 /* ================= МОЯ ПОДПИСКА ================= */
@@ -2387,22 +2648,25 @@ const PERIOD_DAYS = { m: 30, y: 365 }, PERIOD_PRICE = { m: 490, y: 3990 };
 const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', stars: 'Telegram Stars', usdt: 'USDT' };
 const fmtLong = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '');
 const subDaysLeft = () => Math.max(0, Math.ceil(((S.settings.proUntil || 0) - Date.now()) / 864e5));
+// Срок вышел: при автопродлении в демо продлеваем сами (с настоящей оплатой это сделает платёжный сервис на сервере)
+let renewing = false, subWarned = false;
 function subCheck() {
-  const st = S.settings; if (!st.pro) return;
-  if (!st.proUntil) {   // PRO включили в старой версии без срока
-    st.proPeriod ||= 'm'; st.proSince ||= Date.now(); st.proUntil = st.proSince + PERIOD_DAYS[st.proPeriod] * 864e5; st.autoRenew ??= true;
-    st.payments ||= [{ ts: st.proSince, amount: PERIOD_PRICE[st.proPeriod], period: st.proPeriod, method: 'card' }];
+  const st = S.settings;
+  if (!st.proUntil) { st.pro = false; return; }
+  if (Date.now() > st.proUntil) {
+    const was = st.pro; st.pro = false; persist(false);
+    if (st.autoRenew && st.proSince && me() && sb && !renewing) {
+      renewing = true;
+      cloudRpc('demo_activate_pro', { p_period: st.proPeriod, p_method: st.payMethod || 'card' })
+        .then(r => { subApply(r); persist(false); render(); renderTestPanel(); toast(`PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)`); })
+        .catch(() => {}).finally(() => renewing = false);
+    } else if (was) setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 600);
+    return;
   }
-  st.payments ||= []; if (!PERIOD_DAYS[st.proPeriod]) st.proPeriod = 'm';
-  while (Date.now() > st.proUntil) {
-    if (!st.autoRenew) { st.pro = false; persist(); setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 2600); return; }
-    st.payments.unshift({ ts: st.proUntil, amount: PERIOD_PRICE[st.proPeriod], period: st.proPeriod, method: st.payMethod || 'card', auto: true });
-    st.proUntil += PERIOD_DAYS[st.proPeriod] * 864e5;
-  }
-  persist();
+  st.pro = true;
   const left = subDaysLeft();
-  if (left <= 3) setTimeout(() => toast(st.autoRenew ? `Через ${left} ${plural(left, 'день', 'дня', 'дней')} PRO продлится: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)`
-    : `PRO закончится через ${left} ${plural(left, 'день', 'дня', 'дней')}`), 2600);
+  if (left <= 3 && !subWarned) { subWarned = true; setTimeout(() => toast(st.autoRenew ? `Через ${left} ${plural(left, 'день', 'дня', 'дней')} PRO продлится: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)`
+    : `PRO закончится через ${left} ${plural(left, 'день', 'дня', 'дней')}`), 2600); }
 }
 function subHtml() {
   const st = S.settings, left = subDaysLeft(), total = PERIOD_DAYS[st.proPeriod] || 30, k = Math.min(1, left / total);
@@ -2427,9 +2691,12 @@ function refreshSub() {
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-sub]'); if (!b) return;
   const st = S.settings, a = b.dataset.sub;
-  if (a === 'auto') { st.autoRenew = !st.autoRenew; persist(); refreshSub(); return toast(st.autoRenew ? 'Автопродление включено' : `Автопродление выключено. PRO до ${fmtLong(st.proUntil)}`); }
+  if (a === 'auto') {
+    const on = !st.autoRenew;
+    return subDo('set_auto_renew', { p_on: on }).then(ok => { if (!ok) return; st.autoRenew = on; persist(false); refreshSub(); toast(on ? 'Автопродление включено' : `Автопродление выключено. PRO до ${fmtLong(st.proUntil)}`); });
+  }
   if (a === 'cancel') return confirmSheet('Отменить подписку?', `PRO останется до ${fmtLong(st.proUntil)}, потом вы перейдёте на Free. Списаний больше не будет.`, 'Отменить',
-    () => { st.autoRenew = false; persist(); render(); toast('Подписка отменена'); }, true);
+    () => subDo('set_auto_renew', { p_on: false }).then(ok => { if (!ok) return; st.autoRenew = false; persist(false); render(); toast('Подписка отменена'); }), true);
   if (a === 'renew') return openPlans('renew');
   if (a === 'hist') {
     const P = st.payments || [];
@@ -2451,21 +2718,19 @@ function renderTestPanel() {
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-tp]'); if (!b || !TEST_PANEL) return;
-  const st = S.settings, a = b.dataset.tp, now = Date.now();
-  const setPro = per => { st.pro = true; st.proPeriod = per; st.proSince = now; st.proUntil = now + PERIOD_DAYS[per] * 864e5; st.autoRenew = true; st.payMethod ||= 'card'; st.payments ||= []; };
-  if (a === 'free') { st.pro = false; toast('Тариф Free'); }
-  if (a === 'm' || a === 'y') { setPro(a); toast(a === 'y' ? 'PRO на год' : 'PRO на месяц'); }
-  if (['left2', 'expire', 'full'].includes(a)) {
-    if (!st.pro) setPro('m');
-    if (a === 'left2') { st.proUntil = now + 1.5 * 864e5; toast('Осталось 2 дня'); }
-    if (a === 'full') { st.proUntil = now + PERIOD_DAYS[st.proPeriod] * 864e5; toast('Срок сброшен на полный'); }
-    if (a === 'expire') { st.proUntil = now - 1000; persist(); subCheck(); if (st.pro) toast('Срок истёк — сработало автопродление (выключите его, чтобы проверить окончание)'); }
-  }
+  const st = S.settings, a = b.dataset.tp, now = Date.now(), per = st.proPeriod || 'm', auto = st.pro ? st.autoRenew : true;
+  // Подписка на сервере: тест-панель ставит срок через демо-функцию базы
+  const set = (p, until, msg, clear, au) => subDo('demo_set_sub', { p_period: p, p_until: until ? new Date(until).toISOString() : null, p_auto: au, p_clear: !!clear }, msg).then(() => { subCheck(); renderTestPanel(); });
+  if (a === 'free') return set(per, null, 'Тариф Free', false, st.autoRenew);
+  if (a === 'm' || a === 'y') return set(a, now + PERIOD_DAYS[a] * 864e5, a === 'y' ? 'PRO на год' : 'PRO на месяц', false, true);
+  if (a === 'left2') return set(per, now + 1.5 * 864e5, 'Осталось 2 дня', false, auto);
+  if (a === 'full') return set(per, now + PERIOD_DAYS[per] * 864e5, 'Срок сброшен на полный', false, auto);
+  if (a === 'expire') return set(per, now - 1000, auto ? 'Срок истёк — сработает автопродление (выключите его, чтобы проверить окончание)' : 'Срок истёк', false, auto);
+  if (a === 'pays') return set(per, st.proUntil, 'История платежей очищена', true, st.autoRenew);
   if (a === 'onb') { st.work = ''; st.onboarded = false; persist(); afterAuth(); }
   if (a === 'a2hs') { st.a2hsSeen = false; persist(); maybeA2HS(); toast(S.trades.length ? 'Подсказка показана' : 'Подсказка появится после первой сделки'); }
-  if (a === 'pays') { st.payments = []; toast('История платежей очищена'); }
-  if (a === 'splash') { A.session = null; accSave(); persist(); return location.reload(); }
-  persist(); render(); renderTestPanel();
+  if (a === 'splash') return location.reload();
+  render(); renderTestPanel();
 });
 
 /* ================= СТАРТ ================= */
