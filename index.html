@@ -470,6 +470,40 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .acc { display: flex; align-items: center; gap: 14px; }
 .acc .avatar { width: 52px; height: 52px; font-size: 21px; }
 .acc-name { font-family: var(--f-display); font-size: 17px; letter-spacing: -.3px; }
+
+/* Пустые экраны: живые картинки, нарисованные в SVG (цвета из темы) */
+.empty-art { width: 120px; height: 96px; margin-bottom: 4px; overflow: visible; }
+.empty-art .ea-card { stroke: var(--line); stroke-width: 2; fill: var(--surface-2); }
+.empty-art .ea-line { stroke: var(--muted); stroke-width: 3; stroke-linecap: round; opacity: .55; stroke-dasharray: 40; animation: eaDraw 3.2s ease-in-out infinite; }
+.empty-art .l2 { animation-delay: .2s; } .empty-art .l3 { animation-delay: .4s; }
+@keyframes eaDraw { 0% { stroke-dashoffset: 40; } 25%, 80% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -40; } }
+.empty-art .ea-coin { animation: eaCoin 3.2s cubic-bezier(.3, .7, .4, 1) infinite; }
+.empty-art .ea-coin circle { fill: var(--accent); }
+.empty-art .ea-coin path { stroke: var(--accent-ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+@keyframes eaCoin { 0% { transform: translateY(-34px); opacity: 0; } 12% { opacity: 1; } 34% { transform: none; } 44% { transform: translateY(-9px); } 54%, 84% { transform: none; opacity: 1; } 100% { transform: none; opacity: 0; } }
+.empty-art .ea-mag { stroke: var(--accent); stroke-width: 3.5; stroke-linecap: round; fill: none; animation: eaSearch 3.4s ease-in-out infinite; }
+@keyframes eaSearch { 0%, 100% { transform: translate(-14px, -6px); } 33% { transform: translate(12px, 2px); } 66% { transform: translate(-4px, 10px); } }
+.empty-art .ea-base { stroke: var(--line); stroke-width: 2.5; stroke-linecap: round; }
+.empty-art .ea-bar { fill: var(--accent); transform-box: fill-box; transform-origin: 50% 100%; animation: eaBar 2.6s ease-in-out infinite; }
+.empty-art .b2 { animation-delay: .25s; opacity: .75; } .empty-art .b3 { animation-delay: .5s; opacity: .55; } .empty-art .b4 { animation-delay: .75s; opacity: .85; }
+@keyframes eaBar { 0%, 100% { transform: scaleY(.3); } 40% { transform: scaleY(1); } 70% { transform: scaleY(.55); } }
+.empty-art .ea-p { fill: none; stroke-width: 3; stroke-linecap: round; }
+.empty-art .p1 { stroke: var(--muted); } .empty-art .p2 { stroke: var(--accent); }
+.empty-art .ea-star { fill: var(--accent); transform-box: fill-box; transform-origin: center; animation: eaStar 2.2s ease-in-out infinite; }
+@keyframes eaStar { 0%, 100% { transform: scale(.7) rotate(0); opacity: .5; } 50% { transform: scale(1.15) rotate(20deg); opacity: 1; } }
+.empty .btn { margin-top: 12px; }
+
+/* Потяните вниз, чтобы обновить */
+html, body { overscroll-behavior-y: contain; }
+.ptr { position: fixed; z-index: 40; top: calc(8px + env(safe-area-inset-top, 0px)); left: 50%; width: 40px; height: 40px; margin-left: -20px; border-radius: 12px;
+  background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-family: var(--f-display); font-weight: 800; font-size: 14px; letter-spacing: -1px;
+  box-shadow: var(--shadow); transform: translateY(-70px) scale(.6); opacity: 0; pointer-events: none; }
+.ptr.spin { animation: ptrSpin .8s cubic-bezier(.5, 0, .4, 1); }
+@keyframes ptrSpin { from { transform: rotate(0); } to { transform: rotate(720deg); } }
+
+/* Инкогнито: кнопка-глаз в шапке */
+.eye-btn { width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line); margin-left: 8px; transition: all .2s; }
+.eye-btn.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 <style>
@@ -496,6 +530,7 @@ img { max-width: 100%; }
       <div class="brand-sub">Учёт P2P-сделок</div>
     </div>
     <span class="plan-pill" id="planPill">Free</span>
+    <button class="eye-btn" id="incogBtn" aria-pressed="false" aria-label="Скрыть суммы"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
     <button class="avatar" id="topAvatar" hidden aria-label="Аккаунт"></button>
   </header>
 
@@ -646,6 +681,7 @@ img { max-width: 100%; }
   <section id="tab-stats" class="app" hidden>
     <div class="chips" id="sPeriod"></div>
     <div class="seg sm" id="sCurSeg" hidden><button data-scur="RUB" class="on">₽ Рубли</button><button data-scur="USD">$ Доллары</button></div>
+    <div id="sEmpty" hidden></div>
 
     <div class="card">
       <div class="hero-kpi">
@@ -834,6 +870,7 @@ img { max-width: 100%; }
         <button class="btn" id="backupBtn">Резервная копия</button>
         <button class="btn" id="importBtn">Загрузить файл</button>
       </div>
+      <button class="btn" id="csvAllBtn">⤓ Все сделки в Excel</button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
       <span class="muted small">«Загрузить файл» принимает и экспорт из старой версии калькулятора.</span>
       <button class="btn danger block" id="wipeBtn">Удалить всю историю</button>
@@ -894,8 +931,9 @@ function persist() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch
 /* ================= ФОРМАТ ================= */
 const nf2 = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const nf0 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
-const money = (n, cur, sign) => (sign && n > 0 ? '+' : '') + (Math.abs(n) >= 10000 ? nf0 : nf2).format(n).replace('-', '−') + ' ' + SYM[cur];
+const money = (n, cur, sign) => S.settings.incog ? '••• ' + SYM[cur] : (sign && n > 0 ? '+' : '') + (Math.abs(n) >= 10000 ? nf0 : nf2).format(n).replace('-', '−') + ' ' + SYM[cur];
 const rate = n => (+n).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const hid = v => S.settings.incog ? '•••' : v;
 const pct = (n, sign = true) => (sign && n > 0 ? '+' : '') + nf2.format(n).replace('-', '−') + '%';
 const cls = n => n > 0 ? 'pos' : n < 0 ? 'neg' : '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1177,8 +1215,19 @@ function checkLimitWarn(bank) {
   if (used / lim >= 0.8) setTimeout(() => toast(`${bank}: использовано ${Math.round(used / lim * 100)}% лимита за месяц`), 2000);
 }
 
+
+/* ================= ПУСТЫЕ ЭКРАНЫ ================= */
+const ART = {
+  trades: `<svg class="empty-art" viewBox="0 0 120 96" aria-hidden="true"><rect class="ea-card" x="28" y="16" width="58" height="72" rx="10"/><path class="ea-line" d="M40 36h34"/><path class="ea-line l2" d="M40 48h26"/><path class="ea-line l3" d="M40 60h30"/><g class="ea-coin"><circle cx="88" cy="22" r="12"/><path d="M85 16v12M85 16h4.5a3.2 3.2 0 0 1 0 6.4H83M83 25.5h6"/></g></svg>`,
+  search: `<svg class="empty-art" viewBox="0 0 120 96" aria-hidden="true"><rect class="ea-card" x="26" y="14" width="68" height="70" rx="10"/><path class="ea-line" d="M38 32h40"/><path class="ea-line l2" d="M38 46h30"/><path class="ea-line l3" d="M38 60h36"/><g class="ea-mag"><circle cx="64" cy="46" r="13"/><path d="M73.5 55.5 84 66"/></g></svg>`,
+  chart: `<svg class="empty-art" viewBox="0 0 120 96" aria-hidden="true"><path class="ea-base" d="M20 82h80"/><rect class="ea-bar" x="28" y="26" width="12" height="54" rx="4"/><rect class="ea-bar b2" x="46" y="26" width="12" height="54" rx="4"/><rect class="ea-bar b3" x="64" y="26" width="12" height="54" rx="4"/><rect class="ea-bar b4" x="82" y="26" width="12" height="54" rx="4"/></svg>`,
+  people: `<svg class="empty-art" viewBox="0 0 120 96" aria-hidden="true"><circle class="ea-p p1" cx="40" cy="38" r="11"/><path class="ea-p p1" d="M20 80c2-14 10-22 20-22s18 8 20 22"/><circle class="ea-p p2" cx="80" cy="38" r="11"/><path class="ea-p p2" d="M60 80c2-14 10-22 20-22s18 8 20 22"/><path class="ea-star" d="M60 10l3 6.5 7 .8-5.2 4.8 1.4 7-6.2-3.6-6.2 3.6 1.4-7-5.2-4.8 7-.8z"/></svg>`
+};
+const emptyHtml = (art, title, text, btn = '') => `<div class="empty">${ART[art]}<b>${title}</b><span>${text}</span>${btn}</div>`;
+const FIRST_BTN = '<button class="btn primary" data-tab="calc">Добавить первую сделку</button>';
+
 /* ================= ИСТОРИЯ ================= */
-let hFilter = 'all', hPeriod = 'all';
+let hFilter = 'all', hPeriod = 'all', hShown = [];
 const FILTERS = [['all', 'Все'], ['pos', 'В плюсе'], ['neg', 'В минусе'], ['fav', '★ Избранное']];
 const PERIODS = [['all', 'Всё время'], ['today', 'Сегодня'], ['7', '7 дней'], ['30', '30 дней']];
 function inPeriod(t, p) {
@@ -1189,13 +1238,16 @@ function inPeriod(t, p) {
 }
 function renderHistory() {
   $('hFilter').innerHTML = FILTERS.map(([k, l]) => `<button class="chip ${k === hFilter ? 'on' : ''}" data-hf="${k}">${l}</button>`).join('');
-  $('hPeriod').innerHTML = PERIODS.map(([k, l]) => `<button class="chip ${k === hPeriod ? 'on' : ''}" data-hp="${k}">${l}</button>`).join('');
+  $('hPeriod').innerHTML = PERIODS.map(([k, l]) => `<button class="chip ${k === hPeriod ? 'on' : ''}" data-hp="${k}">${l}</button>`).join('')
+    + (S.trades.length ? '<button class="chip" id="csvBtn" aria-label="Скачать таблицу для Excel">⤓ Excel</button>' : '');
   const q = $('q').value.trim().toLowerCase();
   const list = S.trades.filter(t => inPeriod(t, hPeriod))
     .filter(t => hFilter === 'all' || (hFilter === 'pos' && t.profit > 0) || (hFilter === 'neg' && t.profit < 0) || (hFilter === 'fav' && t.fav))
     .filter(t => !q || [t.sum, t.buy, t.sell, t.ex, t.bank, t.note, ...tradeCps(t), fmtDay(dayKey(t.ts))].join(' ').toLowerCase().includes(q));
+  hShown = list;
   if (!list.length) {
-    $('hList').innerHTML = `<div class="empty"><b>${S.trades.length ? 'Ничего не найдено' : 'Сделок пока нет'}</b><span>${S.trades.length ? 'Попробуйте другой фильтр или запрос' : 'Сохраните первую сделку на вкладке «Расчёт»'}</span></div>`;
+    $('hList').innerHTML = S.trades.length ? emptyHtml('search', 'Ничего не найдено', 'Попробуйте другой фильтр или запрос')
+      : emptyHtml('trades', 'Сделок пока нет', 'Посчитайте сделку и нажмите «Сохранить» — она появится здесь', FIRST_BTN);
     return;
   }
   const groups = [];
@@ -1211,7 +1263,7 @@ function itemHtml(t) {
   return `<button class="item" data-open="${esc(t.id)}">
     <div style="min-width:0">
       <div class="l1">${fmtTime(t.ts)} · ${esc(t.ex)} ${t.mode === 'tri' ? '<span class="tag">треугольник</span>' : `<span class="tag">${esc(t.bank)}</span>`}${t.mode === 'circle' ? '<span class="tag">круг</span>' : ''}${t.fav ? '<span class="star">★</span>' : ''}</div>
-      <div class="l2">${t.mode === 'tri' ? `${rate(t.sell)} / ${rate(t.buy)}` : `${rate(t.buy)} → ${rate(t.sell.toFixed(4))}`} · ${nf0.format(t.sum)} ${SYM[t.cur]}</div>
+      <div class="l2">${t.mode === 'tri' ? `${rate(t.sell)} / ${rate(t.buy)}` : `${rate(t.buy)} → ${rate(t.sell.toFixed(4))}`} · ${hid(nf0.format(t.sum))} ${SYM[t.cur]}</div>
     </div>
     <div><div class="r1 ${cls(t.profit)}">${money(t.profit, t.cur, true)}</div><div class="r2 ${cls(t.profit)}">${pct(t.profitPct)}</div></div>
   </button>`;
@@ -1235,7 +1287,7 @@ function openTrade(id) {
       <div class="kv">
         <div><span class="k">Купил</span><span class="v">${rate(t.buy)} ${s}</span></div>
         <div><span class="k">Продал${t.mode === 'circle' ? ' (средн.)' : ''}</span><span class="v">${rate(t.sell.toFixed(4))} ${s}</span></div>
-        <div><span class="k">Сумма</span><span class="v">${nf2.format(t.sum)} ${s}</span></div>
+        <div><span class="k">Сумма</span><span class="v">${hid(nf2.format(t.sum))} ${s}</span></div>
         <div><span class="k">USDT</span><span class="v">${nf2.format(t.qty)}</span></div>
         <div><span class="k">Комиссия биржи</span><span class="v fee">${feeLbl(t.feeEx, t.feeExType)} · ${nf2.format(t.commEx)} ${s}</span></div>
         <div><span class="k">Комиссия вывода</span><span class="v fee">${feeLbl(t.feeWd, t.feeWdType, 1)} · ${nf2.format(t.commWd)} ${s}</span></div>
@@ -1269,6 +1321,9 @@ function renderStats() {
   document.querySelectorAll('[data-scur]').forEach(b => b.classList.toggle('on', b.dataset.scur === sCur));
   const T = S.trades.filter(t => t.cur === sCur && inPeriod(t, sPeriod));
   const c = sCur, n = T.length;
+  $('sEmpty').hidden = n > 0;
+  if (!n) $('sEmpty').innerHTML = S.trades.length ? emptyHtml('chart', 'За этот период сделок нет', 'Выберите период побольше — например, «Всё время»')
+    : emptyHtml('chart', 'Здесь будет ваша аналитика', 'Сохраните пару сделок — и увидите прибыль по дням, лучшие биржи и банки', FIRST_BTN);
   const sum = f => T.reduce((a, t) => a + f(t), 0);
   const profit = sum(t => t.profit), turn = sum(t => t.sum), fees = sum(t => t.comm), cost = sum(t => t.cost ?? t.sum);
   const wins = T.filter(t => t.profit > 0).length;
@@ -1320,7 +1375,7 @@ function drawChart(T, c) {
       interaction: { intersect: false, mode: 'index' },
       plugins: { legend: { display: false }, tooltip: { callbacks: { title: it => fmtDay(keys[it[0].dataIndex]), label: it => ' ' + money(it.raw, c, true) } } },
       scales: { x: { grid: { display: false }, border: { color: line }, ticks: { color: mut, maxRotation: 0, autoSkipPadding: 14, font: { size: 10 } } },
-        y: { grid: { color: line }, border: { display: false }, ticks: { color: mut, font: { size: 10 }, maxTicksLimit: 5, callback: v => nf0.format(v) } } } }
+        y: { grid: { color: line }, border: { display: false }, ticks: { color: mut, font: { size: 10 }, maxTicksLimit: 5, callback: v => hid(nf0.format(v)) } } } }
   });
 }
 function monthReport() {
@@ -1447,8 +1502,9 @@ function renderCp() {
   $('cpListView').innerHTML = list.length ? list.map(c => {
     const deals = cpDeals(c.name), turn = deals.reduce((a, x) => a + x.amount, 0);
     return `<div class="cp-item" role="button" tabindex="0" data-cpopen="${esc(c.name)}" aria-label="Открыть ${esc(c.name)}"><b>${esc(c.name)}</b><span class="pill ${c.status}">${CPS[c.status]}</span>
-      <span class="muted small">${deals.length ? `Сделок: ${deals.length} · ${nf0.format(turn)} ₽` : 'Сделок пока нет'}${c.note ? ` · ${esc(c.note)}` : ''}</span><button class="icon-btn" data-cpdel="${esc(c.name)}" aria-label="Удалить ${esc(c.name)}">×</button></div>`;
-  }).join('') : `<div class="empty"><b>${S.cps.length ? 'Никого не нашли' : 'Список пуст'}</b><span>${S.cps.length ? 'Попробуйте другой фильтр' : 'Добавьте первого контрагента выше'}</span></div>`;
+      <span class="muted small">${deals.length ? `Сделок: ${deals.length} · ${hid(nf0.format(turn))} ₽` : 'Сделок пока нет'}${c.note ? ` · ${esc(c.note)}` : ''}</span><button class="icon-btn" data-cpdel="${esc(c.name)}" aria-label="Удалить ${esc(c.name)}">×</button></div>`;
+  }).join('') : S.cps.length ? emptyHtml('search', 'Никого не нашли', 'Попробуйте другой фильтр')
+    : emptyHtml('people', 'Список пуст', 'Добавьте первого контрагента выше — или впишите ник в расчёте сделки');
 }
 let cpF = 'all';
 // Все сделки, где участвовал человек: роль, сумма именно его части и заметка о нём
@@ -2077,6 +2133,56 @@ applyTheme();
 persist();
 let startTab = 'calc'; try { startTab = localStorage.getItem(KEY + '.tab') || 'calc'; } catch (e) {}
 show(TABS.includes(startTab) ? startTab : 'calc');
+
+/* ================= ТАБЛИЦА EXCEL ================= */
+// CSV с «;» и запятой в дробях — так его правильно открывает русский Excel и Google Таблицы
+function csvExport(list, name) {
+  if (!list.length) return toast('Нет сделок для выгрузки');
+  const n = v => v == null || v === '' || isNaN(v) ? '' : String(Math.round(v * 100) / 100).replace('.', ',');
+  const q = v => { v = String(v ?? ''); return /[";\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const MODES = { deal: 'Сделка', circle: 'Круг', tri: 'Треугольник' };
+  const rows = [['Дата', 'Время', 'Режим', 'Биржа', 'Банк', 'Валюта', 'Курс покупки', 'Курс продажи', 'Сумма', 'USDT', 'Комиссии', 'Прибыль', 'Прибыль, %', 'Контрагенты', 'Заметка', 'Избранное']];
+  list.forEach(t => { const d = new Date(t.ts);
+    rows.push([d.toLocaleDateString('ru-RU'), d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }), MODES[t.mode] || t.mode, t.ex, t.bank, t.cur,
+      n(t.buy), n(t.sell), n(t.sum), n(t.qty), n(t.comm), n(t.profit), n(t.profitPct), tradeCps(t).join(', '), t.note, t.fav ? 'да' : '']); });
+  const blob = new Blob(['﻿' + rows.map(r => r.map(q).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name + '.csv';
+  document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000);
+  toast(`Таблица скачана · сделок: ${list.length}`);
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('#csvBtn')) csvExport(hShown, 'P2Pro-history-' + dayKey(new Date()));
+  if (e.target.closest('#csvAllBtn')) csvExport(S.trades, 'P2Pro-all-deals-' + dayKey(new Date()));
+});
+
+/* ================= ИНКОГНИТО ================= */
+function syncIncog() { const on = !!S.settings.incog; $('incogBtn').classList.toggle('on', on); $('incogBtn').setAttribute('aria-pressed', on); $('incogBtn').setAttribute('aria-label', on ? 'Показать суммы' : 'Скрыть суммы'); }
+$('incogBtn').addEventListener('click', () => { S.settings.incog = !S.settings.incog; persist(); syncIncog(); render(); toast(S.settings.incog ? 'Суммы скрыты' : 'Суммы снова видны'); });
+syncIncog();
+
+/* ================= ПОТЯНИТЕ, ЧТОБЫ ОБНОВИТЬ ================= */
+(() => {
+  const el = document.createElement('div'); el.className = 'ptr'; el.textContent = 'P2'; el.setAttribute('aria-hidden', 'true'); document.body.appendChild(el);
+  let y0 = null, d = 0, busy = false;
+  const blocked = t => $('auth') || $('splash') || $('scrim') || t.closest('.pop, input, textarea, select, canvas');
+  addEventListener('touchstart', e => { if (busy || scrollY > 0 || blocked(e.target)) return; y0 = e.touches[0].clientY; d = 0; }, { passive: true });
+  addEventListener('touchmove', e => {
+    if (y0 == null) return;
+    d = scrollY > 0 ? 0 : Math.max(0, e.touches[0].clientY - y0);
+    el.style.transition = 'none'; el.style.opacity = Math.min(d / 40, 1);
+    el.style.transform = `translateY(${Math.min(d * .7, 90) - 70}px) rotate(${d * 3}deg) scale(${.6 + Math.min(d / 80, 1) * .4})`;
+  }, { passive: true });
+  addEventListener('touchend', async () => {
+    if (y0 == null) return; y0 = null;
+    el.style.transition = 'transform .3s ease, opacity .3s ease';
+    if (d > 80) {
+      busy = true; el.style.transform = 'none'; el.classList.add('spin');
+      window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light') ?? navigator.vibrate?.(10);
+      render(); renderAcc(); await wait(850); el.classList.remove('spin'); busy = false;
+    }
+    el.style.transform = 'translateY(-70px) scale(.6)'; el.style.opacity = 0;
+  });
+})();
 bootAccount();
 addEventListener('resize', () => movePill(true));
 document.fonts?.ready.then(() => movePill(true));
