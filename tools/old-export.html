@@ -1,0 +1,39 @@
+<script>
+// P2Pro: перенос истории из старого калькулятора Ultra Spread.
+// Вставьте этот кусок в самый конец кода старого калькулятора. Кнопка «Экспорт» (стрелка вниз) покажет окно:
+// «Скопировать» → в P2Pro: Профиль → «Вставить текст из старого калькулятора» → вставить → «Загрузить».
+window.exportData = function () {
+  var text = JSON.stringify({ currency: currency, calculations: calculationsHistory, feeType: feeType, exportDate: new Date().toISOString() });
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
+  box.innerHTML = '<div style="background:#1a1a2e;border-radius:16px;padding:16px;width:100%;max-width:440px;color:#fff;font-family:system-ui">' +
+    '<div style="font-weight:700;font-size:18px;margin-bottom:6px">Экспорт для P2Pro</div>' +
+    '<div style="font-size:13px;color:#9ca3af;margin-bottom:10px">Сделок: ' + calculationsHistory.length + '. Нажмите «Скопировать», потом в P2Pro: Профиль → «Вставить текст из старого калькулятора».</div>' +
+    '<textarea readonly style="width:100%;height:120px;background:#0f0f17;color:#9ca3af;border-radius:10px;padding:8px;font-size:11px;border:1px solid #333"></textarea>' +
+    '<button data-x="copy" style="width:100%;margin-top:10px;padding:14px;border-radius:12px;background:#6366f1;color:#fff;font-weight:600">Скопировать</button>' +
+    '<button data-x="share" style="width:100%;margin-top:8px;padding:12px;border-radius:12px;background:#2a2a40;color:#fff">Сохранить файлом</button>' +
+    '<button data-x="close" style="width:100%;margin-top:8px;padding:12px;border-radius:12px;background:transparent;color:#9ca3af">Закрыть</button></div>';
+  document.body.appendChild(box);
+  var ta = box.querySelector('textarea');
+  ta.value = text;
+  box.addEventListener('click', function (e) {
+    var a = e.target.getAttribute && e.target.getAttribute('data-x');
+    if (a === 'close' || e.target === box) box.remove();
+    if (a === 'copy') {
+      var btn = e.target, done = function () { btn.textContent = 'Скопировано ✓'; };
+      ta.removeAttribute('readonly'); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length); ta.setAttribute('readonly', '');
+      var legacy = function () { try { if (document.execCommand('copy')) done(); else btn.textContent = 'Текст выделен — скопируйте вручную'; } catch (err) { btn.textContent = 'Текст выделен — скопируйте вручную'; } };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, legacy); else legacy();
+    }
+    if (a === 'share') {
+      var file = new File([text], 'ultra-spread-export.json', { type: 'application/json' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).catch(function () {});
+      else {
+        var url = URL.createObjectURL(file), link = document.createElement('a');
+        link.href = url; link.download = file.name; document.body.appendChild(link); link.click();
+        setTimeout(function () { URL.revokeObjectURL(url); link.remove(); }, 4000);
+      }
+    }
+  });
+};
+</script>

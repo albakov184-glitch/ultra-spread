@@ -995,9 +995,10 @@ img { max-width: 100%; }
         <button class="btn" id="backupBtn">Резервная копия</button>
         <button class="btn" id="importBtn">Загрузить файл</button>
       </div>
+      <button class="btn" id="pasteBtn">Вставить текст из старого калькулятора</button>
       <button class="btn" id="csvAllBtn">⤓ Все сделки в Excel <span class="pro-tag">PRO</span></button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
-      <span class="muted small">«Загрузить файл» принимает и экспорт из старой версии калькулятора.</span>
+      <span class="muted small">Файл и текст принимаются и из P2Pro, и из старого калькулятора Ultra Spread.</span>
       <button class="btn danger block" id="wipeBtn">Удалить всю историю</button>
       <div class="set-row"><span>Тема</span>
         <div class="seg sm"><button data-theme-set="system" class="on">Авто</button><button data-theme-set="dark">Тёмная</button><button data-theme-set="light">Светлая</button></div></div>
@@ -2166,6 +2167,14 @@ document.addEventListener('click', e => {
   if (ds.themeSet) { st.theme = ds.themeSet; persist(); applyTheme(); return renderProfile(); }
   if (b.id === 'backupBtn') return copySheet('Резервная копия', JSON.stringify({ app: 'ultra-spread', v: 2, trades: S.trades, settings: S.settings, cps: S.cps }));
   if (b.id === 'importBtn') return $('importFile').click();
+  if (b.id === 'pasteBtn') {
+    sheet(`<h3>Перенос из старого калькулятора</h3>
+      <span class="muted">В старом калькуляторе нажмите «Экспорт» → «Скопировать». Потом вставьте текст сюда: нажмите в поле и удерживайте → «Вставить».</span>
+      <textarea class="copy-area" id="pasteArea" placeholder="Сюда вставляется текст {&quot;calculations&quot;: …}"></textarea>
+      <div class="row2"><button class="btn" data-close>Отмена</button><button class="btn primary" id="pasteGo">Загрузить</button></div>`);
+    $('pasteGo').onclick = () => { const t = $('pasteArea').value.trim(); if (!t) return toast('Сначала вставьте текст'); if (importJson(t)) closeSheet(); };
+    return;
+  }
   if (b.id === 'wipeBtn') return confirmSheet('Удалить всю историю?', `Будет удалено сделок: ${S.trades.length}. Отменить это нельзя.`, 'Удалить всё', () => { S.trades = []; persist(); render(); toast('История очищена'); }, true);
 });
 function repeat(t) {
@@ -2179,9 +2188,13 @@ function repeat(t) {
 $('importFile').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
-  r.onload = () => {
+  r.onload = () => { importJson(r.result); e.target.value = ''; };
+  r.readAsText(f);
+});
+// Загрузка сделок из JSON: резервная копия P2Pro или экспорт старого калькулятора ({ calculations: [...] })
+function importJson(text) {
     try {
-      const data = JSON.parse(r.result);
+      const data = JSON.parse(text);
       let trades = data.trades;
       if (!trades && Array.isArray(data.calculations)) trades = data.calculations.map(fromOld);   // файл из старой версии
       if (!Array.isArray(trades)) throw new Error('format');
@@ -2207,12 +2220,11 @@ $('importFile').addEventListener('change', e => {
       S.trades = S.trades.concat(fresh).sort((a, b) => new Date(b.ts) - new Date(a.ts));
       S.settings = { ...S.settings, ...rest };
       cps.forEach(c => { if (!findCp(c.name)) S.cps.push(c); });
-      persist(); applyTheme(); render(); toast(`Загружено сделок: ${fresh.length}`);
-    } catch (err) { toast('Не удалось прочитать файл. Нужен JSON-экспорт P2Pro'); }
-    e.target.value = '';
-  };
-  r.readAsText(f);
-});
+      persist(); applyTheme(); render();
+      toast(fresh.length ? `Загружено сделок: ${fresh.length}` : trades.length ? 'Эти сделки уже есть в истории' : 'В тексте нет сделок');
+      return true;
+    } catch (err) { toast('Не получилось прочитать. Нужен экспорт P2Pro или старого калькулятора'); return false; }
+}
 // Перенос сделки из старого формата (calculationsHistory)
 function fromOld(c) {
   const inp = { mode: 'deal', buy: c.buy, sell: c.sell, sum: c.sum, feeEx: c.fee || 0, feeExType: c.feeTypeExchange === 'fixed' ? 'fixed' : 'pct',
@@ -2222,7 +2234,11 @@ function fromOld(c) {
   return { id: 'old' + c.id, ts: c.dateObj || new Date(+c.id || Date.now()).toISOString(), cur: c.currency || 'RUB', mode: 'deal', ex: '—', bank: '—', note: '',
     buy: +c.buy, sell: +c.sell, sum: +c.sum, sales: null, feeEx: +inp.feeEx, feeExType: inp.feeExType, feeWd: +inp.feeWd, feeWdType: inp.feeWdType,
     qty: r.qty, soldQty: r.soldQty, gross: r.gross, cost: r.cost, commEx: r.commEx, commWd: r.commWd, comm: r.comm,
-    profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: !!c.isFavorite };
+    profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: !!c.isFavorite,
+    // Цифры, которые старый калькулятор сам посчитал и показывал, оставляем как были (вывод там считался в $ по курсу)
+    ...(isFinite(+c.profit) && c.profit !== null ? { profit: +c.profit, profitPct: isFinite(+c.profitPct) ? +c.profitPct : r.profitPct } : {}),
+    ...(isFinite(+c.commission) && c.commission !== null ? { commEx: +c.commission, commWd: +c.withdrawCommission || 0, comm: +c.commission + (+c.withdrawCommission || 0) } : {}),
+    ...(isFinite(+c.gross) && c.gross !== null ? { gross: +c.gross } : {}), ...(isFinite(+c.qty) && c.qty !== null ? { qty: +c.qty, soldQty: +c.qty } : {}) };
 }
 
 /* ================= ОБЛАКО (Supabase) ================= */
