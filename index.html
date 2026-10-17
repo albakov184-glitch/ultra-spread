@@ -995,10 +995,9 @@ img { max-width: 100%; }
         <button class="btn" id="backupBtn">Резервная копия</button>
         <button class="btn" id="importBtn">Загрузить файл</button>
       </div>
-      <button class="btn" id="pasteBtn">Вставить текст из старого калькулятора</button>
       <button class="btn" id="csvAllBtn">⤓ Все сделки в Excel <span class="pro-tag">PRO</span></button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
-      <span class="muted small">Файл и текст принимаются и из P2Pro, и из старого калькулятора Ultra Spread.</span>
+      <span class="muted small">«Загрузить файл» принимает и экспорт из старой версии калькулятора.</span>
       <button class="btn danger block" id="wipeBtn">Удалить всю историю</button>
       <div class="set-row"><span>Тема</span>
         <div class="seg sm"><button data-theme-set="system" class="on">Авто</button><button data-theme-set="dark">Тёмная</button><button data-theme-set="light">Светлая</button></div></div>
@@ -2167,14 +2166,6 @@ document.addEventListener('click', e => {
   if (ds.themeSet) { st.theme = ds.themeSet; persist(); applyTheme(); return renderProfile(); }
   if (b.id === 'backupBtn') return copySheet('Резервная копия', JSON.stringify({ app: 'ultra-spread', v: 2, trades: S.trades, settings: S.settings, cps: S.cps }));
   if (b.id === 'importBtn') return $('importFile').click();
-  if (b.id === 'pasteBtn') {
-    sheet(`<h3>Перенос из старого калькулятора</h3>
-      <span class="muted">В старом калькуляторе нажмите «Экспорт» → «Скопировать». Потом вставьте текст сюда: нажмите в поле и удерживайте → «Вставить».</span>
-      <textarea class="copy-area" id="pasteArea" placeholder="Сюда вставляется текст {&quot;calculations&quot;: …}"></textarea>
-      <div class="row2"><button class="btn" data-close>Отмена</button><button class="btn primary" id="pasteGo">Загрузить</button></div>`);
-    $('pasteGo').onclick = () => { const t = $('pasteArea').value.trim(); if (!t) return toast('Сначала вставьте текст'); if (importJson(t)) closeSheet(); };
-    return;
-  }
   if (b.id === 'wipeBtn') return confirmSheet('Удалить всю историю?', `Будет удалено сделок: ${S.trades.length}. Отменить это нельзя.`, 'Удалить всё', () => { S.trades = []; persist(); render(); toast('История очищена'); }, true);
 });
 function repeat(t) {
