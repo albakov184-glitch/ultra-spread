@@ -2359,6 +2359,21 @@ async function cloudStart() {
   syncMark('wait');
   await syncNow(true);
 }
+// Сделки, сохранённые на устройстве до появления аккаунтов. Переносим их в аккаунт только с согласия
+const hasLegacy = () => !SH && (S.trades.length > 0 || S.cps.length > 0);
+function askMigrate() {
+  return new Promise(res => {
+    const n = S.trades.length;
+    sheet(`<h3>Перенести сделки в аккаунт?</h3>
+      <span class="muted">На этом устройстве есть ${n} ${plural(n, 'сделка', 'сделки', 'сделок')}${S.cps.length ? ' и контрагенты' : ''} — они были сохранены до появления аккаунтов. Добавить их в ${esc(U.email)}?</span>
+      <div class="row2"><button class="btn" id="mgNo">Не переносить</button><button class="btn primary" id="mgYes">Перенести</button></div>`);
+    const sc = $('scrim'), fresh = sc.cloneNode(true); sc.replaceWith(fresh);   // мимо окна не закрывается — нужен ответ
+    $('mgYes').onclick = () => { closeSheet(); res(true); };
+    $('mgNo').onclick = () => { closeSheet(); res(false); };
+  });
+}
+// Не переносим: копию оставляем в памяти браузера на всякий случай, с экрана убираем
+function dropLegacy() { lsSet(KEY + '.legacy', { trades: S.trades, cps: S.cps, at: Date.now() }); wipeLocal(); }
 function wipeLocal() {
   const keep = { theme: S.settings.theme, incog: S.settings.incog, a2hsSeen: S.settings.a2hsSeen };
   S.trades = []; S.cps = []; S.settings = { ...structuredClone(DEFAULT.settings), ...keep }; S.draft = structuredClone(DEFAULT.draft);
@@ -2570,15 +2585,23 @@ async function loginDone(user, btn) {
   lsSet(REM_KEY, auRemember || auMode === 'up');
   try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
   btn.dataset.ok = 1;
+  if (fresh && hasLegacy()) {
+    btn.innerHTML = `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`; await wait(600);
+    closeAuth(true);
+    const yes = await askMigrate(); if (!yes) dropLegacy();
+    await Promise.race([cloudStart(), wait(8000)]);
+    if (yes) toast('Сделки перенесены в аккаунт');
+    render(); return afterAuth();
+  }
   btn.innerHTML = fresh ? '<span class="au-spin"></span>Загружаем ваши сделки…' : `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`;
   await Promise.race([cloudStart(), wait(8000)]);
   if (fresh) { btn.innerHTML = `✓ Добро пожаловать, ${esc(U.name.split(' ')[0])}`; await wait(700); } else await wait(500);
   closeAuth();
 }
-function closeAuth() {
+function closeAuth(quiet) {
   $('auCard')?.classList.add('ready', 'done'); $('auth')?.classList.add('out'); document.documentElement.style.overflow = '';
   renderAcc(); render();
-  setTimeout(() => { $('auth')?.remove(); afterAuth(); }, 450);
+  setTimeout(() => { $('auth')?.remove(); if (!quiet) afterAuth(); }, 450);
 }
 const SYNC_TEXT = { ok: '☁ Синхронизировано', wait: 'Синхронизация…', off: 'Нет сети — сохраним, когда появится', err: 'Не удалось синхронизировать — повторим через минуту', local: 'Нет связи с сервером — работаем офлайн' };
 function renderAcc() {
@@ -2637,6 +2660,7 @@ function bootAccount() {
       try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
       if (FROM_SIGNUP) setTimeout(() => toast('Почта подтверждена — добро пожаловать!'), 600);
       const first = SH?.owner !== U.id;
+      if (first && hasLegacy() && !(await askMigrate())) dropLegacy();
       const st = cloudStart(); if (first) await Promise.race([st, wait(8000)]);
       render(); return afterAuth();
     }
