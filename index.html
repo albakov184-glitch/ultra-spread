@@ -284,6 +284,9 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .gloss summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .gloss p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .sheet p { margin: 0; color: var(--muted); line-height: 1.55; }
+.guide-video { display: block; width: 100%; max-height: 62vh; aspect-ratio: 9 / 16; object-fit: contain; background: #0C0F14; border-radius: 14px; }
+.guide-ch { display: flex; flex-wrap: wrap; gap: 6px; }
+.guide-ch b { color: var(--accent); font-family: var(--f-mono); font-weight: 500; }
 
 /* всплывающая подсказка рядом с кнопкой «i» */
 .pop { position: absolute; z-index: 55; width: min(340px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--accent); border-radius: 16px; box-shadow: var(--shadow);
@@ -674,7 +677,7 @@ img { max-width: 100%; }
     </div>
 
     <div class="card gloss">
-      <div class="card-h"><span class="card-t">Справка</span><button class="btn slim" id="tourBtn" style="padding:8px 12px;font-size:13px">Показать обзор</button></div>
+      <div class="card-h"><span class="card-t">Справка</span><div style="display:flex;gap:6px"><button class="btn slim" data-guide style="padding:8px 12px;font-size:13px">▶ Видео</button><button class="btn slim" id="tourBtn" style="padding:8px 12px;font-size:13px">Обзор</button></div></div>
       <div id="glossary"></div>
     </div>
 
@@ -1407,10 +1410,19 @@ const TOUR = [
   ['i', 'Подсказки', 'Нажмите кружок «i» рядом с любым блоком, чтобы прочитать, как он работает. Этот обзор можно открыть снова: Профиль → Справка.'],
   ['!', 'Важно', 'P2Pro — только калькулятор. Мы не биржа: не проводим сделки, не храним деньги и не даём гарантий. На P2P много мошенников, поэтому отпускайте USDT только после того, как деньги пришли в банк.']
 ];
+// Видео-руководство: ролик лежит в guide/, главы перематывают на нужный момент
+const GUIDE = [['Расчёт сделки', 4.3], ['Круг', 33], ['Треугольник', 46.8], ['История', 67.6], ['Аналитика', 81], ['Инструменты', 97.1], ['Профиль', 119.5]];
+function showGuide() {
+  sheet(`<h3>Видео-руководство</h3>
+    <video id="guideVideo" class="guide-video" src="guide/P2Pro-guide.mp4" poster="guide/poster.jpg" controls playsinline preload="metadata"></video>
+    <div class="guide-ch">${GUIDE.map(([n, t], i) => `<button class="chip" data-gch="${t}"><b>${i + 1}</b> ${n}</button>`).join('')}</div>
+    <button class="btn" data-close>Закрыть</button>`);
+}
 function showTour(i) {
   const [ic, t, d] = TOUR[i], last = i === TOUR.length - 1;
   S.settings.onboarded = true; persist();
   sheet(`<div class="tour-art" aria-hidden="true">${ic}</div><h3>${t}</h3><p>${d}</p>
+    ${i === 0 ? '<button class="btn primary" data-guide>▶ Смотреть видео-обзор · 2 мин</button>' : ''}
     <div class="dots">${TOUR.map((_, j) => `<i class="${j === i ? 'on' : ''}"></i>`).join('')}</div>
     <div class="row2"><button class="btn" data-close>${last ? 'Закрыть' : 'Пропустить'}</button><button class="btn primary" ${last ? 'data-close' : `data-tour="${i + 1}"`}>${last ? 'Начать' : 'Далее'}</button></div>`);
 }
@@ -1651,6 +1663,8 @@ document.addEventListener('click', e => {
   }
   if (ds.tour) return showTour(+ds.tour);
   if (b.id === 'tourBtn') return showTour(0);
+  if (ds.guide != null) return showGuide();
+  if (ds.gch) { const v = $('guideVideo'); v.currentTime = +ds.gch; v.play(); return; }
   if (ds.tool) { tool = ds.tool; return renderTools(); }
   const px = S.tools.px;
   if (ds.pxdir) { px.dir = ds.pxdir; persist(); return renderPrice(); }
