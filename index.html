@@ -600,6 +600,7 @@ html, body { overscroll-behavior-y: contain; }
 .pay-row:last-child { border-bottom: 0; }
 .pay-row span { color: var(--muted); font-size: 12.5px; display: block; }
 .pay-row b { font-family: var(--f-mono); font-weight: 500; white-space: nowrap; }
+.test-panel { border-style: dashed; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .btn.ghost-neg { color: var(--neg); background: transparent; border: 1px solid color-mix(in srgb, var(--neg) 35%, transparent); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
@@ -975,6 +976,18 @@ img { max-width: 100%; }
       <button class="btn danger block" id="wipeBtn">Удалить всю историю</button>
       <div class="set-row"><span>Тема</span>
         <div class="seg sm"><button data-theme-set="system" class="on">Авто</button><button data-theme-set="dark">Тёмная</button><button data-theme-set="light">Светлая</button></div></div>
+    </div>
+
+    <!-- Тест-панель: только на время тестов. Перед запуском поставить TEST_PANEL = false -->
+    <div class="card test-panel" id="testPanel" hidden>
+      <div class="card-h"><span class="card-t">🧪 Тест-панель</span><span class="muted small">видна только в тестовой версии</span></div>
+      <span class="label">Тариф — сразу, без оплаты</span>
+      <div class="seg sm" id="tpPlan"><button data-tp="free">Free</button><button data-tp="m">PRO · месяц</button><button data-tp="y">PRO · год</button></div>
+      <span class="label">Срок подписки</span>
+      <div class="chips" style="flex-wrap:wrap"><button class="chip" data-tp="left2">Осталось 2 дня</button><button class="chip" data-tp="expire">Срок истёк</button><button class="chip" data-tp="full">Полный срок</button></div>
+      <span class="label">Сбросить, чтобы увидеть снова</span>
+      <div class="chips" style="flex-wrap:wrap"><button class="chip" data-tp="onb">Выбор режима и обзор</button><button class="chip" data-tp="a2hs">Подсказку «На экран Домой»</button><button class="chip" data-tp="pays">Историю платежей</button><button class="chip" data-tp="splash">Заставку и вход</button></div>
+      <span class="muted small" id="tpState"></span>
     </div>
   </section>
 </div>
@@ -1851,6 +1864,7 @@ function renderProfile() {
   $('bankEdit').innerHTML = st.banks.map(x => `<span class="chip on">${esc(x)}<button data-rm-bank="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
   $('plansInline').innerHTML = plansHtml(); $('plansInline').hidden = !!st.pro;
   $('subBox').hidden = !st.pro; if (st.pro) $('subBox').innerHTML = subHtml();
+  renderTestPanel();
   const w = WORKS.find(x => x[0] === st.work);
   $('workNow').textContent = w ? `${w[1]}. ${w[2]}.` : 'Не выбрано';
   $('limitsCard').hidden = st.work === 'tri';
@@ -2330,6 +2344,35 @@ document.addEventListener('click', e => {
       <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}</span></div><b>${nf0.format(x.amount)} ₽</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div>
       <span class="muted small">Демо-режим: деньги не списывались.</span><button class="btn primary" data-close>Закрыть</button>`);
   }
+});
+
+
+/* ================= ТЕСТ-ПАНЕЛЬ ================= */
+// Быстро переключать тариф и состояния, пока идут тесты. Перед запуском — false
+const TEST_PANEL = true;
+function renderTestPanel() {
+  const el = $('testPanel'); el.hidden = !TEST_PANEL; if (!TEST_PANEL) return;
+  const st = S.settings, cur = st.pro ? st.proPeriod || 'm' : 'free';
+  el.querySelectorAll('#tpPlan [data-tp]').forEach(b => b.classList.toggle('on', b.dataset.tp === cur));
+  $('tpState').textContent = st.pro ? `Сейчас: PRO, осталось ${subDaysLeft()} дн., автопродление ${st.autoRenew ? 'вкл' : 'выкл'}` : 'Сейчас: Free';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-tp]'); if (!b || !TEST_PANEL) return;
+  const st = S.settings, a = b.dataset.tp, now = Date.now();
+  const setPro = per => { st.pro = true; st.proPeriod = per; st.proSince = now; st.proUntil = now + PERIOD_DAYS[per] * 864e5; st.autoRenew = true; st.payMethod ||= 'card'; st.payments ||= []; };
+  if (a === 'free') { st.pro = false; toast('Тариф Free'); }
+  if (a === 'm' || a === 'y') { setPro(a); toast(a === 'y' ? 'PRO на год' : 'PRO на месяц'); }
+  if (['left2', 'expire', 'full'].includes(a)) {
+    if (!st.pro) setPro('m');
+    if (a === 'left2') { st.proUntil = now + 1.5 * 864e5; toast('Осталось 2 дня'); }
+    if (a === 'full') { st.proUntil = now + PERIOD_DAYS[st.proPeriod] * 864e5; toast('Срок сброшен на полный'); }
+    if (a === 'expire') { st.proUntil = now - 1000; persist(); subCheck(); if (st.pro) toast('Срок истёк — сработало автопродление (выключите его, чтобы проверить окончание)'); }
+  }
+  if (a === 'onb') { st.work = ''; st.onboarded = false; persist(); afterAuth(); }
+  if (a === 'a2hs') { st.a2hsSeen = false; persist(); maybeA2HS(); toast(S.trades.length ? 'Подсказка показана' : 'Подсказка появится после первой сделки'); }
+  if (a === 'pays') { st.payments = []; toast('История платежей очищена'); }
+  if (a === 'splash') { A.session = null; accSave(); persist(); return location.reload(); }
+  persist(); render(); renderTestPanel();
 });
 
 /* ================= СТАРТ ================= */
