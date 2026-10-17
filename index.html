@@ -387,9 +387,20 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 @keyframes shine { 0%, 60% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
 @keyframes cardIn { from { transform: translateY(24px) scale(.97); opacity: 0; } }
 .au-card.ready { animation: none; }
-.au-card.flip-out { transform: rotateY(90deg); opacity: .4; }
-.au-card.flip-in { animation: flipIn .34s cubic-bezier(.2,.9,.3,1) both; }
-@keyframes flipIn { from { transform: rotateY(-90deg); opacity: .4; } }
+.au-card { --cut: 26px; clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  transition: height .38s cubic-bezier(.3,.8,.3,1), transform .26s, opacity .26s; }
+.au-in { display: flex; flex-direction: column; gap: 12px; transition: opacity .25s ease, filter .25s ease, transform .25s ease; }
+.au-in.hide { opacity: 0; filter: blur(8px); transform: scale(.98); }
+.au-in.show { animation: unblur .45s ease both; }
+@keyframes unblur { from { opacity: 0; filter: blur(10px); transform: scale(.985); } }
+.au-cn { position: absolute; width: 20px; height: 20px; z-index: 2; pointer-events: none; background: linear-gradient(135deg, rgba(255,255,255,.45), rgba(242,181,75,.4)); }
+.au-cn.tl { top: 0; left: 0; clip-path: polygon(0 0, 100% 0, 0 100%); }
+.au-cn.br { right: 0; bottom: 0; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.au-dia { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; z-index: 3; pointer-events: none; opacity: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.55), rgba(242,181,75,.5)); transform: rotate(45deg); }
+.au-orb { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; z-index: 3; pointer-events: none; opacity: 0; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 10%, #FFE6B0 22%, rgba(242,181,75,.55) 40%, rgba(242,181,75,.12) 62%, transparent 72%); }
+.au-orb::after { content: ""; position: absolute; inset: 18px; border-radius: 50%; border: 1.5px solid rgba(255,214,140,.5); }
 .au-card.done { transform: scale(.96); opacity: 0; transition: transform .4s ease, opacity .4s ease; }
 .au-card.shake { animation: shake .4s; }
 @keyframes shake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
@@ -1917,7 +1928,8 @@ function showAuth(m) {
   if (!el) {
     el = document.createElement('div'); el.id = 'auth'; el.className = 'auth';
     el.innerHTML = `<div class="glow"></div><div class="grid"></div><div class="au-brand"><div class="logo">P2</div><b>P2Pro</b></div>
-      <div class="au-wrap"><form class="au-card" id="auCard" novalidate></form></div>
+      <div class="au-wrap" id="auWrap"><span class="au-cn tl"></span><span class="au-cn br"></span><span class="au-dia" id="auDia"></span><span class="au-orb" id="auOrb"></span>
+        <form class="au-card" id="auCard" novalidate><div class="au-in" id="auIn"></div></form></div>
       <p class="au-note">Тестовая версия: аккаунт хранится только на этом устройстве.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.</p>`;
     document.body.appendChild(el);
     el.addEventListener('submit', e => { e.preventDefault(); submitAuth(); });
@@ -1925,12 +1937,33 @@ function showAuth(m) {
     el.addEventListener('input', e => { e.target.closest('.au-f')?.classList.remove('bad'); $('auErr').textContent = ''; if (e.target.id === 'auPass' && auMode === 'up') strength(); });
     $('auCard').addEventListener('animationend', e => e.target.id === 'auCard' && e.target.classList.add('ready'));
   }
-  auMode = m; $('auCard').innerHTML = authHtml(m); $('auCard').className = 'au-card';
+  auMode = m; $('auIn').innerHTML = authHtml(m); $('auIn').className = 'au-in'; $('auCard').className = 'au-card'; $('auCard').style.height = '';
   el.classList.remove('out'); document.documentElement.style.overflow = 'hidden';
 }
-function flipAuth(m) {
-  const c = $('auCard'); c.classList.add('ready', 'flip-out');
-  setTimeout(() => { auMode = m; c.innerHTML = authHtml(m); c.classList.remove('flip-out'); c.classList.add('flip-in'); setTimeout(() => c.classList.remove('flip-in'), 360); }, 260);
+// Смена «Вход ⇄ Регистрация» как в референсе: форма тает, уголки слетаются в ромб, вспышка, из неё проявляется новая форма
+let auBusy = false;
+async function flipAuth(m) {
+  if (auBusy) return; auBusy = true;
+  const card = $('auCard'), inn = $('auIn'), wrap = $('auWrap'), dia = $('auDia'), orb = $('auOrb');
+  const [tl, br] = wrap.querySelectorAll('.au-cn');
+  const W = card.offsetWidth, H = card.offsetHeight, ease = 'cubic-bezier(.6,0,.3,1)';
+  card.classList.add('ready'); card.style.height = H + 'px';
+  inn.classList.remove('show'); inn.classList.add('hide');
+  await wait(220);
+  const fly = (el, dx, dy) => el.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${dx}px, ${dy}px) rotate(225deg) scale(.8)`, opacity: 1 }], { duration: 520, easing: ease, fill: 'forwards' });
+  fly(tl, W / 2 - 10, H / 2 - 10); fly(br, -(W / 2 - 10), -(H / 2 - 10));
+  await wait(500);
+  tl.style.visibility = br.style.visibility = 'hidden';
+  dia.animate([{ opacity: 0, transform: 'rotate(45deg) scale(.6)' }, { opacity: 1, transform: 'rotate(135deg) scale(1)' }, { opacity: 0, transform: 'rotate(180deg) scale(.4)' }], { duration: 380, easing: 'ease-out' });
+  await wait(220);
+  orb.animate([{ opacity: 0, transform: 'scale(.2)' }, { opacity: 1, transform: 'scale(1)', offset: .35 }, { opacity: 1, transform: 'scale(1.05)', offset: .7 }, { opacity: 0, transform: 'scale(1.9)' }], { duration: 900, easing: 'ease-out' });
+  await wait(300);
+  auMode = m; inn.innerHTML = authHtml(m);
+  card.style.height = 'auto'; const H2 = card.offsetHeight; card.style.height = H + 'px'; void card.offsetHeight; card.style.height = H2 + 'px';
+  inn.classList.remove('hide'); inn.classList.add('show');
+  await wait(420);
+  [tl, br].forEach(el => { el.getAnimations().forEach(a => a.cancel()); el.style.visibility = ''; el.animate([{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'ease-out' }); });
+  card.style.height = ''; auBusy = false;
 }
 function authClick(e) {
   const b = e.target.closest('[data-au]'); if (!b) return;
