@@ -340,9 +340,107 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--line); align-self: center; }
 .sheet h3 { margin: 0; font-family: var(--f-display); font-size: 17px; letter-spacing: -0.01em; text-wrap: balance; }
 @keyframes up { from { transform: translateY(30px); opacity: 0; } }
-.toast { position: fixed; z-index: 60; left: 50%; transform: translateX(-50%); top: calc(14px + env(safe-area-inset-top, 0px)); padding: 10px 16px; border-radius: 12px;
+.toast { position: fixed; z-index: 120; left: 50%; transform: translateX(-50%); top: calc(14px + env(safe-area-inset-top, 0px)); padding: 10px 16px; border-radius: 12px;
   background: var(--fg); color: var(--bg); font-weight: 600; font-size: 14px; box-shadow: var(--shadow); max-width: calc(100% - 32px); width: max-content; text-align: center; }
 .copy-area { width: 100%; min-height: 160px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-family: var(--f-mono); font-size: 12px; color: var(--fg); resize: vertical; }
+/* ===== Заставка и вход: всегда тёмные, в фирменных цветах ===== */
+.splash, .auth { position: fixed; inset: 0; z-index: 100; background: #0C0F14; color: #E8ECF2; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity .45s ease, visibility .45s; }
+.splash.out, .auth.out { opacity: 0; visibility: hidden; }
+.glow { position: absolute; inset: -20%; pointer-events: none;
+  background: radial-gradient(40% 32% at 30% 30%, rgba(242,181,75,.22), transparent 70%), radial-gradient(36% 28% at 75% 70%, rgba(255,140,60,.16), transparent 70%);
+  animation: drift 14s ease-in-out infinite alternate; filter: blur(10px); }
+.grid { position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background-image: linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+  background-size: 48px 48px; mask-image: radial-gradient(70% 60% at 50% 45%, #000, transparent); -webkit-mask-image: radial-gradient(70% 60% at 50% 45%, #000, transparent); }
+@keyframes drift { 0% { transform: translate(0, 0) rotate(0); } 50% { transform: translate(6%, -4%) rotate(8deg); } 100% { transform: translate(-5%, 5%) rotate(-6deg); } }
+
+.sp-tile { position: relative; width: 104px; height: 104px; border-radius: 30px; background: #F2B54B; color: #0C0F14;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; box-shadow: 0 20px 60px rgba(242,181,75,.25);
+  animation: pop .7s cubic-bezier(.3,1.6,.5,1) both; }
+.sp-tile b { font-family: var(--f-display); font-weight: 800; font-size: 50px; letter-spacing: -3px; margin-left: -3px; line-height: .9; }
+.sp-tile i { font-family: var(--f-display); font-style: normal; font-weight: 600; font-size: 12px; letter-spacing: 4px; margin-right: -4px; }
+.sp-tile::before, .sp-tile::after { content: ""; position: absolute; inset: -2px; border-radius: 32px; border: 2px solid #F2B54B; opacity: 0; animation: ring 1.6s .5s ease-out infinite; }
+.sp-tile::after { animation-delay: 1.3s; }
+@keyframes pop { from { transform: scale(.4) rotate(-14deg); opacity: 0; } }
+@keyframes ring { from { transform: scale(1); opacity: .55; } to { transform: scale(1.7); opacity: 0; } }
+.sp-name { margin-top: 26px; font-family: var(--f-display); font-weight: 800; font-size: 30px; letter-spacing: -1px; display: flex; overflow: hidden; }
+.sp-name span { display: inline-block; animation: rise .5s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes rise { from { transform: translateY(110%); } }
+.sp-bar { margin-top: 22px; width: 160px; height: 3px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; animation: fade .4s .6s both; }
+.sp-bar i { display: block; height: 100%; width: 0; background: #F2B54B; border-radius: 2px; transition: width .35s ease; }
+.sp-msg { margin-top: 12px; font-size: 13px; color: #8691A2; min-height: 18px; animation: fade .4s .7s both; }
+@keyframes fade { from { opacity: 0; } }
+
+.auth { justify-content: flex-start; overflow-y: auto; padding: calc(28px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.au-brand { position: relative; display: flex; align-items: center; gap: 10px; margin: 8px 0 22px; animation: fade .5s both; }
+.au-brand .logo { width: 36px; height: 36px; border-radius: 11px; font-size: 14px; background: #F2B54B; color: #0C0F14; }
+.au-brand b { font-family: var(--f-display); font-size: 18px; letter-spacing: -.5px; }
+.au-wrap { position: relative; width: 100%; max-width: 400px; perspective: 1200px; }
+.au-card { position: relative; border-radius: 26px; padding: 26px 22px 22px; display: flex; flex-direction: column; gap: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025)); border: 1px solid rgba(255,255,255,.09);
+  backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+  transform-origin: 50% 50%; transition: transform .26s cubic-bezier(.5,0,.75,0), opacity .26s; animation: cardIn .6s cubic-bezier(.2,.9,.3,1) both; }
+.au-card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.07) 45%, transparent 60%); background-size: 250% 100%; animation: shine 6s ease-in-out infinite; }
+@keyframes shine { 0%, 60% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+@keyframes cardIn { from { transform: translateY(24px) scale(.97); opacity: 0; } }
+.au-card.ready { animation: none; }
+.au-card.flip-out { transform: rotateY(90deg); opacity: .4; }
+.au-card.flip-in { animation: flipIn .34s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes flipIn { from { transform: rotateY(-90deg); opacity: .4; } }
+.au-card.done { transform: scale(.96); opacity: 0; transition: transform .4s ease, opacity .4s ease; }
+.au-card.shake { animation: shake .4s; }
+@keyframes shake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+.au-ic { width: 46px; height: 46px; border-radius: 14px; align-self: center; display: grid; place-items: center; color: #F2B54B;
+  background: rgba(242,181,75,.12); border: 1px solid rgba(242,181,75,.28); }
+.au-card h2 { margin: 2px 0 0; text-align: center; font-family: var(--f-display); font-size: 21px; letter-spacing: -.5px; }
+.au-sub { margin: -6px 0 6px; text-align: center; color: #8691A2; font-size: 13.5px; }
+.au-f { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 14px; border-radius: 14px; background: rgba(8,11,16,.55);
+  border: 1px solid rgba(255,255,255,.08); transition: border-color .2s, box-shadow .2s; color: #8691A2; }
+.au-f:focus-within { border-color: rgba(242,181,75,.6); box-shadow: 0 0 0 4px rgba(242,181,75,.12); color: #F2B54B; }
+.au-f.bad { border-color: rgba(255,107,107,.7); }
+.au-f input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; color: #E8ECF2; font-size: 16px; }
+.au-f input::placeholder { color: #5D6777; }
+.au-f svg { flex: none; }
+.au-eye { color: #8691A2; display: grid; place-items: center; padding: 6px; margin-right: -6px; }
+.au-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #8691A2; }
+.au-sw { display: inline-flex; align-items: center; gap: 8px; color: #8691A2; font-size: 13px; }
+.au-sw i { width: 34px; height: 20px; border-radius: 10px; background: rgba(255,255,255,.12); position: relative; transition: background .2s; }
+.au-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #E8ECF2; transition: transform .2s; }
+.au-sw[aria-checked="true"] i { background: #F2B54B; }
+.au-sw[aria-checked="true"] i::after { transform: translateX(14px); background: #1B1405; }
+.au-link { color: #F2B54B; font-weight: 600; font-size: 13px; }
+.au-btn { height: 52px; border-radius: 14px; background: #F2B54B; color: #1B1405; font-weight: 700; font-size: 15.5px;
+  display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 10px 30px rgba(242,181,75,.25); transition: transform .12s, filter .2s; }
+.au-btn:active { transform: scale(.98); }
+.au-btn[disabled] { filter: saturate(.7); cursor: default; }
+.au-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(27,20,5,.25); border-top-color: #1B1405; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.au-or { display: flex; align-items: center; gap: 10px; color: #5D6777; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+.au-or::before, .au-or::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,.08); }
+.au-alt { height: 48px; border-radius: 14px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03); color: #E8ECF2;
+  display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 14.5px; }
+.au-alt small { color: #8691A2; font-weight: 500; }
+.au-foot { text-align: center; color: #8691A2; font-size: 13.5px; margin-top: 2px; }
+.au-err { color: #FF6B6B; font-size: 12.5px; margin: -4px 2px 0; min-height: 0; }
+.au-str { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: -4px; }
+.au-str i { height: 4px; border-radius: 2px; background: rgba(255,255,255,.1); transition: background .25s; }
+.au-str-t { font-size: 12px; color: #8691A2; margin-top: -6px; }
+.au-chk { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: #8691A2; text-align: left; }
+.au-chk i { flex: none; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid rgba(255,255,255,.25); display: grid; place-items: center; margin-top: 1px; transition: all .15s; }
+.au-chk[aria-checked="true"] i { background: #F2B54B; border-color: #F2B54B; }
+.au-chk[aria-checked="true"] i::after { content: "✓"; color: #1B1405; font-size: 13px; font-weight: 800; }
+.au-note { position: relative; margin-top: 16px; max-width: 400px; text-align: center; color: #5D6777; font-size: 12px; line-height: 1.5; }
+
+/* Аккаунт в шапке и профиле */
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #F2B54B, #FF9F5A); color: #1B1405; flex: none;
+  display: grid; place-items: center; font-family: var(--f-display); font-weight: 800; font-size: 15px; }
+.top .avatar { margin-left: 8px; }
+.acc { display: flex; align-items: center; gap: 14px; }
+.acc .avatar { width: 52px; height: 52px; font-size: 21px; }
+.acc-name { font-family: var(--f-display); font-size: 17px; letter-spacing: -.3px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 <style>
@@ -352,6 +450,13 @@ img { max-width: 100%; }
 </style>
 </head>
 <body>
+<div class="splash" id="splash" aria-label="Загрузка P2Pro">
+  <div class="glow"></div><div class="grid"></div>
+  <div class="sp-tile" aria-hidden="true"><b>P2</b><i>PRO</i></div>
+  <div class="sp-name" aria-hidden="true"><span style="animation-delay:.35s">P</span><span style="animation-delay:.4s">2</span><span style="animation-delay:.45s">P</span><span style="animation-delay:.5s">r</span><span style="animation-delay:.55s">o</span></div>
+  <div class="sp-bar"><i id="spBar"></i></div>
+  <div class="sp-msg" id="spMsg" role="status">Загружаем сделки…</div>
+</div>
 
 
 <div class="app">
@@ -362,6 +467,7 @@ img { max-width: 100%; }
       <div class="brand-sub">Учёт P2P-сделок</div>
     </div>
     <span class="plan-pill" id="planPill">Free</span>
+    <button class="avatar" id="topAvatar" hidden aria-label="Аккаунт"></button>
   </header>
 
   <!-- ============ РАСЧЁТ ============ -->
@@ -638,6 +744,12 @@ img { max-width: 100%; }
 
   <!-- ============ ПРОФИЛЬ ============ -->
   <section id="tab-prof" class="app" hidden>
+    <div class="card" id="accCard" hidden>
+      <div class="acc"><div class="avatar" id="accAva"></div>
+        <div style="flex:1;min-width:0"><div class="acc-name" id="accName"></div><div class="muted small" id="accMail" style="overflow:hidden;text-overflow:ellipsis"></div></div>
+        <button class="btn slim" id="logoutBtn" style="padding:8px 12px;font-size:13px">Выйти</button></div>
+      <span class="muted small" id="accSince"></span>
+    </div>
     <div class="card">
       <div class="card-h"><span class="card-t">Как я работаю</span><button class="btn slim" data-change-work style="padding:8px 12px;font-size:13px">Изменить</button></div>
       <span class="muted" id="workNow"></span>
@@ -1749,6 +1861,139 @@ function fromOld(c) {
     profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: !!c.isFavorite };
 }
 
+/* ================= ЗАСТАВКА И АККАУНТ ================= */
+// Тестовый режим: сервера нет, аккаунт живёт только на этом устройстве, пароль хранится в виде хеша
+const ACC_KEY = KEY + '.acc';
+let A = (() => { try { return JSON.parse(localStorage.getItem(ACC_KEY)) || { users: {}, session: null }; } catch (e) { return { users: {}, session: null }; } })();
+function accSave() { try { localStorage.setItem(ACC_KEY, JSON.stringify(A)); } catch (e) {} }
+const me = () => A.session && A.users[A.session];
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function passHash(mail, pass) {
+  const data = new TextEncoder().encode('p2pro:' + mail + ':' + pass);
+  if (window.crypto?.subtle) return [...new Uint8Array(await crypto.subtle.digest('SHA-256', data))].map(x => x.toString(16).padStart(2, '0')).join('');
+  let h = 0; for (const c of data) h = (h * 31 + c) | 0; return 'x' + h;
+}
+const svg = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const AI = {
+  mail: svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/>'),
+  lock: svg('<rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'),
+  user: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>'),
+  shield: svg('<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+  eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  eyeOff: svg('<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7c1.8 0 3.3-.5 4.6-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'),
+  arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
+  tg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="#2AABEE" aria-hidden="true"><path d="M21.5 4.3 18.4 19c-.2 1-.8 1.3-1.7.8l-4.6-3.4-2.2 2.1c-.3.3-.5.5-1 .5l.3-4.7 8.6-7.8c.4-.3-.1-.5-.6-.2L6.6 13 2 11.6c-1-.3-1-1 .2-1.5L20.2 3c.8-.3 1.6.2 1.3 1.3z"/></svg>'
+};
+
+// Заставка: плитка, название и полоска загрузки
+function runSplash(done) {
+  const el = $('splash'); if (!el) return done();
+  const T = me() ? 1200 : 1900, msgs = ['Загружаем сделки…', 'Считаем прибыль…', 'Готово'];
+  msgs.forEach((m, i) => setTimeout(() => { $('spBar').style.width = [35, 72, 100][i] + '%'; $('spMsg').textContent = m; }, 300 + i * (T - 500) / 3));
+  setTimeout(() => { el.classList.add('out'); done(); setTimeout(() => el.remove(), 500); }, T);
+}
+
+let auMode = 'in', auRemember = true, auAgree = false;
+function authHtml(m) {
+  const pass = (ac, ph) => `<label class="au-f" id="fPass">${AI.lock}<input id="auPass" type="password" autocomplete="${ac}" placeholder="${ph}"><button type="button" class="au-eye" data-au="eye" aria-label="Показать пароль">${AI.eye}</button></label>`;
+  const mail = `<label class="au-f" id="fMail">${AI.mail}<input id="auMail" type="email" inputmode="email" autocomplete="email" placeholder="Эл. почта"></label>`;
+  if (m === 'in') return `<div class="au-ic">${AI.shield}</div><h2>С возвращением</h2><p class="au-sub">Войдите, чтобы продолжить</p>
+    ${mail}${pass('current-password', 'Пароль')}<div class="au-err" id="auErr" role="alert"></div>
+    <div class="au-row"><button type="button" class="au-sw" role="switch" aria-checked="${auRemember}" data-au="rem"><i></i>Запомнить меня</button><button type="button" class="au-link" data-au="forgot">Забыли пароль?</button></div>
+    <button class="au-btn" id="auGo" type="submit">Войти ${AI.arrow}</button>
+    <div class="au-or">или</div><button type="button" class="au-alt" data-au="tg">${AI.tg} Telegram <small>· скоро</small></button>
+    <div class="au-foot">Нет аккаунта? <button type="button" class="au-link" data-au="up">Создать</button></div>`;
+  return `<div class="au-ic">${AI.user}</div><h2>Создать аккаунт</h2><p class="au-sub">Бесплатно, за 30 секунд</p>
+    <label class="au-f" id="fName">${AI.user}<input id="auName" type="text" autocomplete="nickname" placeholder="Имя или ник" maxlength="32"></label>
+    ${mail}${pass('new-password', 'Пароль, от 6 символов')}
+    <div class="au-str" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="au-str-t" id="auStrT">Надёжность пароля</div>
+    <div class="au-err" id="auErr" role="alert"></div>
+    <button type="button" class="au-chk" role="checkbox" aria-checked="${auAgree}" data-au="agree"><i></i><span>Понимаю: P2Pro — только калькулятор, сделки и риски — на мне</span></button>
+    <button class="au-btn" id="auGo" type="submit">Создать аккаунт ${AI.arrow}</button>
+    <div class="au-foot">Уже есть аккаунт? <button type="button" class="au-link" data-au="in">Войти</button></div>`;
+}
+function showAuth(m) {
+  let el = $('auth');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'auth'; el.className = 'auth';
+    el.innerHTML = `<div class="glow"></div><div class="grid"></div><div class="au-brand"><div class="logo">P2</div><b>P2Pro</b></div>
+      <div class="au-wrap"><form class="au-card" id="auCard" novalidate></form></div>
+      <p class="au-note">Тестовая версия: аккаунт хранится только на этом устройстве.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.</p>`;
+    document.body.appendChild(el);
+    el.addEventListener('submit', e => { e.preventDefault(); submitAuth(); });
+    el.addEventListener('click', authClick);
+    el.addEventListener('input', e => { e.target.closest('.au-f')?.classList.remove('bad'); $('auErr').textContent = ''; if (e.target.id === 'auPass' && auMode === 'up') strength(); });
+    $('auCard').addEventListener('animationend', e => e.target.id === 'auCard' && e.target.classList.add('ready'));
+  }
+  auMode = m; $('auCard').innerHTML = authHtml(m); $('auCard').className = 'au-card';
+  el.classList.remove('out'); document.documentElement.style.overflow = 'hidden';
+}
+function flipAuth(m) {
+  const c = $('auCard'); c.classList.add('ready', 'flip-out');
+  setTimeout(() => { auMode = m; c.innerHTML = authHtml(m); c.classList.remove('flip-out'); c.classList.add('flip-in'); setTimeout(() => c.classList.remove('flip-in'), 360); }, 260);
+}
+function authClick(e) {
+  const b = e.target.closest('[data-au]'); if (!b) return;
+  const a = b.dataset.au;
+  if (a === 'in' || a === 'up') return flipAuth(a);
+  if (a === 'eye') { const i = $('auPass'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = show ? AI.eyeOff : AI.eye; return; }
+  if (a === 'rem') { auRemember = !auRemember; return b.setAttribute('aria-checked', auRemember); }
+  if (a === 'agree') { auAgree = !auAgree; b.setAttribute('aria-checked', auAgree); return $('auErr').textContent = ''; }
+  if (a === 'forgot') { const er = $('auErr'); er.style.color = '#8691A2'; er.textContent = 'Сервера пока нет, поэтому пароль не восстановить. Создайте аккаунт заново — сделки на этом устройстве сохранятся.'; return; }
+  if (a === 'tg') return toast('Вход через Telegram @P2ProAppBot — скоро');
+}
+function strength() {
+  const v = $('auPass').value;
+  const n = !v ? 0 : Math.min(4, Math.max(1, (v.length >= 6) + (v.length >= 10) + (/[a-zа-я]/.test(v) && /[A-ZА-Я]/.test(v)) + /\d/.test(v) + /[^\wа-яА-Я]/.test(v)));
+  const col = ['', '#FF6B6B', '#FF9F5A', '#F2B54B', '#3CD38A'][n];
+  document.querySelectorAll('.au-str i').forEach((x, i) => x.style.background = i < n ? col : '');
+  $('auStrT').textContent = ['Надёжность пароля', 'Слабый пароль', 'Средний пароль', 'Хороший пароль', 'Надёжный пароль'][n];
+}
+function auErr(msg, field) {
+  const er = $('auErr'); er.style.color = ''; er.textContent = msg;
+  if (field) { $(field).classList.add('bad'); $(field).querySelector('input').focus(); }
+  const c = $('auCard'); c.classList.add('ready'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+}
+async function submitAuth() {
+  const btn = $('auGo'); if (btn.disabled) return;
+  const mail = $('auMail').value.trim().toLowerCase(), pass = $('auPass').value, name = $('auName')?.value.trim();
+  if (auMode === 'up' && !name) return auErr('Введите имя или ник', 'fName');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return auErr('Проверьте адрес почты', 'fMail');
+  if (pass.length < 6) return auErr('Пароль — минимум 6 символов', 'fPass');
+  if (auMode === 'up' && !auAgree) return auErr('Отметьте согласие ниже');
+  const h = await passHash(mail, pass), u = A.users[mail];
+  if (auMode === 'in' && !u) return auErr('Такого аккаунта нет — создайте его', 'fMail');
+  if (auMode === 'in' && u.hash !== h) return auErr('Неверный пароль', 'fPass');
+  if (auMode === 'up' && u) return auErr('Аккаунт уже есть — войдите', 'fMail');
+  btn.disabled = true; btn.innerHTML = `<span class="au-spin"></span>${auMode === 'in' ? 'Входим…' : 'Создаём аккаунт…'}`;
+  await wait(1000);
+  if (auMode === 'up') A.users[mail] = { name, email: mail, hash: h, created: new Date().toISOString() };
+  A.session = mail; A.remember = auRemember || auMode === 'up'; accSave();
+  try { sessionStorage.setItem(ACC_KEY, '1'); } catch (e) {}
+  btn.innerHTML = `✓ Добро пожаловать, ${esc(A.users[mail].name.split(' ')[0])}`;
+  await wait(1000);
+  $('auCard').classList.add('ready', 'done'); $('auth').classList.add('out'); document.documentElement.style.overflow = '';
+  renderAcc(); render();
+  setTimeout(() => { $('auth')?.remove(); afterAuth(); }, 450);
+}
+function renderAcc() {
+  const u = me(); $('topAvatar').hidden = !u; $('accCard').hidden = !u; if (!u) return;
+  const ini = (u.name || u.email).trim()[0].toUpperCase();
+  $('topAvatar').textContent = ini; $('accAva').textContent = ini; $('accName').textContent = u.name; $('accMail').textContent = u.email;
+  $('accSince').textContent = 'С нами с ' + new Date(u.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + ' · данные хранятся на этом устройстве';
+}
+$('topAvatar').addEventListener('click', () => show('prof'));
+$('logoutBtn').addEventListener('click', () => confirmSheet('Выйти из аккаунта?', 'История сделок останется на этом устройстве.', 'Выйти', () => {
+  A.session = null; accSave(); renderAcc(); show('calc'); showAuth('in');
+}));
+function afterAuth() { if (!S.settings.work) showWork(); else if (!S.settings.onboarded) showTour(0); }
+function bootAccount() {
+  let alive = true; try { alive = !!sessionStorage.getItem(ACC_KEY); } catch (e) {}
+  if (A.session && (!A.users[A.session] || (A.remember === false && !alive))) { A.session = null; accSave(); }
+  renderAcc();
+  runSplash(() => me() ? afterAuth() : showAuth(Object.keys(A.users).length ? 'in' : 'up'));
+}
+
 /* ================= СТАРТ ================= */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closePop(); closeSheet(); }
@@ -1760,7 +2005,7 @@ applyTheme();
 persist();
 let startTab = 'calc'; try { startTab = localStorage.getItem(KEY + '.tab') || 'calc'; } catch (e) {}
 show(TABS.includes(startTab) ? startTab : 'calc');
-if (!S.settings.work) showWork(); else if (!S.settings.onboarded) showTour(0);
+bootAccount();
 </script>
 
 </body>
