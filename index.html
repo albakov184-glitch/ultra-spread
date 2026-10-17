@@ -305,7 +305,7 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .farr { text-align: center; color: var(--accent); font-size: 13px; line-height: 1; opacity: 0; animation: stepIn .3s ease-out forwards; }
 @keyframes stepIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .replay { align-self: flex-start; font-size: 12px; color: var(--accent); font-weight: 600; }
-@media (prefers-reduced-motion: reduce) { .fstep, .farr { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .fstep, .farr { opacity: 1; } .pp-check path { stroke-dashoffset: 0 !important; } }
 
 /* profile */
 .set-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -596,6 +596,7 @@ html, body { overscroll-behavior-y: contain; }
 .sub-t { font-family: var(--f-display); font-size: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pill-ok { font-family: var(--f-body); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 8px; background: var(--pos-soft); color: var(--pos); }
 .pill-ok.off { background: var(--accent-soft); color: var(--accent); }
+.still .sub-ring .a { animation: none; }
 .pay-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .pay-row:last-child { border-bottom: 0; }
 .pay-row span { color: var(--muted); font-size: 12.5px; display: block; }
@@ -1293,7 +1294,7 @@ function renderToday() {
   $('todayProfit').className = 'goal-val num ' + cls(p);
   $('todayCount').textContent = t.length ? `${t.length} ${plural(t.length, 'сделка', 'сделки', 'сделок')}` : 'Пока нет сделок';
   const g = +S.settings.goal || 0, showGoal = g > 0 && cur === 'RUB';
-  $('goalOf').textContent = showGoal ? (p >= g ? 'Цель выполнена' : `цель ${nf0.format(g)} ₽ · осталось ${nf0.format(g - Math.max(p, 0))} ₽`) : '';
+  $('goalOf').textContent = showGoal ? (p >= g ? 'Цель выполнена' : `цель ${hid(nf0.format(g))} ₽ · осталось ${hid(nf0.format(g - Math.max(p, 0)))} ₽`) : '';
   $('goalBar').hidden = !showGoal;
   $('goalBar').className = 'bar' + (p >= g ? ' pos' : '');
   $('goalBar').firstElementChild.style.width = showGoal ? Math.max(0, Math.min(100, p / g * 100)) + '%' : '0';
@@ -1428,14 +1429,14 @@ function openTrade(id) {
         <div><span class="k">Купил</span><span class="v">${rate(t.buy)} ${s}</span></div>
         <div><span class="k">Продал${t.mode === 'circle' ? ' (средн.)' : ''}</span><span class="v">${rate(t.sell.toFixed(4))} ${s}</span></div>
         <div><span class="k">Сумма</span><span class="v">${hid(nf2.format(t.sum))} ${s}</span></div>
-        <div><span class="k">USDT</span><span class="v">${nf2.format(t.qty)}</span></div>
-        <div><span class="k">Комиссия биржи</span><span class="v fee">${feeLbl(t.feeEx, t.feeExType)} · ${nf2.format(t.commEx)} ${s}</span></div>
-        <div><span class="k">Комиссия вывода</span><span class="v fee">${feeLbl(t.feeWd, t.feeWdType, 1)} · ${nf2.format(t.commWd)} ${s}</span></div>
+        <div><span class="k">USDT</span><span class="v">${hid(nf2.format(t.qty))}</span></div>
+        <div><span class="k">Комиссия биржи</span><span class="v fee">${feeLbl(t.feeEx, t.feeExType)} · ${hid(nf2.format(t.commEx))} ${s}</span></div>
+        <div><span class="k">Комиссия вывода</span><span class="v fee">${feeLbl(t.feeWd, t.feeWdType, 1)} · ${hid(nf2.format(t.commWd))} ${s}</span></div>
         <div><span class="k">Спред</span><span class="v">${pct(t.spreadPct, false)}</span></div>
-        <div><span class="k">Выручка</span><span class="v">${nf2.format(t.gross)} ${s}</span></div>
+        <div><span class="k">Выручка</span><span class="v">${hid(nf2.format(t.gross))} ${s}</span></div>
       </div>
-      ${t.sales ? `<div class="hint">Продажи: ${t.sales.map(x => `<b>${nf2.format(x.qty)}</b> по <b>${rate(x.rate)}</b>`).join(', ')}</div>` : ''}
-      ${t.mode === 'tri' ? `<div class="hint">Треугольник: отдал покупателю <b>${nf2.format(t.soldQty)}</b> USDT, получил от продавца <b>${nf2.format(t.qty)}</b> USDT, осталось <b>${nf2.format(t.profitU)}</b> USDT</div>` : ''}
+      ${t.sales ? `<div class="hint">Продажи: ${t.sales.map(x => `<b>${hid(nf2.format(x.qty))}</b> по <b>${rate(x.rate)}</b>`).join(', ')}</div>` : ''}
+      ${t.mode === 'tri' ? `<div class="hint">Треугольник: отдал покупателю <b>${hid(nf2.format(t.soldQty))}</b> USDT, получил от продавца <b>${hid(nf2.format(t.qty))}</b> USDT, осталось <b>${hid(nf2.format(t.profitU))}</b> USDT</div>` : ''}
       ${t.cp || t.cpNote ? `<div class="hint">${t.mode === 'tri' ? 'Покупатель' : 'Контрагент'}: <b>${esc(t.cp || '—')}</b>${t.cpNote ? `<br>${esc(t.cpNote)}` : ''}</div>` : ''}
       ${t.cp2 || t.cp2Note ? `<div class="hint">Продавец: <b>${esc(t.cp2 || '—')}</b>${t.cp2Note ? `<br>${esc(t.cp2Note)}` : ''}</div>` : ''}
       ${(t.sellers || []).map((x, i) => `<div class="hint">Продавец ${i + 1}: <b>${esc(x.cp || '—')}</b> · ${hid(nf0.format(x.sum))} ${s} по <b>${rate(x.rate)}</b>${x.note ? `<br>${esc(x.note)}` : ''}</div>`).join('')}
@@ -1684,7 +1685,7 @@ function openCp(name) {
     <div class="list">${deals.length ? deals.map(({ t, role, amount, note }) => `
       <button class="item" data-open="${esc(t.id)}">
         <div style="min-width:0"><div class="l1">${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)} <span class="tag">${role}</span></div>
-          <div class="l2">${nf0.format(amount)} ${SYM[t.cur]} · ${esc(t.ex)}</div>${note ? `<div class="l3">${esc(note)}</div>` : ''}</div>
+          <div class="l2">${hid(nf0.format(amount))} ${SYM[t.cur]} · ${esc(t.ex)}</div>${note ? `<div class="l3">${esc(note)}</div>` : ''}</div>
         <div><div class="r1 ${cls(t.profit)}">${money(t.profit, t.cur, true)}</div><div class="r2 muted">прибыль сделки</div></div>
       </button>`).join('') : '<div class="empty"><b>Сделок пока нет</b><span>Впишите этот ник в расчёте — сделка появится здесь</span></div>'}</div>
     <button class="btn" data-close>Закрыть</button>`);
@@ -1796,6 +1797,7 @@ const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', car
 const payLabel = () => `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
 function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
+  payPeriod = why === 'renew' ? 'y' : 'm';
   const F = [['∞', 'История без ограничений'], ['★', 'Контрагенты и чёрный список'], ['⤓', 'Выгрузка всех сделок в Excel'], ['▣', 'Карточки результата без водяного знака'], ['⚡', 'Скоро: живые курсы и уведомления', 'soon']];
   const M = [['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars'], ['usdt', 'USDT']];
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
@@ -1826,7 +1828,8 @@ async function payProcess() {
     <h3 id="ppTitle">Обрабатываем платёж</h3><span class="muted small">${price} · ${M[0]}</span>
     <ul class="pp-steps">${steps.map((t, i) => `<li id="ppS${i}"><i></i>${t}</li>`).join('')}</ul>
     <span class="muted small">Демо-оплата: деньги не списываются</span></div>`);
-  const arc = $('ppArc');
+  const arc = $('ppArc'); payBusy = true;
+  try {
   for (let i = 0; i < steps.length; i++) {
     $('ppS' + i)?.classList.add('act');
     await wait(80); if (arc) arc.style.strokeDashoffset = 327 * (1 - (i + 1) / steps.length);
@@ -1848,6 +1851,7 @@ async function payProcess() {
     <p>Действует до <b>${fmtLong(st.proUntil)}</b>. Демо-оплата, деньги не списывались. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
     <button class="btn primary" data-close>Отлично</button>`);
   confetti();
+  } finally { payBusy = false; }
 }
 // Конфетти после подключения PRO
 function confetti() {
@@ -1879,7 +1883,7 @@ function renderProfile() {
   if ($('setGoal') !== document.activeElement) $('setGoal').value = st.goal || '';
   if ($('setCap') !== document.activeElement) $('setCap').value = st.capital || '';
   const p = S.trades.filter(t => t.cur === 'RUB' && inPeriod(t, '30')).reduce((a, t) => a + t.profit, 0);
-  $('roi').textContent = st.capital ? pct(p / st.capital * 100) : '—';
+  $('roi').textContent = st.capital ? (st.incog ? '•••' : pct(p / st.capital * 100)) : '—';
   $('roi').className = 'v ' + (st.capital ? cls(p) : '');
   $('roiSub').textContent = st.capital ? `${money(p, 'RUB', true)} на капитал ${money(+st.capital, 'RUB')}` : 'Укажите капитал, чтобы увидеть доходность';
   if (!document.activeElement?.dataset?.limit) {
@@ -1917,15 +1921,16 @@ function applyTheme() {
 }
 
 /* ================= ЛИСТЫ / ТОСТ ================= */
+let payBusy = false;
 function sheet(html) {
-  closeSheet();
+  $('scrim')?.remove();
   const s = document.createElement('div');
   s.className = 'scrim'; s.id = 'scrim';
   s.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
   s.addEventListener('click', e => { if (e.target === s) closeSheet(); });
   document.body.appendChild(s);
 }
-function closeSheet() { $('scrim')?.remove(); }
+function closeSheet() { if (!payBusy) $('scrim')?.remove(); }
 function confirmSheet(title, text, ok, cb, danger) {
   sheet(`<h3>${esc(title)}</h3><span class="muted">${esc(text)}</span><div class="row2"><button class="btn" data-close>Отмена</button><button class="btn ${danger ? 'danger' : 'primary'}" id="okBtn">${esc(ok)}</button></div>`);
   $('okBtn').onclick = () => { closeSheet(); cb(); };
@@ -2096,7 +2101,7 @@ document.addEventListener('click', e => {
   if (ds.tour) return showTour(+ds.tour);
   if (b.id === 'tourBtn') return showTour(0);
   if (ds.guide != null) return showGuide();
-  if (ds.gch) { const v = $('guideVideo'); v.currentTime = +ds.gch; v.play(); return; }
+  if (ds.gch) { const v = $('guideVideo'); v.currentTime = +ds.gch; v.play()?.catch(() => {}); return; }
   if (ds.tool) { tool = ds.tool; return renderTools(); }
   const px = S.tools.px;
   if (ds.pxdir) { px.dir = ds.pxdir; persist(); return renderPrice(); }
@@ -2258,7 +2263,9 @@ function showAuth(m) {
 // Смена «Вход ⇄ Регистрация» как в референсе: форма тает, уголки слетаются в ромб, вспышка, из неё проявляется новая форма
 let auBusy = false;
 async function flipAuth(m) {
-  if (auBusy) return; auBusy = true;
+  if (auBusy) return;
+  if (reduceMotion) { auMode = m; $('auIn').innerHTML = authHtml(m); return; }
+  auBusy = true;
   const card = $('auCard'), inn = $('auIn'), wrap = $('auWrap'), dia = $('auDia'), orb = $('auOrb');
   const [tl, br] = wrap.querySelectorAll('.au-cn');
   const W = card.offsetWidth, H = card.offsetHeight, ease = 'cubic-bezier(.6,0,.3,1)';
@@ -2284,7 +2291,7 @@ function authClick(e) {
   const b = e.target.closest('[data-au]'); if (!b) return;
   const a = b.dataset.au;
   if (a === 'in' || a === 'up') return flipAuth(a);
-  if (a === 'eye') { const i = $('auPass'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = show ? AI.eyeOff : AI.eye; return; }
+  if (a === 'eye') { const i = $('auPass'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = show ? AI.eyeOff : AI.eye; b.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль'); return; }
   if (a === 'rem') { auRemember = !auRemember; return b.setAttribute('aria-checked', auRemember); }
   if (a === 'agree') { auAgree = !auAgree; b.setAttribute('aria-checked', auAgree); return $('auErr').textContent = ''; }
   if (a === 'forgot') { const er = $('auErr'); er.style.color = '#8691A2'; er.textContent = 'Сервера пока нет, поэтому пароль не восстановить. Создайте аккаунт заново — сделки на этом устройстве сохранятся.'; return; }
@@ -2302,8 +2309,13 @@ function auErr(msg, field) {
   if (field) { $(field).classList.add('bad'); $(field).querySelector('input').focus(); }
   const c = $('auCard'); c.classList.add('ready'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
 }
+let auSending = false;
 async function submitAuth() {
-  const btn = $('auGo'); if (btn.disabled) return;
+  const btn = $('auGo'); if (btn.disabled || auSending || auBusy) return;
+  auSending = true;
+  try { await submitAuthInner(btn); } finally { auSending = false; }
+}
+async function submitAuthInner(btn) {
   const mail = $('auMail').value.trim().toLowerCase(), pass = $('auPass').value, name = $('auName')?.value.trim();
   if (auMode === 'up' && !name) return auErr('Введите имя или ник', 'fName');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return auErr('Проверьте адрес почты', 'fMail');
@@ -2379,16 +2391,19 @@ function subHtml() {
     ${st.autoRenew ? '<button class="btn ghost-neg" data-sub="cancel">Отменить подписку</button>' : ''}`;
 }
 function showSub() {
-  sheet(`<h3>Моя подписка</h3>${subHtml()}<button class="btn" data-plan="free" style="font-size:13px">Выключить демо-PRO сейчас</button>`);
+  sheet(`<h3>Моя подписка</h3><div class="sub-box app" style="gap:12px">${subHtml()}</div><button class="btn" data-plan="free" style="font-size:13px">Выключить демо-PRO сейчас</button>`);
 }
-function refreshSub() { renderProfile(); render(); if ($('scrim') && document.querySelector('.sheet [data-sub]')) showSub(); }
+function refreshSub() {
+  renderProfile(); render();
+  const box = document.querySelector('.sheet .sub-box'); if (box) { box.innerHTML = subHtml(); box.classList.add('still'); }
+}
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-sub]'); if (!b) return;
   const st = S.settings, a = b.dataset.sub;
   if (a === 'auto') { st.autoRenew = !st.autoRenew; persist(); refreshSub(); return toast(st.autoRenew ? 'Автопродление включено' : `Автопродление выключено. PRO до ${fmtLong(st.proUntil)}`); }
   if (a === 'cancel') return confirmSheet('Отменить подписку?', `PRO останется до ${fmtLong(st.proUntil)}, потом вы перейдёте на Free. Списаний больше не будет.`, 'Отменить',
     () => { st.autoRenew = false; persist(); render(); toast('Подписка отменена'); }, true);
-  if (a === 'renew') { payPeriod = 'y'; return openPlans('renew'); }
+  if (a === 'renew') return openPlans('renew');
   if (a === 'hist') {
     const P = st.payments || [];
     sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
@@ -2553,8 +2568,9 @@ async function showCard(kind, id) {
     ${S.settings.pro ? '' : '<button class="pw-why" data-open-plans="card" style="width:100%">На Free на карточке водяной знак · <b style="color:var(--accent)">убрать в PRO</b></button>'}
     <div class="row2"><button class="btn" id="cardSave">Сохранить</button><button class="btn primary" id="cardShare">Поделиться</button></div>`);
   let cv;
-  const draw = async () => { cv = await drawCard(kind === 'month' ? monthCardData() : dealCardData(t)); if ($('cardImg')) $('cardImg').src = cv.toDataURL('image/png'); };
+  const draw = async () => { const c = await drawCard(kind === 'month' ? monthCardData() : dealCardData(t)); cv = c; if ($('cardImg')) $('cardImg').src = c.toDataURL('image/png'); };
   await draw();
+  if (!$('cardHideBtn')) return;   // лист успели закрыть, пока рисовалась картинка
   const name = kind === 'month' ? 'P2Pro-month.png' : 'P2Pro-deal.png', blob = () => new Promise(res => cv.toBlob(res, 'image/png'));
   const save = async () => { const a = document.createElement('a'); a.href = URL.createObjectURL(await blob()); a.download = name; document.body.appendChild(a); a.click();
     setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000); toast('Картинка сохранена'); };
@@ -2604,7 +2620,8 @@ syncIncog();
   const el = document.createElement('div'); el.className = 'ptr'; el.textContent = 'P2'; el.setAttribute('aria-hidden', 'true'); document.body.appendChild(el);
   let y0 = null, d = 0, busy = false;
   const blocked = t => $('auth') || $('splash') || $('scrim') || t.closest('.pop, input, textarea, select, canvas');
-  addEventListener('touchstart', e => { if (busy || scrollY > 0 || blocked(e.target)) return; y0 = e.touches[0].clientY; d = 0; }, { passive: true });
+  addEventListener('touchstart', e => { y0 = null; if (busy || scrollY > 0 || blocked(e.target)) return; y0 = e.touches[0].clientY; d = 0; }, { passive: true });
+  addEventListener('touchcancel', () => { y0 = null; d = 0; el.style.transition = 'transform .3s ease, opacity .3s ease'; el.style.transform = 'translateY(-70px) scale(.6)'; el.style.opacity = 0; });
   addEventListener('touchmove', e => {
     if (y0 == null) return;
     d = scrollY > 0 ? 0 : Math.max(0, e.touches[0].clientY - y0);
