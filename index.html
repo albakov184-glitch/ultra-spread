@@ -504,6 +504,54 @@ html, body { overscroll-behavior-y: contain; }
 /* Инкогнито: кнопка-глаз в шапке */
 .eye-btn { width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line); margin-left: 8px; transition: all .2s; }
 .eye-btn.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* Карточка результата */
+.share-prev { width: 100%; border-radius: 16px; display: block; border: 1px solid var(--line); background: #0C0F14; aspect-ratio: 4 / 5; object-fit: contain; }
+.sw-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+.toggle { width: 46px; height: 28px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); position: relative; flex: none; transition: background .2s; }
+.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--muted); transition: transform .2s, background .2s; }
+.toggle[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.toggle[aria-checked="true"]::after { transform: translateX(18px); background: var(--accent-ink); }
+.pro-tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
+
+/* Окно PRO */
+.pw-hero { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding-top: 4px; }
+.pw-badge { position: relative; width: 76px; height: 76px; border-radius: 22px; background: linear-gradient(135deg, #F8CF77, #F2B54B 45%, #DE912C); color: #1B1405;
+  display: grid; place-items: center; font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: 1px; overflow: hidden;
+  box-shadow: 0 14px 40px rgba(242, 181, 75, .35); animation: pwPop .6s cubic-bezier(.3, 1.5, .5, 1) both; }
+.pw-badge::after, .pw-go::after { content: ""; position: absolute; inset: -30%; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .6) 50%, transparent 60%);
+  transform: translateX(-100%); animation: pwShine 2.8s .7s ease-in-out infinite; pointer-events: none; }
+@keyframes pwPop { from { transform: scale(.4) rotate(-12deg); opacity: 0; } }
+@keyframes pwShine { 0% { transform: translateX(-100%); } 45%, 100% { transform: translateX(100%); } }
+.pw-hero h3 { font-size: 20px; }
+.pw-why { padding: 9px 12px; border-radius: 10px; background: var(--accent-soft); font-size: 13px; text-align: center; }
+.pw-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pw-list li { display: flex; gap: 10px; align-items: center; font-size: 14px; animation: pwIn .4s ease both; }
+.pw-list li i { width: 28px; height: 28px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-style: normal; font-size: 14px; font-weight: 700; }
+.pw-list li.soon { color: var(--muted); }
+@keyframes pwIn { from { opacity: 0; transform: translateY(8px); } }
+.pw-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 6px; }
+.pw-plan { position: relative; text-align: left; padding: 12px 14px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface-2);
+  display: flex; flex-direction: column; gap: 2px; transition: border-color .25s, background .25s, transform .15s; }
+.pw-plan:active { transform: scale(.97); }
+.pw-plan.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+.pw-plan b { font-family: var(--f-mono); font-size: 19px; font-weight: 600; }
+.pw-plan span { font-size: 12px; color: var(--muted); }
+.pw-plan em { position: absolute; top: -10px; right: 10px; font-style: normal; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 8px; background: var(--pos); color: #06140D; }
+.pw-go { position: relative; overflow: hidden; }
+.confetti { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+
+/* Подсказка «На экран Домой» */
+.a2hs { position: fixed; z-index: 29; left: 50%; transform: translateX(-50%); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); width: min(calc(100% - 24px), 480px);
+  display: flex; align-items: center; gap: 12px; padding: 12px 8px 12px 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  animation: a2hsIn .4s cubic-bezier(.2, .9, .3, 1) both; }
+@keyframes a2hsIn { from { opacity: 0; transform: translate(-50%, 24px); } }
+.a2hs img { width: 42px; height: 42px; border-radius: 11px; flex: none; }
+.a2hs div { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); line-height: 1.3; }
+.a2hs div b { display: block; color: var(--fg); font-size: 14px; }
+.a2hs .x { color: var(--muted); font-size: 22px; padding: 4px 8px; }
+.steps-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 14.5px; }
+.steps-list svg { vertical-align: -3px; color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 <style>
@@ -717,7 +765,7 @@ img { max-width: 100%; }
       <div class="kpi"><span class="label">Худшая сделка</span><span class="v" id="sWorst">—</span><span class="s" id="sWorstD"></span></div>
     </div>
 
-    <button class="btn block" id="reportBtn">Отчёт за месяц</button>
+    <div class="row2"><button class="btn" id="reportBtn">Отчёт текстом</button><button class="btn primary" id="monthCardBtn">Карточка месяца</button></div>
   </section>
 
   <!-- ============ ИНСТРУМЕНТЫ ============ -->
@@ -801,7 +849,7 @@ img { max-width: 100%; }
           <div class="logo" aria-hidden="true" style="font-size:12px;letter-spacing:0">PRO</div>
           <div style="font-family:var(--f-display);font-weight:700;font-size:18px">Контрагенты</div>
           <div class="muted" style="font-size:14px">Чёрный список и заметки о людях. Предупреждение прямо в расчёте, если ник уже попадался.</div>
-          <button class="btn primary block" data-open-plans>Посмотреть тарифы</button>
+          <button class="btn primary block" data-open-plans="cp">Посмотреть тарифы</button>
         </div>
       </div>
     </div>
@@ -855,6 +903,7 @@ img { max-width: 100%; }
 
     <div class="card gloss">
       <div class="card-h"><span class="card-t">Справка</span><div style="display:flex;gap:6px"><button class="btn slim" data-guide style="padding:8px 12px;font-size:13px">▶ Видео</button><button class="btn slim" id="tourBtn" style="padding:8px 12px;font-size:13px">Обзор</button></div></div>
+      <button class="btn block" id="installBtn">📲 Установить на экран «Домой»</button>
       <div id="glossary"></div>
     </div>
 
@@ -870,7 +919,7 @@ img { max-width: 100%; }
         <button class="btn" id="backupBtn">Резервная копия</button>
         <button class="btn" id="importBtn">Загрузить файл</button>
       </div>
-      <button class="btn" id="csvAllBtn">⤓ Все сделки в Excel</button>
+      <button class="btn" id="csvAllBtn">⤓ Все сделки в Excel <span class="pro-tag">PRO</span></button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
       <span class="muted small">«Загрузить файл» принимает и экспорт из старой версии калькулятора.</span>
       <button class="btn danger block" id="wipeBtn">Удалить всю историю</button>
@@ -1202,6 +1251,7 @@ function save() {
     $('todayProfit').classList.add('bump'); setTimeout(() => $('todayProfit').classList.remove('bump'), 600);
     toast(t.profit >= 0 ? `Сохранено: ${money(t.profit, t.cur, true)}` : 'Убыточная сделка сохранена');
     if (current !== 'hist') { newSaved++; navBadge(); }
+    setTimeout(maybeA2HS, 3500);
     if (added.length) setTimeout(() => toast(`В контрагенты добавлено: ${added.join(', ')}`), 2000);
     checkLimitWarn(t.bank);
   };
@@ -1239,7 +1289,7 @@ function inPeriod(t, p) {
 function renderHistory() {
   $('hFilter').innerHTML = FILTERS.map(([k, l]) => `<button class="chip ${k === hFilter ? 'on' : ''}" data-hf="${k}">${l}</button>`).join('');
   $('hPeriod').innerHTML = PERIODS.map(([k, l]) => `<button class="chip ${k === hPeriod ? 'on' : ''}" data-hp="${k}">${l}</button>`).join('')
-    + (S.trades.length ? '<button class="chip" id="csvBtn" aria-label="Скачать таблицу для Excel">⤓ Excel</button>' : '');
+    + (S.trades.length ? `<button class="chip" id="csvBtn" aria-label="Скачать таблицу для Excel">⤓ Excel${S.settings.pro ? '' : ' · PRO'}</button>` : '');
   const q = $('q').value.trim().toLowerCase();
   const list = S.trades.filter(t => inPeriod(t, hPeriod))
     .filter(t => hFilter === 'all' || (hFilter === 'pos' && t.profit > 0) || (hFilter === 'neg' && t.profit < 0) || (hFilter === 'fav' && t.fav))
@@ -1301,6 +1351,7 @@ function openTrade(id) {
       ${(t.sellers || []).map((x, i) => `<div class="hint">Продавец ${i + 1}: <b>${esc(x.cp || '—')}</b> · ${nf0.format(x.sum)} ₽ по <b>${rate(x.rate)}</b>${x.note ? `<br>${esc(x.note)}` : ''}</div>`).join('')}
       ${t.note ? `<div class="hint">${esc(t.note)}</div>` : ''}
     </div>
+    <button class="btn primary block" data-act="card" data-id="${esc(t.id)}">Поделиться карточкой</button>
     <div class="row2">
       <button class="btn" data-act="fav" data-id="${esc(t.id)}">${t.fav ? '★ В избранном' : '☆ В избранное'}</button>
       <button class="btn" data-act="copy" data-id="${esc(t.id)}">Копировать</button>
@@ -1638,24 +1689,47 @@ function plansHtml() {
   const pro = S.settings.pro;
   return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор и круги</li><li>История — до ${FREE_LIMIT} сделок в месяц</li><li>Аналитика, подбор курса, связки</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
-    <div class="plan pro"><h4>PRO</h4><span class="price">490 ₽<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Скоро: живые курсы и уведомления</li></ul>
+    <div class="plan pro"><h4>PRO</h4><span class="price">490 ₽<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
     ${pro ? '<span class="muted small">Текущий (демо)</span>' : '<button class="btn primary" data-plan="pro">Включить демо</button>'}</div>`;
 }
-// Демо-оплата: способы оплаты без ввода реквизитов, деньги не списываются
-let payMethod = 'card';
-function showCheckout() {
-  const M = [['card', 'Банковская карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars'], ['usdt', 'USDT']];
-  sheet(`<h3>Оформление PRO</h3>
-    <div class="combo-item"><div class="combo-top"><b>PRO на 1 месяц</b><b class="num">490 ₽</b></div>
-      <span class="muted small">История без ограничений · Контрагенты и чёрный список · Скоро: живые курсы</span></div>
+// Окно PRO. Оплата демо: реквизиты не нужны, деньги не списываются
+let payMethod = 'card', payPeriod = 'm';
+const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
+const payLabel = () => `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
+function openPlans(why) {
+  if (S.settings.pro) return sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO активен</h3>
+    <span class="muted small">Безлимитная история, контрагенты, Excel и карточки без водяного знака уже ваши. Это демо-режим.</span></div>
+    <div class="row2"><button class="btn" data-plan="free">Перейти на Free</button><button class="btn primary" data-close>Закрыть</button></div>`);
+  const F = [['∞', 'История без ограничений'], ['★', 'Контрагенты и чёрный список'], ['⤓', 'Выгрузка всех сделок в Excel'], ['▣', 'Карточки результата без водяного знака'], ['⚡', 'Скоро: живые курсы и уведомления', 'soon']];
+  const M = [['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars'], ['usdt', 'USDT']];
+  sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
+    ${PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
+    <ul class="pw-list">${F.map(([i, t, c], k) => `<li class="${c || ''}" style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>
+    <div class="pw-plans">
+      <button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>490 ₽</b><span>в месяц</span></button>
+      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−32%</em><span>Год</span><b>3 990 ₽</b><span>≈ 333 ₽ в месяц</span></button></div>
     <span class="label">Способ оплаты</span>
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${l}</button>`).join('')}</div>
-    <div class="note-box mid">Это демо-оплата для теста: реквизиты не нужны, деньги не списываются.</div>
-    <button class="btn primary" id="payBtn">Оплатить 490 ₽</button>
-    <button class="btn" data-close>Отмена</button>`);
+    <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>
+    <span class="muted small" style="text-align:center">Демо-оплата для теста: реквизиты не нужны, деньги не списываются.</span>`);
 }
-function openPlans() {
-  sheet(`<h3>Тарифы</h3><div class="plans">${plansHtml()}</div><span class="muted small">Цена указана для примера. Оплата пока не подключена: кнопка просто включает демо-режим PRO.</span>`);
+const showCheckout = () => openPlans();
+// Конфетти после подключения PRO
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = document.createElement('canvas'), dpr = Math.min(devicePixelRatio || 1, 2), W = innerWidth, H = innerHeight;
+  cv.className = 'confetti'; cv.width = W * dpr; cv.height = H * dpr; document.body.appendChild(cv);
+  const c = cv.getContext('2d'); c.scale(dpr, dpr);
+  const cols = ['#F2B54B', '#3CD38A', '#FFE2A8', '#FF9F5A', '#E8ECF2'];
+  const P = Array.from({ length: 150 }, () => ({ x: W / 2, y: H * .42, vx: (Math.random() - .5) * 16, vy: -Math.random() * 15 - 5, r: Math.random() * 7 + 5,
+    a: Math.random() * 6, va: (Math.random() - .5) * .4, col: cols[Math.random() * cols.length | 0] }));
+  const t0 = performance.now();
+  (function step(t) {
+    const k = (t - t0) / 1000; c.clearRect(0, 0, W, H);
+    P.forEach(p => { p.vy += .38; p.vx *= .985; p.x += p.vx; p.y += p.vy; p.a += p.va;
+      c.save(); c.translate(p.x, p.y); c.rotate(p.a); c.globalAlpha = Math.max(0, 1 - k / 2.8); c.fillStyle = p.col; c.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2); c.restore(); });
+    if (k < 2.8) requestAnimationFrame(step); else cv.remove();
+  })(t0);
 }
 
 /* ================= ПРОФИЛЬ ================= */
@@ -1858,6 +1932,7 @@ document.addEventListener('click', e => {
     const t = S.trades.find(x => String(x.id) === ds.id); if (!t) return;
     if (ds.act === 'fav') { t.fav = !t.fav; persist(); renderHistory(); return openTrade(t.id); }
     if (ds.act === 'copy') return copy(tradeText(t));
+    if (ds.act === 'card') return showCard('deal', t.id);
     if (ds.act === 'repeat') { closeSheet(); return repeat(t); }
     if (ds.act === 'del') return confirmSheet('Удалить сделку?', `${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)} · ${money(t.profit, t.cur, true)}`, 'Удалить', () => { S.trades = S.trades.filter(x => x !== t); persist(); render(); toast('Сделка удалена'); }, true);
   }
@@ -1866,17 +1941,19 @@ document.addEventListener('click', e => {
   if (ds.scur) { sCur = ds.scur; return renderStats(); }
   if (b.id === 'chBar' || b.id === 'chCum') { chartMode = b.id === 'chBar' ? 'bar' : 'cum'; $('chBar').classList.toggle('on', chartMode === 'bar'); $('chCum').classList.toggle('on', chartMode !== 'bar'); return renderStats(); }
   if (b.id === 'reportBtn') return monthReport();
-  if (ds.openPlans !== undefined) return openPlans();
+  if (ds.openPlans !== undefined) return openPlans(ds.openPlans);
+  if (ds.period) { payPeriod = ds.period; document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('on', x.dataset.period === payPeriod)); $('payBtn').textContent = payLabel(); return; }
   if (ds.plan === 'pro') return showCheckout();
   if (ds.plan) { st.pro = false; persist(); closeSheet(); render(); return toast('Вы на тарифе Free'); }
-  if (ds.pay) { payMethod = ds.pay; return showCheckout(); }
+  if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return; }
   if (b.id === 'payBtn') {
-    b.disabled = true; b.textContent = 'Обрабатываем платёж…';
+    b.disabled = true; b.innerHTML = '<span class="au-spin"></span>Обрабатываем платёж…';
     return setTimeout(() => {
-      st.pro = true; st.proSince = Date.now(); persist(); render();
-      sheet(`<div class="tour-art pos" aria-hidden="true">✓</div><h3>PRO подключён</h3>
-        <p>Демо-оплата прошла. Деньги не списывались. Теперь доступны история без ограничений и контрагенты.</p>
+      st.pro = true; st.proSince = Date.now(); st.proPeriod = payPeriod; persist(); render();
+      sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO подключён 🎉</h3>
+        <p>Демо-оплата прошла, деньги не списывались. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
         <button class="btn primary" data-close>Отлично</button>`);
+      confetti();
     }, 1400);
   }
   if (ds.tour) return showTour(+ds.tour);
@@ -2114,7 +2191,7 @@ $('topAvatar').addEventListener('click', () => show('prof'));
 $('logoutBtn').addEventListener('click', () => confirmSheet('Выйти из аккаунта?', 'История сделок останется на этом устройстве.', 'Выйти', () => {
   A.session = null; accSave(); renderAcc(); show('calc'); showAuth('in');
 }));
-function afterAuth() { if (!S.settings.work) showWork(); else if (!S.settings.onboarded) showTour(0); }
+function afterAuth() { if (!S.settings.work) showWork(); else if (!S.settings.onboarded) showTour(0); else setTimeout(maybeA2HS, 4000); }
 function bootAccount() {
   let alive = true; try { alive = !!sessionStorage.getItem(ACC_KEY); } catch (e) {}
   if (A.session && (!A.users[A.session] || (A.remember === false && !alive))) { A.session = null; accSave(); }
@@ -2151,9 +2228,141 @@ function csvExport(list, name) {
   toast(`Таблица скачана · сделок: ${list.length}`);
 }
 document.addEventListener('click', e => {
-  if (e.target.closest('#csvBtn')) csvExport(hShown, 'P2Pro-history-' + dayKey(new Date()));
-  if (e.target.closest('#csvAllBtn')) csvExport(S.trades, 'P2Pro-all-deals-' + dayKey(new Date()));
+  const csv = e.target.closest('#csvBtn, #csvAllBtn'); if (!csv) return;
+  if (!S.settings.pro) return openPlans('excel');
+  if (csv.id === 'csvBtn') csvExport(hShown, 'P2Pro-history-' + dayKey(new Date()));
+  else csvExport(S.trades, 'P2Pro-all-deals-' + dayKey(new Date()));
 });
+
+
+/* ================= КАРТОЧКА РЕЗУЛЬТАТА ================= */
+// Картинка 1080×1350 для Telegram и сторис. На Free — водяной знак, в PRO — чистая
+let cardHide = false;
+const cardAmt = (v, cur) => cardHide ? '•••' : (Math.abs(v) >= 10000 ? nf0 : nf2).format(v).replace('-', '−') + ' ' + SYM[cur];
+const cardPct = v => isFinite(v) ? pct(v) : '—';
+const MODE_NAME = { deal: 'Сделка', circle: 'Круг', tri: 'Треугольник' };
+function dealCardData(t) {
+  const big = cardHide ? cardPct(t.profitPct) : (t.profit > 0 ? '+' : '') + cardAmt(t.profit, t.cur);
+  return { kicker: t.profit >= 0 ? 'Прибыль по сделке' : 'Результат сделки', title: `${MODE_NAME[t.mode] || 'Сделка'} · ${t.ex}`, big, neg: t.profit < 0,
+    sub: cardHide ? `спред ${cardPct(t.spreadPct)}` : `${cardPct(t.profitPct)} к сумме · спред ${cardPct(t.spreadPct)}`,
+    date: new Date(t.ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
+    cells: [['Биржа · банк', `${t.ex} · ${t.bank}`], ['Курс', t.mode === 'tri' ? `${rate(t.sell)} / ${rate(t.buy)}` : `${rate(t.buy)} → ${rate(t.sell)}`],
+      ['Сумма', cardAmt(t.sum, t.cur)], ['Комиссии', cardAmt(t.comm, t.cur)], ['USDT', cardHide ? '•••' : nf2.format(t.qty || 0)], ['Время', fmtTime(t.ts)]] };
+}
+function monthCardData() {
+  const now = new Date(), m = now.getMonth(), y = now.getFullYear();
+  const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
+  const cur = !T.length || T.some(t => t.cur === 'RUB') ? 'RUB' : 'USD', X = T.filter(t => t.cur === cur);
+  const p = X.reduce((a, t) => a + t.profit, 0), turn = X.reduce((a, t) => a + t.sum, 0), cost = X.reduce((a, t) => a + (t.cost ?? t.sum), 0);
+  const days = new Date(y, m + 1, 0).getDate(), bars = Array(days).fill(0);
+  X.forEach(t => bars[new Date(t.ts).getDate() - 1] += t.profit);
+  const best = Math.max(...bars), active = bars.filter((v, i) => X.some(t => new Date(t.ts).getDate() === i + 1)).length;
+  const month = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '');
+  return { kicker: 'Мой результат', title: month[0].toUpperCase() + month.slice(1), neg: p < 0,
+    big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : (p > 0 ? '+' : '') + cardAmt(p, cur),
+    sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${active} ${plural(active, 'торговый день', 'торговых дня', 'торговых дней')}`,
+    date: 'P2P · ' + (cur === 'RUB' ? 'рубли' : 'доллары'),
+    cells: [['Сделок', String(X.length)], ['В плюсе', `${X.filter(t => t.profit > 0).length} из ${X.length}`], ['Оборот', cardAmt(turn, cur)], ['Лучший день', best > 0 ? '+' + cardAmt(best, cur) : '—']], bars };
+}
+async function drawCard(d) {
+  try { await Promise.all(['700 40px Unbounded', '500 24px Onest', '600 24px Onest', '500 30px "JetBrains Mono"'].map(f => document.fonts.load(f))); } catch (e) {}
+  const W = 1080, H = 1350, L = 72, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d'), box = (x, y, w, h, r) => { c.beginPath(); c.roundRect(x, y, w, h, r); };
+  const fit = (txt, font, size, min, max) => { let f = size; c.font = font.replace('#', f); while (c.measureText(txt).width > max && f > min) { f -= 2; c.font = font.replace('#', f); } };
+  c.fillStyle = '#0C0F14'; c.fillRect(0, 0, W, H);
+  [[240, 230, 780, 'rgba(242,181,75,.26)'], [930, 1120, 640, d.neg ? 'rgba(255,107,107,.10)' : 'rgba(60,211,138,.11)']].forEach(([x, y, rad, col]) => {
+    const g = c.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H); });
+  c.strokeStyle = 'rgba(255,255,255,.035)'; c.lineWidth = 2;
+  for (let x = 0; x <= W; x += 90) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+  for (let y = 0; y <= H; y += 90) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+  // шапка: плитка P2 PRO, название и дата
+  c.fillStyle = '#F2B54B'; box(L, 72, 96, 96, 28); c.fill();
+  c.fillStyle = '#0C0F14'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = '700 40px Unbounded'; c.fillText('P2', L + 46, 112); c.font = '600 14px Onest'; c.fillText('P R O', L + 48, 147);
+  c.textAlign = 'left'; c.fillStyle = '#E8ECF2'; c.font = '700 40px Unbounded'; c.fillText('P2Pro', L + 124, 106);
+  c.fillStyle = '#8691A2'; c.font = '500 24px Onest'; c.fillText('Учёт P2P-сделок', L + 126, 146);
+  c.textAlign = 'right'; c.font = '500 26px Onest'; c.fillText(d.date, W - L, 120); c.textAlign = 'left';
+  // главное число
+  c.fillStyle = '#F2B54B'; c.font = '600 26px Onest'; c.fillText(d.kicker.toUpperCase().split('').join(' '), L, 292);
+  c.fillStyle = '#E8ECF2'; fit(d.title, '700 #px Unbounded', 46, 28, W - 2 * L); c.fillText(d.title, L, 352);
+  c.fillStyle = d.neg ? '#FF6B6B' : '#3CD38A'; fit(d.big, '700 #px Unbounded', 150, 64, W - 2 * L); c.fillText(d.big, L, 492);
+  c.fillStyle = '#8691A2'; fit(d.sub, '500 #px Onest', 30, 20, W - 2 * L); c.fillText(d.sub, L + 2, 582);
+  // плитки с цифрами 2 в ряд
+  const cw = (W - 2 * L - 24) / 2, ch = 140;
+  d.cells.forEach(([k, v], i) => {
+    const x = L + (i % 2) * (cw + 24), y = 646 + Math.floor(i / 2) * (ch + 22);
+    c.fillStyle = 'rgba(255,255,255,.045)'; box(x, y, cw, ch, 26); c.fill(); c.strokeStyle = 'rgba(255,255,255,.08)'; c.lineWidth = 2; c.stroke();
+    c.fillStyle = '#8691A2'; c.font = '500 24px Onest'; c.fillText(k, x + 28, y + 46);
+    c.fillStyle = '#E8ECF2'; fit(v, '500 #px "JetBrains Mono"', 38, 20, cw - 56); c.fillText(v, x + 28, y + 100);
+  });
+  // столбики прибыли по дням месяца
+  if (d.bars) {
+    const top = 1000, hh = 150, n = d.bars.length, bw = (W - 2 * L) / n, max = Math.max(1, ...d.bars.map(Math.abs));
+    c.fillStyle = '#8691A2'; c.font = '500 22px Onest'; c.fillText('Прибыль по дням', L, top - 16);
+    d.bars.forEach((v, i) => { const h = v ? Math.max(6, Math.abs(v) / max * hh) : 4;
+      c.fillStyle = v > 0 ? '#F2B54B' : v < 0 ? '#FF6B6B' : 'rgba(255,255,255,.12)'; box(L + i * bw + bw * .18, top + 20 + hh - h, bw * .64, h, 4); c.fill(); });
+  }
+  // подвал и водяной знак для Free
+  const pro = !!S.settings.pro;
+  c.strokeStyle = 'rgba(255,255,255,.08)'; c.beginPath(); c.moveTo(L, 1236); c.lineTo(W - L, 1236); c.stroke();
+  c.fillStyle = '#8691A2'; c.font = '500 26px Onest'; c.fillText(pro ? 'Посчитано в P2Pro' : 'Посчитано в P2Pro · бесплатная версия', L, 1286);
+  c.textAlign = 'right'; c.fillStyle = '#F2B54B'; c.font = '600 26px Onest'; c.fillText('@P2ProAppBot', W - L, 1286); c.textAlign = 'left';
+  if (!pro) {
+    c.save(); c.translate(W / 2, H / 2); c.rotate(-Math.PI / 7); c.textAlign = 'center'; c.font = '700 110px Unbounded'; c.fillStyle = 'rgba(255,255,255,.065)';
+    for (let k = -3; k <= 3; k++) c.fillText('P2Pro · FREE', 0, k * 250);
+    c.restore();
+  }
+  return cv;
+}
+async function showCard(kind, id) {
+  const t = kind === 'deal' && S.trades.find(x => String(x.id) === String(id));
+  if (kind === 'deal' && !t) return;
+  cardHide = !!S.settings.incog;
+  sheet(`<h3>${kind === 'month' ? 'Карточка месяца' : 'Карточка сделки'}</h3>
+    <img class="share-prev" id="cardImg" alt="Предпросмотр карточки">
+    <div class="sw-row"><span>Скрыть суммы, оставить проценты</span><button class="toggle" role="switch" id="cardHideBtn" aria-checked="${cardHide}" aria-label="Скрыть суммы"></button></div>
+    ${S.settings.pro ? '' : '<button class="pw-why" data-open-plans="card" style="width:100%">На Free на карточке водяной знак · <b style="color:var(--accent)">убрать в PRO</b></button>'}
+    <div class="row2"><button class="btn" id="cardSave">Сохранить</button><button class="btn primary" id="cardShare">Поделиться</button></div>`);
+  let cv;
+  const draw = async () => { cv = await drawCard(kind === 'month' ? monthCardData() : dealCardData(t)); if ($('cardImg')) $('cardImg').src = cv.toDataURL('image/png'); };
+  await draw();
+  const name = kind === 'month' ? 'P2Pro-month.png' : 'P2Pro-deal.png', blob = () => new Promise(res => cv.toBlob(res, 'image/png'));
+  const save = async () => { const a = document.createElement('a'); a.href = URL.createObjectURL(await blob()); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000); toast('Картинка сохранена'); };
+  $('cardHideBtn').onclick = async e => { cardHide = !cardHide; e.currentTarget.setAttribute('aria-checked', cardHide); await draw(); };
+  $('cardSave').onclick = save;
+  $('cardShare').onclick = async () => {
+    const f = new File([await blob()], name, { type: 'image/png' });
+    if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f] }); } catch (e) {} } else save();
+  };
+}
+document.addEventListener('click', e => { if (e.target.closest('#monthCardBtn')) showCard('month'); });
+
+/* ================= УСТАНОВКА НА ЭКРАН «ДОМОЙ» ================= */
+let installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const inTelegram = () => !!window.Telegram?.WebApp?.initData;
+function maybeA2HS() {
+  if (isStandalone() || inTelegram() || S.settings.a2hsSeen || $('a2hs') || !S.trades.length) return;
+  const el = document.createElement('div'); el.className = 'a2hs'; el.id = 'a2hs'; el.setAttribute('role', 'dialog');
+  el.innerHTML = `<img src="icons/icon-180.png" alt=""><div><b>Установите P2Pro</b>Иконка на экране — открывается как приложение</div>
+    <button class="btn primary slim" id="a2hsGo" style="padding:8px 14px">Как?</button><button class="x" id="a2hsX" aria-label="Закрыть">×</button>`;
+  document.body.appendChild(el);
+  const done = () => { S.settings.a2hsSeen = true; persist(); el.remove(); };
+  $('a2hsX').onclick = done; $('a2hsGo').onclick = () => { done(); showInstall(); };
+}
+async function showInstall() {
+  if (isStandalone()) return toast('P2Pro уже установлен на этом устройстве');
+  if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice; installEvt = null; if (r.outcome === 'accepted') toast('Готово! Ищите P2Pro на экране'); return; }
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const SH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="значок Поделиться"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
+  sheet(`<div class="pw-hero"><img src="icons/icon-180.png" alt="" style="width:72px;height:72px;border-radius:18px;animation:pwPop .6s cubic-bezier(.3,1.5,.5,1) both">
+      <h3>P2Pro на экран «Домой»</h3><span class="muted small">Откроется как обычное приложение — на весь экран, без строки браузера</span></div>
+    ${ios ? `<ol class="steps-list"><li>Откройте сайт в <b>Safari</b></li><li>Нажмите «Поделиться» ${SH} внизу экрана</li><li>Выберите <b>«На экран „Домой“»</b></li><li>Нажмите <b>«Добавить»</b> справа вверху</li></ol>`
+      : `<ol class="steps-list"><li>Откройте меню браузера <b>⋮</b> справа вверху</li><li>Выберите <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b></li><li>Подтвердите</li></ol>`}
+    <button class="btn primary" data-close>Понятно</button>`);
+}
+$('installBtn').addEventListener('click', showInstall);
 
 /* ================= ИНКОГНИТО ================= */
 function syncIncog() { const on = !!S.settings.incog; $('incogBtn').classList.toggle('on', on); $('incogBtn').setAttribute('aria-pressed', on); $('incogBtn').setAttribute('aria-label', on ? 'Показать суммы' : 'Скрыть суммы'); }
