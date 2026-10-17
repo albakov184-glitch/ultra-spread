@@ -892,7 +892,7 @@ img { max-width: 100%; }
             <button data-cps="mid">Осторожно</button>
             <button data-cps="bad" class="on">Мошенник</button>
           </div>
-          <div class="inp text"><input id="cpNote" type="text" placeholder="Что случилось: тянул с оплатой, третьи лица…" aria-label="Заметка о контрагенте"></div>
+          <div class="inp text"><input id="cpAddNote" type="text" placeholder="Что случилось: тянул с оплатой, третьи лица…" aria-label="Заметка о контрагенте"></div>
           <button class="btn primary" id="cpAdd">Сохранить</button>
         </div>
         <div class="search">
@@ -1052,10 +1052,18 @@ function load() {
       return { trades: s.trades || [], settings: { ...DEFAULT.settings, ...s.settings }, draft: { ...DEFAULT.draft, ...s.draft },
         tools: { px: { ...DEFAULT.tools.px, ...s.tools?.px }, cb: { ...DEFAULT.tools.cb, ...s.tools?.cb } }, cps: s.cps || [] };
     }
-  } catch (e) {}
+  } catch (e) {
+    // Данные повреждены: кладём копию рядом, чтобы их можно было восстановить, и предупреждаем
+    try { localStorage.setItem(KEY + '.corrupt.' + Date.now(), localStorage.getItem(KEY)); } catch (e2) {}
+    setTimeout(() => toast('Сохранённые данные повреждены — копия отложена, обратитесь в поддержку'), 2500);
+  }
   return null;
 }
-function persist() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+let persistWarned = 0;
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); return true; }
+  catch (e) { if (Date.now() - persistWarned > 10000) { persistWarned = Date.now(); toast('Не удалось сохранить: память браузера заполнена. Сделайте резервную копию'); } return false; }
+}
 
 /* ================= ФОРМАТ ================= */
 const nf2 = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1234,9 +1242,10 @@ function renderResult() {
   }
   if (tri && d.triParts) {
     const total = +d.sum || 0, m = d.sellers.reduce((a, x) => a + (+x.sum || 0), 0);
-    $('triMatched').textContent = `Связано ${nf0.format(m)} из ${nf0.format(total)} ₽`;
-    $('triLeft').innerHTML = !total ? '' : m > total + 0.5 ? `<span class="neg">Больше на ${nf0.format(m - total)} ₽</span>`
-      : m < total - 0.5 ? `Осталось ${nf0.format(total - m)} ₽` : '<span class="pos">Сумма сходится ✓</span>';
+    const sy = SYM[cur];
+    $('triMatched').textContent = `Связано ${nf0.format(m)} из ${nf0.format(total)} ${sy}`;
+    $('triLeft').innerHTML = !total ? '' : m > total + 0.5 ? `<span class="neg">Больше на ${nf0.format(m - total)} ${sy}</span>`
+      : m < total - 0.5 ? `Осталось ${nf0.format(total - m)} ${sy}` : '<span class="pos">Сумма сходится ✓</span>';
   }
   if (!r) {
     big.textContent = '0 ' + SYM[cur]; big.className = 'result-big';
@@ -1323,7 +1332,8 @@ function save() {
   const go = () => {
     S.trades.unshift(t);
     // Новые ники сразу попадают в книжку контрагентов со статусом «без отметки»
-    const added = tradeCps(t).filter(n => !findCp(n));
+    const seen = new Set();
+    const added = tradeCps(t).filter(n => { const k = n.trim().toLowerCase(); if (!k || seen.has(k) || findCp(n)) return false; seen.add(k); return true; });
     added.forEach(name => S.cps.unshift({ name, status: 'new', note: '', ts: Date.now() }));
     persist(); renderToday(); renderQuick(); renderCalcStatic();
     const btn = $('saveBtn'); btn.textContent = '✓ Сохранено'; btn.classList.remove('done'); void btn.offsetWidth; btn.classList.add('done');
@@ -1428,7 +1438,7 @@ function openTrade(id) {
       ${t.mode === 'tri' ? `<div class="hint">Треугольник: отдал покупателю <b>${nf2.format(t.soldQty)}</b> USDT, получил от продавца <b>${nf2.format(t.qty)}</b> USDT, осталось <b>${nf2.format(t.profitU)}</b> USDT</div>` : ''}
       ${t.cp || t.cpNote ? `<div class="hint">${t.mode === 'tri' ? 'Покупатель' : 'Контрагент'}: <b>${esc(t.cp || '—')}</b>${t.cpNote ? `<br>${esc(t.cpNote)}` : ''}</div>` : ''}
       ${t.cp2 || t.cp2Note ? `<div class="hint">Продавец: <b>${esc(t.cp2 || '—')}</b>${t.cp2Note ? `<br>${esc(t.cp2Note)}` : ''}</div>` : ''}
-      ${(t.sellers || []).map((x, i) => `<div class="hint">Продавец ${i + 1}: <b>${esc(x.cp || '—')}</b> · ${nf0.format(x.sum)} ₽ по <b>${rate(x.rate)}</b>${x.note ? `<br>${esc(x.note)}` : ''}</div>`).join('')}
+      ${(t.sellers || []).map((x, i) => `<div class="hint">Продавец ${i + 1}: <b>${esc(x.cp || '—')}</b> · ${hid(nf0.format(x.sum))} ${s} по <b>${rate(x.rate)}</b>${x.note ? `<br>${esc(x.note)}` : ''}</div>`).join('')}
       ${t.note ? `<div class="hint">${esc(t.note)}</div>` : ''}
     </div>
     <button class="btn primary block" data-act="card" data-id="${esc(t.id)}">Поделиться карточкой</button>
@@ -1510,6 +1520,11 @@ function drawChart(T, c) {
   });
 }
 function monthReport() {
+  // Отчёт копируют, чтобы отправить: суммы в нём всегда видны, даже в режиме «Инкогнито»
+  const inc = S.settings.incog; S.settings.incog = false;
+  try { monthReportText(); } finally { S.settings.incog = inc; }
+}
+function monthReportText() {
   const now = new Date(), m = now.getMonth(), y = now.getFullYear();
   const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
   const month = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
@@ -1631,14 +1646,16 @@ function renderCp() {
     .map(([k, l]) => `<button class="chip ${k === cpF ? 'on' : ''}" data-cpf="${k}">${l} · ${count(k)}</button>`).join('');
   const list = base.filter(c => (cpF === 'all' || c.status === cpF) && (!q || c.name.toLowerCase().includes(q)));
   $('cpListView').innerHTML = list.length ? list.map(c => {
-    const deals = cpDeals(c.name), turn = deals.reduce((a, x) => a + x.amount, 0);
+    const deals = cpDeals(c.name), turn = curJoin(byCur(deals.map(x => ({ cur: x.t.cur, v: +x.amount || 0 })), x => x.v), (v, cur) => `${hid(nf0.format(v))} ${SYM[cur]}`);
     return `<div class="cp-item" role="button" tabindex="0" data-cpopen="${esc(c.name)}" aria-label="Открыть ${esc(c.name)}"><b>${esc(c.name)}</b><span class="pill ${c.status}">${CPS[c.status]}</span>
-      <span class="muted small">${deals.length ? `Сделок: ${deals.length} · ${hid(nf0.format(turn))} ₽` : 'Сделок пока нет'}${c.note ? ` · ${esc(c.note)}` : ''}</span><button class="icon-btn" data-cpdel="${esc(c.name)}" aria-label="Удалить ${esc(c.name)}">×</button></div>`;
+      <span class="muted small">${deals.length ? `Сделок: ${deals.length} · ${turn}` : 'Сделок пока нет'}${c.note ? ` · ${esc(c.note)}` : ''}</span><button class="icon-btn" data-cpdel="${esc(c.name)}" aria-label="Удалить ${esc(c.name)}">×</button></div>`;
   }).join('') : S.cps.length ? emptyHtml('search', 'Никого не нашли', 'Попробуйте другой фильтр')
     : emptyHtml('people', 'Список пуст', 'Добавьте первого контрагента выше — или впишите ник в расчёте сделки');
 }
 let cpF = 'all';
 // Все сделки, где участвовал человек: роль, сумма именно его части и заметка о нём
+const byCur = (items, val) => { const m = {}; items.forEach(x => m[x.cur] = (m[x.cur] || 0) + val(x)); return m; };
+const curJoin = (m, f) => Object.entries(m).map(([c, v]) => f(v, c)).join(' + ') || '0 ₽';
 function cpDeals(name) {
   const n = name.toLowerCase(), out = [], is = x => (x || '').trim().toLowerCase() === n;
   S.trades.forEach(t => {
@@ -1650,8 +1667,9 @@ function cpDeals(name) {
 }
 function openCp(name) {
   const c = findCp(name); if (!c) return;
-  const deals = cpDeals(c.name), turn = deals.reduce((a, x) => a + x.amount, 0);
-  const profit = [...new Set(deals.map(x => x.t))].reduce((a, t) => a + t.profit, 0);
+  const deals = cpDeals(c.name), uniq = [...new Set(deals.map(x => x.t))];
+  const turnBy = byCur(deals.map(x => ({ cur: x.t.cur, v: +x.amount || 0 })), x => x.v), profitBy = byCur(uniq, t => t.profit);
+  const profit = Object.values(profitBy).reduce((a, v) => a + v, 0);
   const dates = deals.map(x => +new Date(x.t.ts));
   sheet(`
     <div class="card-h"><h3>${esc(c.name)}</h3><span class="pill ${c.status}">${CPS[c.status]}</span></div>
@@ -1659,8 +1677,8 @@ function openCp(name) {
     <div class="inp text"><input id="cpEditNote" data-name="${esc(c.name)}" type="text" value="${esc(c.note || '')}" placeholder="Общая заметка о человеке" aria-label="Общая заметка"></div>
     <div class="cp-stats">
       <div class="kpi"><span class="label">Сделок</span><span class="v">${deals.length}</span></div>
-      <div class="kpi"><span class="label">Оборот</span><span class="v">${nf0.format(turn)} ₽</span></div>
-      <div class="kpi"><span class="label">Прибыль</span><span class="v ${cls(profit)}">${money(profit, 'RUB', true)}</span></div>
+      <div class="kpi"><span class="label">Оборот</span><span class="v">${curJoin(turnBy, (v, cur) => `${hid(nf0.format(v))} ${SYM[cur]}`)}</span></div>
+      <div class="kpi"><span class="label">Прибыль</span><span class="v ${cls(profit)}">${curJoin(profitBy, (v, cur) => money(v, cur, true))}</span></div>
     </div>
     ${deals.length ? `<span class="muted small">Первая сделка: ${fmtDay(dayKey(Math.min(...dates)))} · последняя: ${fmtDay(dayKey(Math.max(...dates)))}</span>` : ''}
     <div class="list">${deals.length ? deals.map(({ t, role, amount, note }) => `
@@ -1958,6 +1976,7 @@ function show(tab) {
   window.scrollTo(0, 0);
 }
 function render() {
+  if (S.settings.pro && S.settings.proUntil && Date.now() > S.settings.proUntil) subCheck();
   const pro = S.settings.pro;
   $('planPill').textContent = pro ? `PRO · ${subDaysLeft()} дн.` : 'Free'; $('planPill').classList.toggle('pro', pro);
   if (current === 'calc') { renderCalcStatic(); renderResult(); renderToday(); }
@@ -1972,7 +1991,15 @@ document.addEventListener('input', e => {
   const el = e.target, d = S.draft;
   // Русская клавиатура ставит запятую: превращаем её в точку и убираем всё, кроме цифр
   if (el.inputMode === 'decimal' || el.inputMode === 'numeric') {
-    const v = el.value.replace(/,/g, '.').replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
+    let v = el.value;
+    if (e.inputType === 'insertFromPaste') {
+      // Вставили «1,000.50» или «1 000,50»: последний разделитель — дробный, остальные — тысячи
+      v = v.replace(/[^\d.,]/g, '');
+      const lc = v.lastIndexOf(','), ld = v.lastIndexOf('.');
+      if (lc > -1 && ld > -1) v = lc > ld ? v.replace(/\./g, '').replace(',', '.') : v.replace(/,/g, '');
+      else if ((v.match(/[.,]/g) || []).length > 1) v = v.replace(/[.,]/g, '');
+    }
+    v = v.replace(/,/g, '.').replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
     if (v !== el.value) el.value = v;
   }
   if (el.id === 'cpNote' || el.id === 'cp2Note') { d[el.id] = el.value; return persist(); }
@@ -2093,11 +2120,11 @@ document.addEventListener('click', e => {
   if (ds.cpf) { cpF = ds.cpf; return renderCp(); }
   if (ds.cpset) { const c = findCp(ds.name); if (c) { c.status = ds.cpset; persist(); renderCp(); openCp(c.name); } return; }
   if (b.id === 'cpAdd') {
-    const name = $('cpName').value.trim(), note = $('cpNote').value.trim();
+    const name = $('cpName').value.trim(), note = $('cpAddNote').value.trim();
     if (!name) return toast('Введите ник контрагента');
     const ex = findCp(name);
     if (ex) Object.assign(ex, { status: cpStatus, note: note || ex.note }); else S.cps.unshift({ name, status: cpStatus, note, ts: Date.now() });
-    $('cpName').value = ''; $('cpNote').value = ''; persist(); renderCp();
+    $('cpName').value = ''; $('cpAddNote').value = ''; persist(); renderCp();
     return toast(ex ? `${name}: обновлено` : `${name} добавлен: ${CPS[cpStatus].toLowerCase()}`);
   }
   if (ds.cpdel) return confirmSheet('Удалить контрагента?', ds.cpdel, 'Удалить', () => { S.cps = S.cps.filter(c => c.name !== ds.cpdel); persist(); renderCp(); }, true);
@@ -2132,9 +2159,15 @@ $('importFile').addEventListener('change', e => {
       if (!trades && Array.isArray(data.calculations)) trades = data.calculations.map(fromOld);   // файл из старой версии
       if (!Array.isArray(trades)) throw new Error('format');
       const ids = new Set(S.trades.map(t => String(t.id)));
-      const fresh = trades.filter(t => t && t.ts && !ids.has(String(t.id)));
+      // Берём только целые сделки: с датой, id и числами — одна битая запись иначе ломает историю
+      const ok = t => t && t.id != null && t.ts && !isNaN(new Date(t.ts)) && ['sum', 'buy', 'sell', 'profit'].every(k => isFinite(+t[k]));
+      const fresh = trades.filter(ok).filter(t => !ids.has(String(t.id)) && ids.add(String(t.id)))
+        .map(t => ({ ...t, sum: +t.sum, buy: +t.buy, sell: +t.sell, profit: +t.profit, cur: SYM[t.cur] ? t.cur : 'RUB', mode: t.mode || 'deal',
+          feeExType: t.feeExType || 'pct', feeWdType: t.feeWdType || 'fixed', comm: +t.comm || 0, profitPct: +t.profitPct || 0, spreadPct: +t.spreadPct || 0 }));
       S.trades = S.trades.concat(fresh).sort((a, b) => new Date(b.ts) - new Date(a.ts));
-      if (data.settings) S.settings = { ...S.settings, ...data.settings };
+      // Подписку, платежи и состояние этого устройства из чужого или старого файла не берём
+      const { pro, proUntil, proSince, proPeriod, payments, autoRenew, payMethod, incog, a2hsSeen, onboarded, ...rest } = data.settings || {};
+      S.settings = { ...S.settings, ...rest };
       if (Array.isArray(data.cps)) data.cps.forEach(c => { if (c?.name && !findCp(c.name)) S.cps.push(c); });
       persist(); applyTheme(); render(); toast(`Загружено сделок: ${fresh.length}`);
     } catch (err) { toast('Не удалось прочитать файл. Нужен JSON-экспорт P2Pro'); }
@@ -2148,7 +2181,7 @@ function fromOld(c) {
     feeWd: c.withdrawFee || 0, feeWdType: c.feeTypeWithdraw === 'fixed' ? 'fixed' : 'pct' };
   const r = compute(inp);
   if (!r) return null;
-  return { id: 'old' + c.id, ts: c.dateObj || new Date(c.id).toISOString(), cur: c.currency || 'RUB', mode: 'deal', ex: '—', bank: '—', note: '',
+  return { id: 'old' + c.id, ts: c.dateObj || new Date(+c.id || Date.now()).toISOString(), cur: c.currency || 'RUB', mode: 'deal', ex: '—', bank: '—', note: '',
     buy: +c.buy, sell: +c.sell, sum: +c.sum, sales: null, feeEx: +inp.feeEx, feeExType: inp.feeExType, feeWd: +inp.feeWd, feeWdType: inp.feeWdType,
     qty: r.qty, soldQty: r.soldQty, gross: r.gross, cost: r.cost, commEx: r.commEx, commWd: r.commWd, comm: r.comm,
     profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: !!c.isFavorite };
@@ -2321,6 +2354,7 @@ function subCheck() {
     st.proPeriod ||= 'm'; st.proSince ||= Date.now(); st.proUntil = st.proSince + PERIOD_DAYS[st.proPeriod] * 864e5; st.autoRenew ??= true;
     st.payments ||= [{ ts: st.proSince, amount: PERIOD_PRICE[st.proPeriod], period: st.proPeriod, method: 'card' }];
   }
+  st.payments ||= []; if (!PERIOD_DAYS[st.proPeriod]) st.proPeriod = 'm';
   while (Date.now() > st.proUntil) {
     if (!st.autoRenew) { st.pro = false; persist(); setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 2600); return; }
     st.payments.unshift({ ts: st.proUntil, amount: PERIOD_PRICE[st.proPeriod], period: st.proPeriod, method: st.payMethod || 'card', auto: true });
@@ -2410,13 +2444,14 @@ show(TABS.includes(startTab) ? startTab : 'calc');
 // CSV с «;» и запятой в дробях — так его правильно открывает русский Excel и Google Таблицы
 function csvExport(list, name) {
   if (!list.length) return toast('Нет сделок для выгрузки');
-  const n = v => v == null || v === '' || isNaN(v) ? '' : String(Math.round(v * 100) / 100).replace('.', ',');
-  const q = v => { v = String(v ?? ''); return /[";\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const n = (v, d = 2) => v == null || v === '' || isNaN(v) ? '' : String(+(+v).toFixed(d)).replace('.', ',');
+  // Текст, начинающийся с = + - @, Excel принял бы за формулу
+  const q = v => { v = String(v ?? ''); if (/^[=+\-@]/.test(v) && isNaN(v.replace(',', '.'))) v = "'" + v; return /[";\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const MODES = { deal: 'Сделка', circle: 'Круг', tri: 'Треугольник' };
   const rows = [['Дата', 'Время', 'Режим', 'Биржа', 'Банк', 'Валюта', 'Курс покупки', 'Курс продажи', 'Сумма', 'USDT', 'Комиссии', 'Прибыль', 'Прибыль, %', 'Контрагенты', 'Заметка', 'Избранное']];
   list.forEach(t => { const d = new Date(t.ts);
     rows.push([d.toLocaleDateString('ru-RU'), d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }), MODES[t.mode] || t.mode, t.ex, t.bank, t.cur,
-      n(t.buy), n(t.sell), n(t.sum), n(t.qty), n(t.comm), n(t.profit), n(t.profitPct), tradeCps(t).join(', '), t.note, t.fav ? 'да' : '']); });
+      n(t.buy, 6), n(t.sell, 6), n(t.sum), n(t.qty), n(t.comm), n(t.profit), n(t.profitPct), tradeCps(t).join(', '), t.note, t.fav ? 'да' : '']); });
   const blob = new Blob(['﻿' + rows.map(r => r.map(q).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name + '.csv';
   document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000);
