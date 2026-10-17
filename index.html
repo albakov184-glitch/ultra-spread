@@ -563,7 +563,9 @@ html, body { overscroll-behavior-y: contain; }
 .pp-ring::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; animation: spin 1.1s linear infinite;
   background: conic-gradient(from 0deg, transparent 0 78%, color-mix(in srgb, var(--accent) 70%, transparent));
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); }
-.pp-icon { position: absolute; inset: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); animation: ppPulse 1.2s ease-in-out infinite; }
+.pp-icon { position: absolute; inset: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--accent); animation: ppPulse 1.2s ease-in-out infinite; }
+.pay-chip { display: inline-flex; align-items: center; gap: 6px; }
+.pay-chip svg { flex: none; }
 @keyframes ppPulse { 50% { transform: scale(.92); } }
 .pp-ring.ok::before { display: none; }
 .pp-ring.ok .pp-arc { stroke: var(--pos); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pos) 60%, transparent)); }
@@ -1791,6 +1793,14 @@ function plansHtml() {
     <div class="plan pro"><h4>PRO</h4><span class="price">490 ₽<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
     ${pro ? '<span class="muted small">Текущий (демо)</span>' : '<button class="btn primary" data-plan="pro">Включить демо</button>'}</div>`;
 }
+// Значки способов оплаты: узнаваемые логотипы в цвете
+function payIcon(k, z = 18) {
+  const sv = (body, extra = '') => `<svg width="${z}" height="${z}" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${body}</svg>`;
+  if (k === 'usdt') return sv('<circle cx="12" cy="12" r="12" fill="#26A17B"/><path fill="#fff" d="M6.4 5.9h11.2v2.7h-4.2v2.15c2.55.15 4.45.7 4.45 1.35s-1.9 1.2-4.45 1.35v4.7h-2.8v-4.7C8 13.3 6.15 12.75 6.15 12.1s1.85-1.2 4.45-1.35V8.6H6.4zm4.2 5.6c-1.95.12-3.3.42-3.3.6 0 .2 1.5.52 3.3.62V11.5zm2.8 0v1.22c1.8-.1 3.3-.42 3.3-.62 0-.18-1.35-.48-3.3-.6z"/>');
+  if (k === 'stars') return sv('<defs><linearGradient id="stG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD84D"/><stop offset="1" stop-color="#F5A300"/></linearGradient></defs><path fill="url(#stG)" d="m12 1.8 3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8l-6.2 3.3 1.2-7-5.1-4.9 7-1z"/>');
+  if (k === 'sbp') return sv('<path fill="#5B57A2" d="M3 6.3 5.6 11v2.9L3 18.6z"/><path fill="#D90751" d="M13 9.3 15.4 8l6.3-.1-8.7 5.2z"/><path fill="#FAB718" d="M13 9.2V2L3 6.3l2.6 4.7z"/><path fill="#63B22F" d="M5.6 13.9 13 18.4v4L3 18.6z"/><path fill="#1487C9" d="m13 13.1 8.7 5.3-8.7 4z"/><path fill="#017F36" d="M13 13.1 5.6 13.9 13 18.4z"/><path fill="#984995" d="M5.6 11 13 9.2v3.9l-7.4.8z"/>');
+  return sv('<rect x="2" y="5" width="20" height="14" rx="3" fill="#F2B54B"/><rect x="2" y="8.2" width="20" height="2.6" fill="#1B1405" opacity=".75"/><rect x="5" y="14" width="6" height="1.8" rx=".9" fill="#1B1405" opacity=".55"/>');
+}
 // Окно PRO. Оплата демо: реквизиты не нужны, деньги не списываются
 let payMethod = 'card', payPeriod = 'm';
 const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
@@ -1807,7 +1817,7 @@ function openPlans(why) {
       <button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>490 ₽</b><span>в месяц</span></button>
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−32%</em><span>Год</span><b>3 990 ₽</b><span>≈ 333 ₽ в месяц</span></button></div>
     <span class="label">Способ оплаты</span>
-    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${l}</button>`).join('')}</div>
+    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>
     <span class="muted small" style="text-align:center">Демо-оплата для теста: реквизиты не нужны, деньги не списываются.</span>`);
 }
@@ -1815,16 +1825,12 @@ const showCheckout = () => openPlans();
 
 // Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
 async function payProcess() {
-  const M = {
-    card: ['Банковская карта', '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18M7 15h4"/>', 'Связываемся с банком'],
-    sbp: ['СБП', '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', 'Ждём подтверждение СБП'],
-    stars: ['Telegram Stars', '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>', 'Списываем Telegram Stars'],
-    usdt: ['USDT', '<path d="M5 6h14M12 6v13M7.5 11c1.5.7 3 1 4.5 1s3-.3 4.5-1"/>', 'Проверяем перевод USDT'] }[payMethod];
-  const ico = d => `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-  const steps = [M[2], 'Проверяем платёж', 'Подключаем PRO'], price = payPeriod === 'y' ? '3 990 ₽ · год' : '490 ₽ · месяц';
+  const M = { card: ['Банковская карта', 'Связываемся с банком'], sbp: ['СБП', 'Ждём подтверждение СБП'],
+    stars: ['Telegram Stars', 'Списываем Telegram Stars'], usdt: ['USDT', 'Проверяем перевод USDT'] }[payMethod];
+  const steps = [M[1], 'Проверяем платёж', 'Подключаем PRO'], price = payPeriod === 'y' ? '3 990 ₽ · год' : '490 ₽ · месяц';
   sheet(`<div class="pay-proc" role="status" aria-live="polite">
     <div class="pp-ring" id="ppRing"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" id="ppArc" cx="60" cy="60" r="52"/></svg>
-      <div class="pp-icon" id="ppIcon">${ico(M[1])}</div></div>
+      <div class="pp-icon" id="ppIcon">${payIcon(payMethod, 44)}</div></div>
     <h3 id="ppTitle">Обрабатываем платёж</h3><span class="muted small">${price} · ${M[0]}</span>
     <ul class="pp-steps">${steps.map((t, i) => `<li id="ppS${i}"><i></i>${t}</li>`).join('')}</ul>
     <span class="muted small">Демо-оплата: деньги не списываются</span></div>`);
