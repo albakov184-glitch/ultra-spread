@@ -217,8 +217,6 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .star { color: var(--accent); font-size: 12px; }
 .empty { text-align: center; color: var(--muted); padding: 32px 12px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .empty b { color: var(--fg); }
-.sample-note { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 13px; }
-.sample-note button { font-weight: 600; color: var(--accent); white-space: nowrap; }
 
 /* analytics */
 .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -492,7 +490,6 @@ img { max-width: 100%; }
 
   <!-- ============ ИСТОРИЯ ============ -->
   <section id="tab-hist" class="app" style="gap:12px" hidden>
-    <div class="sample-note" id="sampleNoteH" hidden><span>Это пример данных, чтобы было видно, как всё работает</span><button data-clear-sample>Удалить пример</button></div>
     <div class="search">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Сумма, курс, биржа, банк, заметка" aria-label="Поиск по сделкам">
@@ -504,7 +501,6 @@ img { max-width: 100%; }
 
   <!-- ============ АНАЛИТИКА ============ -->
   <section id="tab-stats" class="app" hidden>
-    <div class="sample-note" id="sampleNoteS" hidden><span>Это пример данных</span><button data-clear-sample>Удалить пример</button></div>
     <div class="chips" id="sPeriod"></div>
     <div class="seg sm" id="sCurSeg" hidden><button data-scur="RUB" class="on">₽ Рубли</button><button data-scur="USD">$ Доллары</button></div>
 
@@ -823,7 +819,9 @@ function compute(i) {
 }
 
 let S = load();
-if (!S) { S = structuredClone(DEFAULT); S.trades = makeSample(); }
+if (!S) S = structuredClone(DEFAULT);
+// Примерные сделки из ранних тестовых версий удаляем, свои сделки пользователя не трогаем
+S.trades = S.trades.filter(t => !t.sample);
 
 function draftInput() {
   const d = S.draft, st = S.settings;
@@ -998,7 +996,7 @@ function buildTrade() {
     profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: false
   } };
 }
-const monthCount = () => { const n = new Date(); return S.trades.filter(t => !t.sample && new Date(t.ts).getMonth() === n.getMonth() && new Date(t.ts).getFullYear() === n.getFullYear()).length; };
+const monthCount = () => { const n = new Date(); return S.trades.filter(t => new Date(t.ts).getMonth() === n.getMonth() && new Date(t.ts).getFullYear() === n.getFullYear()).length; };
 function save() {
   const { t, err } = buildTrade();
   if (err) return toast(err);
@@ -1042,7 +1040,6 @@ function inPeriod(t, p) {
 function renderHistory() {
   $('hFilter').innerHTML = FILTERS.map(([k, l]) => `<button class="chip ${k === hFilter ? 'on' : ''}" data-hf="${k}">${l}</button>`).join('');
   $('hPeriod').innerHTML = PERIODS.map(([k, l]) => `<button class="chip ${k === hPeriod ? 'on' : ''}" data-hp="${k}">${l}</button>`).join('');
-  $('sampleNoteH').hidden = !S.trades.some(t => t.sample);
   const q = $('q').value.trim().toLowerCase();
   const list = S.trades.filter(t => inPeriod(t, hPeriod))
     .filter(t => hFilter === 'all' || (hFilter === 'pos' && t.profit > 0) || (hFilter === 'neg' && t.profit < 0) || (hFilter === 'fav' && t.fav))
@@ -1115,7 +1112,6 @@ let sPeriod = '30', sCur = 'RUB', chartMode = 'bar', chart = null;
 function renderStats() {
   $('sPeriod').innerHTML = [['7', '7 дней'], ['30', '30 дней'], ['90', '90 дней'], ['all', 'Всё время']]
     .map(([k, l]) => `<button class="chip ${k === sPeriod ? 'on' : ''}" data-sp="${k}">${l}</button>`).join('');
-  $('sampleNoteS').hidden = !S.trades.some(t => t.sample);
   // Рубли и доллары считаются раздельно (в старой версии они складывались)
   const curs = [...new Set(S.trades.map(t => t.cur))];
   $('sCurSeg').hidden = curs.length < 2;
@@ -1275,7 +1271,6 @@ function renderComboList() {
 const CPS = { good: 'Надёжный', mid: 'Осторожно', bad: 'Чёрный список', new: 'Без отметки' };
 // Все ники сделки: контрагент, второй контрагент треугольника и продавцы частями
 const tradeCps = t => [t.cp, t.cp2, ...(t.sellers || []).map(x => x.cp)].map(x => (x || '').trim()).filter(Boolean);
-const SAMPLE_CPS = [{ name: 'fast_usdt_77', status: 'bad', note: 'Платил с карты третьего лица' }, { name: 'Ivan_P2P', status: 'good', note: 'Больше 10 сделок, платит сразу' }, { name: 'crypto_max', status: 'mid', note: 'Долго подтверждает оплату' }];
 const findCp = name => { const n = (name || '').trim().toLowerCase(); return n ? S.cps.find(c => c.name.toLowerCase() === n) : null; };
 function renderCpWarn() {
   const d = S.draft, tri = d.mode === 'tri';
@@ -1294,7 +1289,7 @@ function renderCp() {
   $('cpBody').classList.toggle('locked', !pro); $('cpBody').inert = !pro; $('cpPaywall').hidden = pro;
   document.querySelectorAll('[data-cps]').forEach(b => b.classList.toggle('on', b.dataset.cps === cpStatus));
   const q = $('cpQ').value.trim().toLowerCase();
-  const base = !pro && !S.cps.length ? SAMPLE_CPS : S.cps;
+  const base = S.cps;
   const count = k => base.filter(c => k === 'all' || c.status === k).length;
   $('cpFilter').innerHTML = [['all', 'Все'], ['good', 'Надёжные'], ['mid', 'Осторожно'], ['bad', 'Мошенники'], ['new', 'Без отметки']]
     .map(([k, l]) => `<button class="chip ${k === cpF ? 'on' : ''}" data-cpf="${k}">${l} · ${count(k)}</button>`).join('');
@@ -1632,7 +1627,6 @@ document.addEventListener('click', e => {
     if (ds.act === 'del') return confirmSheet('Удалить сделку?', `${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)} · ${money(t.profit, t.cur, true)}`, 'Удалить', () => { S.trades = S.trades.filter(x => x !== t); persist(); render(); toast('Сделка удалена'); }, true);
   }
   if (ds.close !== undefined) return closeSheet();
-  if (ds.clearSample !== undefined) return confirmSheet('Удалить пример данных?', 'Останутся только ваши сделки.', 'Удалить', () => { S.trades = S.trades.filter(t => !t.sample); persist(); render(); toast('Пример удалён'); }, true);
   if (ds.sp) { sPeriod = ds.sp; return renderStats(); }
   if (ds.scur) { sCur = ds.scur; return renderStats(); }
   if (b.id === 'chBar' || b.id === 'chCum') { chartMode = b.id === 'chBar' ? 'bar' : 'cum'; $('chBar').classList.toggle('on', chartMode === 'bar'); $('chCum').classList.toggle('on', chartMode !== 'bar'); return renderStats(); }
@@ -1734,29 +1728,6 @@ function fromOld(c) {
     buy: +c.buy, sell: +c.sell, sum: +c.sum, sales: null, feeEx: +inp.feeEx, feeExType: inp.feeExType, feeWd: +inp.feeWd, feeWdType: inp.feeWdType,
     qty: r.qty, soldQty: r.soldQty, gross: r.gross, cost: r.cost, commEx: r.commEx, commWd: r.commWd, comm: r.comm,
     profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: !!c.isFavorite };
-}
-
-/* ================= ПРИМЕР ДАННЫХ ================= */
-function makeSample() {
-  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const ex = ['Bybit', 'HTX', 'OKX', 'Bitget'], banks = ['Т-Банк', 'Сбер', 'Альфа', 'ВТБ'], sums = [20000, 30000, 50000, 75000, 100000, 150000];
-  const out = [];
-  for (let day = 34; day >= 0; day--) {
-    const n = day === 0 ? 2 : rnd() < .2 ? 0 : 1 + Math.floor(rnd() * 3);
-    for (let i = 0; i < n; i++) {
-      const d = new Date(); d.setDate(d.getDate() - day); d.setHours(10 + Math.floor(rnd() * 11), Math.floor(rnd() * 60), 0, 0);
-      if (d > new Date()) d.setTime(Date.now() - (i + 1) * 20 * 60e3);
-      const buy = +(92.4 + rnd() * 1.6).toFixed(2), spread = rnd() < .12 ? -(rnd() * .6) : .4 + rnd() * 1.8;
-      const sell = +(buy * (1 + spread / 100)).toFixed(2), sum = sums[Math.floor(rnd() * sums.length)];
-      const inp = { mode: 'deal', buy, sell, sum, feeEx: 0.1, feeExType: 'pct', feeWd: rnd() < .3 ? 1 : 0, feeWdType: 'fixed' };
-      const r = compute(inp);
-      out.push({ id: 's' + day + '_' + i, ts: d.toISOString(), cur: 'RUB', mode: 'deal', ex: ex[Math.floor(rnd() * 4)], bank: banks[Math.floor(rnd() * 4)], note: '',
-        buy, sell, sum, sales: null, feeEx: inp.feeEx, feeExType: 'pct', feeWd: inp.feeWd, feeWdType: 'fixed',
-        qty: r.qty, soldQty: r.soldQty, gross: r.gross, cost: r.cost, commEx: r.commEx, commWd: r.commWd, comm: r.comm,
-        profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: rnd() < .08, sample: true });
-    }
-  }
-  return out.sort((a, b) => new Date(b.ts) - new Date(a.ts));
 }
 
 /* ================= СТАРТ ================= */
