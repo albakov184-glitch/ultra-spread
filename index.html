@@ -552,6 +552,34 @@ html, body { overscroll-behavior-y: contain; }
 .a2hs .x { color: var(--muted); font-size: 22px; padding: 4px 8px; }
 .steps-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 14.5px; }
 .steps-list svg { vertical-align: -3px; color: var(--accent); }
+
+/* Обработка платежа: кольцо прогресса и шаги */
+.pay-proc { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 6px 0 2px; }
+.pp-ring { position: relative; width: 124px; height: 124px; margin-bottom: 4px; }
+.pp-ring svg.pp-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.pp-track { fill: none; stroke: var(--surface-2); stroke-width: 8; }
+.pp-arc { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 327; stroke-dashoffset: 327;
+  transition: stroke-dashoffset .8s cubic-bezier(.4, 0, .2, 1), stroke .3s; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent)); }
+.pp-ring::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; animation: spin 1.1s linear infinite;
+  background: conic-gradient(from 0deg, transparent 0 78%, color-mix(in srgb, var(--accent) 70%, transparent));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); }
+.pp-icon { position: absolute; inset: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); animation: ppPulse 1.2s ease-in-out infinite; }
+@keyframes ppPulse { 50% { transform: scale(.92); } }
+.pp-ring.ok::before { display: none; }
+.pp-ring.ok .pp-arc { stroke: var(--pos); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pos) 60%, transparent)); }
+.pp-ring.ok .pp-icon { background: var(--pos-soft); color: var(--pos); animation: ppOk .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes ppOk { from { transform: scale(.4); } }
+.pp-check path { stroke-dasharray: 40; stroke-dashoffset: 40; animation: ppDraw .45s .1s ease forwards; }
+@keyframes ppDraw { to { stroke-dashoffset: 0; } }
+.pp-steps { list-style: none; margin: 8px 0 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; align-self: stretch; text-align: left;
+  border-radius: 14px; background: var(--surface-2); }
+.pp-steps li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); transition: color .3s; }
+.pp-steps li i { width: 20px; height: 20px; border-radius: 50%; flex: none; border: 2px solid var(--line); display: grid; place-items: center; font-style: normal; }
+.pp-steps li.act { color: var(--fg); }
+.pp-steps li.act i { border-color: var(--accent); border-top-color: transparent; animation: spin .7s linear infinite; }
+.pp-steps li.done { color: var(--fg); }
+.pp-steps li.done i { border-color: var(--pos); background: var(--pos); animation: ppOk .35s cubic-bezier(.3, 1.6, .5, 1); }
+.pp-steps li.done i::after { content: "✓"; color: #06140D; font-size: 12px; font-weight: 800; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 <style>
@@ -1714,6 +1742,41 @@ function openPlans(why) {
     <span class="muted small" style="text-align:center">Демо-оплата для теста: реквизиты не нужны, деньги не списываются.</span>`);
 }
 const showCheckout = () => openPlans();
+
+// Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
+async function payProcess() {
+  const M = {
+    card: ['Банковская карта', '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18M7 15h4"/>', 'Связываемся с банком'],
+    sbp: ['СБП', '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', 'Ждём подтверждение СБП'],
+    stars: ['Telegram Stars', '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>', 'Списываем Telegram Stars'],
+    usdt: ['USDT', '<path d="M5 6h14M12 6v13M7.5 11c1.5.7 3 1 4.5 1s3-.3 4.5-1"/>', 'Проверяем перевод USDT'] }[payMethod];
+  const ico = d => `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const steps = [M[2], 'Проверяем платёж', 'Подключаем PRO'], price = payPeriod === 'y' ? '3 990 ₽ · год' : '490 ₽ · месяц';
+  sheet(`<div class="pay-proc" role="status" aria-live="polite">
+    <div class="pp-ring" id="ppRing"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" id="ppArc" cx="60" cy="60" r="52"/></svg>
+      <div class="pp-icon" id="ppIcon">${ico(M[1])}</div></div>
+    <h3 id="ppTitle">Обрабатываем платёж</h3><span class="muted small">${price} · ${M[0]}</span>
+    <ul class="pp-steps">${steps.map((t, i) => `<li id="ppS${i}"><i></i>${t}</li>`).join('')}</ul>
+    <span class="muted small">Демо-оплата: деньги не списываются</span></div>`);
+  const arc = $('ppArc');
+  for (let i = 0; i < steps.length; i++) {
+    $('ppS' + i)?.classList.add('act');
+    await wait(80); if (arc) arc.style.strokeDashoffset = 327 * (1 - (i + 1) / steps.length);
+    await wait(i === 0 ? 1000 : 800);
+    $('ppS' + i)?.classList.replace('act', 'done');
+  }
+  const st = S.settings; st.pro = true; st.proSince = Date.now(); st.proPeriod = payPeriod; persist(); render();
+  if ($('ppRing')) {
+    $('ppRing').classList.add('ok'); $('ppTitle').textContent = 'Оплата прошла';
+    $('ppIcon').innerHTML = '<svg class="pp-check" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success') ?? navigator.vibrate?.([12, 60, 18]);
+    await wait(1000);
+  }
+  sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO подключён 🎉</h3>
+    <p>Демо-оплата прошла, деньги не списывались. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
+    <button class="btn primary" data-close>Отлично</button>`);
+  confetti();
+}
 // Конфетти после подключения PRO
 function confetti() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -1946,16 +2009,7 @@ document.addEventListener('click', e => {
   if (ds.plan === 'pro') return showCheckout();
   if (ds.plan) { st.pro = false; persist(); closeSheet(); render(); return toast('Вы на тарифе Free'); }
   if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return; }
-  if (b.id === 'payBtn') {
-    b.disabled = true; b.innerHTML = '<span class="au-spin"></span>Обрабатываем платёж…';
-    return setTimeout(() => {
-      st.pro = true; st.proSince = Date.now(); st.proPeriod = payPeriod; persist(); render();
-      sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO подключён 🎉</h3>
-        <p>Демо-оплата прошла, деньги не списывались. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
-        <button class="btn primary" data-close>Отлично</button>`);
-      confetti();
-    }, 1400);
-  }
+  if (b.id === 'payBtn') return payProcess();
   if (ds.tour) return showTour(+ds.tour);
   if (b.id === 'tourBtn') return showTour(0);
   if (ds.guide != null) return showGuide();
