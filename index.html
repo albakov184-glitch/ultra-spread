@@ -2230,12 +2230,16 @@ function fromOld(c) {
 const SB_URL = 'https://liddntvlxlupwfhpuwnp.supabase.co', SB_KEY = 'sb_publishable_hY4TW4KD0KO_mNgNKWqIVw_9cyAgDj3';
 const APP_URL = location.origin + location.pathname;
 // Ссылки из писем приходят с #…type=signup / type=recovery / error=…; читаем до того, как Supabase очистит адрес
-const URL_HASH = location.hash, FROM_RECOVERY = /type=recovery/.test(URL_HASH), FROM_SIGNUP = /type=signup/.test(URL_HASH);
-const URL_ERR = /error_code=otp_expired/.test(URL_HASH) ? 'Ссылка из письма устарела — войдите или запросите новое письмо'
-  : /error=/.test(URL_HASH) ? 'Ссылка из письма не сработала — попробуйте ещё раз' : '';
+// Новые письма ведут на ?token_hash=…&type=…: код подтверждаем уже здесь, на сайте. Почтовые сервисы заранее «открывают» ссылки
+// для проверки на вирусы, и одноразовая ссылка прямо на Supabase сгорала до того, как человек на неё нажмёт
+const URL_HASH = location.hash, URL_Q = new URLSearchParams(location.search);
+const TOKEN_HASH = URL_Q.get('token_hash'), TOKEN_TYPE = URL_Q.get('type') || 'email';
+let FROM_RECOVERY = /type=recovery/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE === 'recovery'), FROM_SIGNUP = /type=signup/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE !== 'recovery');
+const LINK_ERR = 'Ссылка из письма уже использована или устарела. Если вы подтверждали почту — просто войдите, иначе запросите письмо снова';
+let URL_ERR = /error=/.test(URL_HASH) ? LINK_ERR : '';
 let sb = null;
 try { sb = window.supabase?.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' } }) || null; } catch (e) {}
-if (URL_ERR) history.replaceState(null, '', APP_URL);
+if (URL_ERR || TOKEN_HASH) history.replaceState(null, '', APP_URL);
 
 const USER_KEY = KEY + '.user', SYNC_KEY = KEY + '.sync', REM_KEY = KEY + '.rem';
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
@@ -2623,7 +2627,8 @@ function bootAccount() {
   renderAcc();
   // «Запомнить меня» выключено и браузер закрывали — выходим
   let alive = true; try { alive = !!sessionStorage.getItem(REM_KEY); } catch (e) {}
-  const session = sb ? sb.auth.getSession().then(r => r.data.session).catch(() => 'offline') : Promise.resolve('offline');
+  const verify = TOKEN_HASH && sb ? sb.auth.verifyOtp({ token_hash: TOKEN_HASH, type: TOKEN_TYPE }).then(r => { if (r.error) { URL_ERR = LINK_ERR; FROM_RECOVERY = FROM_SIGNUP = false; } }).catch(() => {}) : Promise.resolve();
+  const session = sb ? verify.then(() => sb.auth.getSession()).then(r => r.data.session).catch(() => 'offline') : Promise.resolve('offline');
   runSplash(async () => {
     let s = await Promise.race([session, wait(6000).then(() => 'offline')]);
     if (s && s !== 'offline' && lsGet(REM_KEY) === false && !alive && !FROM_RECOVERY && !FROM_SIGNUP) { await sb.auth.signOut({ scope: 'local' }).catch(() => {}); s = null; }
