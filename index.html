@@ -2715,8 +2715,9 @@ function renderAcc() {
   // Первая буква целиком: у «красивых» ников (𝔢𝔡𝔦𝔱 и т. п.) символ занимает две половинки, и одна половинка рисовалась квадратиком
   const ini = (Array.from((u.name || u.email).trim())[0] || '?').toUpperCase(), photo = tgPhoto(u);
   for (const el of [$('topAvatar'), $('accAva')]) {
-    el.textContent = ini;
-    if (photo) { const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer'; img.onload = () => { el.textContent = ''; el.appendChild(img); }; img.src = photo; }
+    el.textContent = ini; el.dataset.src = photo;
+    // Фото грузится не сразу: если за это время вошёл другой аккаунт или фото сменилось — старое не вставляем
+    if (photo) { const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer'; img.onload = () => { if (el.dataset.src === photo) { el.textContent = ''; el.appendChild(img); } }; img.src = photo; }
   } $('accName').textContent = u.name; $('accMail').textContent = tgMail(u.email) ? 'Вход через Telegram' + (u.tg ? ' · @' + u.tg : '') : u.email;
   $('accSince').textContent = 'С нами с ' + new Date(u.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + (syncState ? ' · ' + SYNC_TEXT[syncState] : '');
 }
@@ -2927,8 +2928,9 @@ async function tgSubscribed() {
   } catch (e) { return true; }
 }
 function subGate(onOk) {
-  if ($('subGate')) return;
-  const el = document.createElement('div'); el.id = 'subGate'; el.className = 'subgate'; el.setAttribute('role', 'dialog');
+  // Окно уже открыто (проверка при запуске) — запоминаем, что сделать после подписки
+  if ($('subGate')) { if (onOk) $('subGate').onOk = onOk; return; }
+  const el = document.createElement('div'); el.onOk = onOk; el.id = 'subGate'; el.className = 'subgate'; el.setAttribute('role', 'dialog');
   el.innerHTML = `<div class="sg-card"><div class="logo">P2</div><h2>Подпишитесь на канал P2Pro</h2>
     <p>Чтобы пользоваться P2Pro в Telegram, подпишитесь на наш канал — там новости, обновления и полезное для P2P.</p>
     <button class="au-btn au-tg" id="sgSub">${AI.tg} Подписаться</button>
@@ -2941,7 +2943,7 @@ function subGate(onOk) {
     const ok = await tgSubscribed();
     if (!ok) { b.disabled = false; b.textContent = 'Я подписался — проверить'; return $('sgErr').textContent = 'Подписка пока не видна. Подпишитесь на канал и нажмите ещё раз'; }
     el.remove(); if (!$('auth')) document.documentElement.style.overflow = '';
-    toast('Спасибо за подписку!'); onOk?.();
+    toast('Спасибо за подписку!'); el.onOk?.();
   };
 }
 

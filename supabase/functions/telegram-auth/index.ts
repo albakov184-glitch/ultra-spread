@@ -78,19 +78,22 @@ async function savePhoto(tg: TgUser, user: { id: string; user_metadata?: Record<
   const meta = user.user_metadata ?? {};
   if (Date.now() - Number(meta.avatar_at || 0) < 864e5 && meta.tg_username === (tg.username ?? '')) return;
   const api = (m: string) => fetch(`https://api.telegram.org/bot${TOKEN}/${m}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
-  let avatar = '';
-  const ph = await api(`getUserProfilePhotos?user_id=${tg.id}&limit=1`);
-  const sizes: { file_id: string; file_unique_id: string; width: number }[] = ph?.result?.photos?.[0] ?? [];
-  const pick = sizes.find((x) => x.width >= 160) ?? sizes[sizes.length - 1];
-  if (pick) {
-    const f = await api(`getFile?file_id=${encodeURIComponent(pick.file_id)}`);
-    const img = f?.result?.file_path && await fetch(`https://api.telegram.org/file/bot${TOKEN}/${f.result.file_path}`, { signal: AbortSignal.timeout(5000) });
-    if (img?.ok) {
-      const path = `${user.id}.jpg`;
-      const { error } = await admin.storage.from('avatars').upload(path, new Uint8Array(await img.arrayBuffer()), { contentType: 'image/jpeg', upsert: true });
-      if (!error) avatar = admin.storage.from('avatars').getPublicUrl(path).data.publicUrl + '?v=' + pick.file_unique_id;
+  let avatar = String(meta.avatar || '');
+  try {
+    const ph = await api(`getUserProfilePhotos?user_id=${tg.id}&limit=1`);
+    const sizes: { file_id: string; file_unique_id: string; width: number }[] = ph?.result?.photos?.[0] ?? [];
+    const pick = sizes.find((x) => x.width >= 160) ?? sizes[sizes.length - 1];
+    if (ph?.ok && !pick) avatar = '';   // фото убрали или скрыли
+    if (pick) {
+      const f = await api(`getFile?file_id=${encodeURIComponent(pick.file_id)}`);
+      const img = f?.result?.file_path && await fetch(`https://api.telegram.org/file/bot${TOKEN}/${f.result.file_path}`, { signal: AbortSignal.timeout(5000) });
+      if (img?.ok) {
+        const path = `${user.id}.jpg`;
+        const { error } = await admin.storage.from('avatars').upload(path, new Uint8Array(await img.arrayBuffer()), { contentType: 'image/jpeg', upsert: true });
+        if (!error) avatar = admin.storage.from('avatars').getPublicUrl(path).data.publicUrl + '?v=' + pick.file_unique_id;
+      }
     }
-  }
+  } catch (e) { console.error('telegram-auth photo', e); }   // сбой Telegram: оставляем прежнее фото, но отметку времени ставим — иначе каждый вход ждал бы таймауты
   await admin.auth.admin.updateUserById(user.id, { user_metadata: { ...meta, avatar, avatar_at: Date.now(), tg_username: tg.username ?? '' } });
 }
 

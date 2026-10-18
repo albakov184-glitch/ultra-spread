@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   if (msg?.chat?.type === 'private' && TOKEN) {
     const text: string = msg.text ?? '';
     try {
-      if (text.startsWith('/start')) await send(msg.chat.id, WELCOME(esc(msg.from?.first_name ?? '').slice(0, 40)));
+      if (text.startsWith('/start')) await send(msg.chat.id, WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))));
       else await send(msg.chat.id, HELP);
     } catch (_) { /* сеть Telegram недоступна — пропускаем */ }
   }
