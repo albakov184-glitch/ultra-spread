@@ -980,8 +980,8 @@ img { max-width: 100%; }
     <div class="card">
       <span class="card-t">Документы</span>
       <div class="row2"><a class="btn" href="legal.html#terms" target="_blank" rel="noopener">Соглашение</a><a class="btn" href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a></div>
-      <div class="row2"><a class="btn" href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a class="btn" href="mailto:albakov184@gmail.com?subject=P2Pro%20%E2%80%94%20%D0%BF%D0%BE%D0%B4%D0%B4%D0%B5%D1%80%D0%B6%D0%BA%D0%B0">Поддержка</a></div>
-      <span class="muted small">Поддержка: albakov184@gmail.com</span>
+      <div class="row2"><a class="btn" href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a class="btn" href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка</a></div>
+      <span class="muted small">Поддержка в Telegram: @MVSR_P2P</span>
     </div>
 
     <div class="card">
@@ -2509,7 +2509,7 @@ function showAuth(m) {
     el.innerHTML = `<div class="glow"></div><div class="grid"></div><div class="au-brand"><div class="logo">P2</div><b>P2Pro</b></div>
       <div class="au-wrap" id="auWrap"><span class="au-cn tl"></span><span class="au-cn br"></span><span class="au-dia" id="auDia"></span><span class="au-orb" id="auOrb"></span>
         <form class="au-card" id="auCard" novalidate><div class="au-in" id="auIn"></div></form></div>
-      <p class="au-note">Входя в аккаунт, вы принимаете <a href="legal.html#terms" target="_blank" rel="noopener">Пользовательское соглашение</a> и <a href="legal.html#privacy" target="_blank" rel="noopener">Политику конфиденциальности</a>.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.<br><a href="tariffs.html" target="_blank" rel="noopener">Тарифы</a> · <a href="mailto:albakov184@gmail.com">Поддержка</a></p>`;
+      <p class="au-note">Входя в аккаунт, вы принимаете <a href="legal.html#terms" target="_blank" rel="noopener">Пользовательское соглашение</a> и <a href="legal.html#privacy" target="_blank" rel="noopener">Политику конфиденциальности</a>.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.<br><a href="tariffs.html" target="_blank" rel="noopener">Тарифы</a> · <a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка</a></p>`;
     document.body.appendChild(el);
     el.addEventListener('submit', e => { e.preventDefault(); submitAuth(); });
     el.addEventListener('click', authClick);
@@ -2683,7 +2683,7 @@ async function deleteAccount() {
   catch (e) {
     // Ответ мог потеряться уже после удаления: если сервер больше не знает пользователя — аккаунт удалён
     const gone = await sb?.auth.getUser().then(r => !!r.error && r.error.status !== 0 && !/fetch|network/i.test(r.error.message), () => false);
-    if (!gone) return toast(/fetch|network|offline/i.test(e?.message) ? 'Не получилось удалить аккаунт: нет связи с сервером. Попробуйте позже' : 'Не получилось удалить аккаунт. Напишите нам: albakov184@gmail.com');
+    if (!gone) return toast(/fetch|network|offline/i.test(e?.message) ? 'Не получилось удалить аккаунт: нет связи с сервером. Попробуйте позже' : 'Не получилось удалить аккаунт. Напишите в поддержку: Telegram @MVSR_P2P');
   }
   await logout(); toast('Аккаунт удалён');
 }
