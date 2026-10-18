@@ -456,6 +456,10 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .au-alt { height: 48px; border-radius: 14px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03); color: #E8ECF2;
   display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 14.5px; }
 .au-alt small { color: #8691A2; font-weight: 500; }
+a.au-alt { text-decoration: none; }
+.au-btn.au-tg { background: #2AABEE; color: #fff; box-shadow: 0 10px 30px rgba(42,171,238,.25); }
+.au-tg svg { fill: #fff; }
+.au-tg .au-spin { border-color: rgba(255,255,255,.3); border-top-color: #fff; }
 .au-foot { text-align: center; color: #8691A2; font-size: 13.5px; margin-top: 2px; }
 .au-err { color: #FF6B6B; font-size: 12.5px; margin: -4px 2px 0; min-height: 0; }
 .au-str { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: -4px; }
@@ -2282,6 +2286,8 @@ const APP_URL = location.origin + location.pathname;
 // Новые письма ведут на ?token_hash=…&type=…: код подтверждаем уже здесь, на сайте. Почтовые сервисы заранее «открывают» ссылки
 // для проверки на вирусы, и одноразовая ссылка прямо на Supabase сгорала до того, как человек на неё нажмёт
 const URL_HASH = location.hash, URL_Q = new URLSearchParams(location.search);
+// Мини-апп Telegram передаёт подписанные данные пользователя в адресе (#tgWebAppData=…). Берём сразу: скрипт Telegram грузится позже
+const TG_INIT = (() => { try { return new URLSearchParams(location.hash.slice(1)).get('tgWebAppData') || ''; } catch (e) { return ''; } })();
 const TOKEN_HASH = URL_Q.get('token_hash'), TOKEN_TYPE = URL_Q.get('type') || 'email';
 let FROM_RECOVERY = /type=recovery/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE === 'recovery'), FROM_SIGNUP = /type=signup/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE !== 'recovery');
 const LINK_ERR = 'Ссылка из письма уже использована или устарела. Если вы подтверждали почту — просто войдите, иначе запросите письмо снова';
@@ -2297,7 +2303,7 @@ const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localSt
 let U = lsGet(USER_KEY);
 const me = () => U;
 function setUser(user) {
-  U = { id: user.id, email: user.email, name: user.user_metadata?.name || (U?.id === user.id && U.name) || user.email.split('@')[0], created: user.created_at };
+  U = { id: user.id, email: user.email, name: user.user_metadata?.name || (U?.id === user.id && U.name) || user.email.split('@')[0], created: user.created_at, tg: user.user_metadata?.tg_username || '' };
   lsSet(USER_KEY, U);
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -2484,15 +2490,17 @@ function runSplash(done) {
   setTimeout(() => { el.classList.add('out'); done(); setTimeout(() => el.remove(), 500); }, T);
 }
 
+// В мини-аппе Telegram главный способ входа — одной кнопкой, без почты и пароля
+const tgTop = () => inTelegram() ? `<button type="button" class="au-btn au-tg" data-au="tg">${AI.tg} Войти через Telegram</button><div class="au-or">или по почте</div>` : '';
 let auMode = 'in', auRemember = lsGet(REM_KEY) !== false, auAgree = false, auMail = '';
 function authHtml(m) {
   const pass = (ac, ph) => `<label class="au-f" id="fPass">${AI.lock}<input id="auPass" type="password" autocomplete="${ac}" placeholder="${ph}"><button type="button" class="au-eye" data-au="eye" aria-label="Показать пароль">${AI.eye}</button></label>`;
   const mail = `<label class="au-f" id="fMail">${AI.mail}<input id="auMail" type="email" inputmode="email" autocomplete="email" placeholder="Эл. почта" value="${esc(auMail)}"></label>`;
   if (m === 'in') return `<div class="au-ic">${AI.shield}</div><h2>С возвращением</h2><p class="au-sub">Войдите, чтобы продолжить</p>
-    ${mail}${pass('current-password', 'Пароль')}<div class="au-err" id="auErr" role="alert"></div>
+    ${tgTop()}${mail}${pass('current-password', 'Пароль')}<div class="au-err" id="auErr" role="alert"></div>
     <div class="au-row"><button type="button" class="au-sw" role="switch" aria-checked="${auRemember}" data-au="rem"><i></i>Запомнить меня</button><button type="button" class="au-link" data-au="forgot">Забыли пароль?</button></div>
     <button class="au-btn" id="auGo" type="submit">Войти ${AI.arrow}</button>
-    <div class="au-or">или</div><button type="button" class="au-alt" data-au="tg">${AI.tg} Telegram <small>· скоро</small></button>
+    ${inTelegram() ? '' : `<div class="au-or">или</div><a class="au-alt" href="https://t.me/P2ProAppBot" target="_blank" rel="noopener">${AI.tg} Открыть в Telegram</a>`}
     <div class="au-foot">Нет аккаунта? <button type="button" class="au-link" data-au="up">Создать</button></div>`;
   if (m === 'forgot') return `<div class="au-ic">${AI.key}</div><h2>Сброс пароля</h2><p class="au-sub">Пришлём на почту ссылку, по ней вы зададите новый пароль</p>
     ${mail}<div class="au-err" id="auErr" role="alert"></div>
@@ -2504,7 +2512,7 @@ function authHtml(m) {
     ${m === 'mail' ? `<button type="button" class="au-btn" id="auGo" data-au="resend">Отправить ещё раз</button>` : ''}
     <div class="au-foot">Письма нет — загляните в «Спам». <button type="button" class="au-link" data-au="in">Войти</button></div>`;
   return `<div class="au-ic">${AI.user}</div><h2>Создать аккаунт</h2><p class="au-sub">Бесплатно, за 30 секунд</p>
-    <label class="au-f" id="fName">${AI.user}<input id="auName" type="text" autocomplete="nickname" placeholder="Имя или ник" maxlength="32"></label>
+    ${tgTop()}    <label class="au-f" id="fName">${AI.user}<input id="auName" type="text" autocomplete="nickname" placeholder="Имя или ник" maxlength="32"></label>
     ${mail}${pass('new-password', 'Пароль, от 6 символов')}
     <div class="au-str" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="au-str-t" id="auStrT">Надёжность пароля</div>
     <div class="au-err" id="auErr" role="alert"></div>
@@ -2565,7 +2573,7 @@ function authClick(e) {
   if (a === 'rem') { auRemember = !auRemember; return b.setAttribute('aria-checked', auRemember); }
   if (a === 'agree') { auAgree = !auAgree; b.setAttribute('aria-checked', auAgree); return $('auErr').textContent = ''; }
   if (a === 'resend') return resendMail(b);
-  if (a === 'tg') return toast('Вход через Telegram @P2ProAppBot — скоро');
+  if (a === 'tg') return tgLogin(b);
 }
 async function resendMail(b) {
   auMail = $('auMail')?.value.trim().toLowerCase() || auMail;
@@ -2639,6 +2647,27 @@ async function submitAuthInner(btn) {
     return loginDone(data.user, btn);
   } catch (e) { auErr(authErrText(e)); }
 }
+// Вход через Telegram: функция telegram-auth проверяет подпись Telegram и выдаёт сессию.
+// Аккаунт привязан к Telegram, почта у него служебная (…@telegram.invalid), пароля нет
+const TG_AUTH_ERR = { old: 'Данные входа устарели — закройте P2Pro и откройте снова из бота', bad: 'Telegram не подтвердил вход — откройте P2Pro заново из бота @P2ProAppBot' };
+async function tgLogin(btn) {
+  const init = window.Telegram?.WebApp?.initData || TG_INIT;
+  if (!init || btn.disabled || auSending || auBusy) return;
+  if (!sb) return auErr('Нет связи с сервером. Проверьте интернет и обновите страницу');
+  auSending = true; btn.disabled = true;
+  const label = btn.innerHTML;
+  btn.innerHTML = '<span class="au-spin"></span>Входим через Telegram…';
+  try {
+    const r = await fetch(SB_URL + '/functions/v1/telegram-auth', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ initData: init }) });
+    const j = await r.json().catch(() => ({}));
+    if (!j.access_token) return auErr(TG_AUTH_ERR[j.error] || 'Не получилось войти через Telegram. Попробуйте ещё раз или напишите в поддержку @MVSR_P2P');
+    const { data, error } = await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+    if (error || !data.user) return auErr(authErrText(error));
+    auRemember = true;
+    return await loginDone(data.user, btn);
+  } catch (e) { auErr(authErrText(e)); }
+  finally { auSending = false; if (!btn.dataset.ok) { btn.disabled = false; btn.innerHTML = label; } }
+}
 async function loginDone(user, btn) {
   const fresh = !SH || SH.owner !== user.id;
   setUser(user);
@@ -2657,12 +2686,13 @@ function closeAuth(quiet) {
   setTimeout(() => { $('auth')?.remove(); if (!quiet) afterAuth(); }, 450);
 }
 const SYNC_TEXT = { ok: '☁ Синхронизировано', wait: 'Синхронизация…', off: 'Нет сети — сохраним, когда появится', err: 'Не удалось синхронизировать — повторим через минуту', local: 'Нет связи с сервером — работаем офлайн' };
+const tgMail = m => /@telegram\.invalid$/i.test(m || '');
 function renderAcc() {
   const u = me(); $('topAvatar').hidden = !u; $('accCard').hidden = !u;
   try { renderTestPanel(); } catch (e) {}
   if (!u) return;
   const ini = (u.name || u.email).trim()[0].toUpperCase();
-  $('topAvatar').textContent = ini; $('accAva').textContent = ini; $('accName').textContent = u.name; $('accMail').textContent = u.email;
+  $('topAvatar').textContent = ini; $('accAva').textContent = ini; $('accName').textContent = u.name; $('accMail').textContent = tgMail(u.email) ? 'Вход через Telegram' + (u.tg ? ' · @' + u.tg : '') : u.email;
   $('accSince').textContent = 'С нами с ' + new Date(u.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + (syncState ? ' · ' + SYNC_TEXT[syncState] : '');
 }
 $('topAvatar').addEventListener('click', () => show('prof'));
@@ -3049,7 +3079,7 @@ document.addEventListener('click', e => { if (e.target.closest('#monthCardBtn'))
 let installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-const inTelegram = () => !!window.Telegram?.WebApp?.initData;
+const inTelegram = () => !!(window.Telegram?.WebApp?.initData || TG_INIT);
 function maybeA2HS() {
   if (isStandalone() || inTelegram() || S.settings.a2hsSeen || $('a2hs') || !S.trades.length) return;
   const el = document.createElement('div'); el.className = 'a2hs'; el.id = 'a2hs'; el.setAttribute('role', 'dialog');
