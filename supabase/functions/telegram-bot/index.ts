@@ -46,20 +46,23 @@ async function send(chatId: number, text: string, buttons = true) {
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!));
 
 /* ================= АДМИН-ПАНЕЛЬ ================= */
+// Кнопки: /admin → меню → список пользователей (по 10 на странице) → карточка → выдать/забрать PRO.
+// Текстовые команды /stats, /user, /give, /revoke тоже работают. Обычный текст от владельца — поиск пользователя
 const admin = createClient(SB_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
-const DAY = 864e5;
+const DAY = 864e5, PAGE = 10;
 const date = (v: string | number | null | undefined) => v ? new Date(v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' }).replace(' г.', '') : '—';
 const isTg = (email?: string) => /@telegram\.invalid$/i.test(email ?? '');
 type AUser = { id: string; email?: string; created_at: string; last_sign_in_at?: string; user_metadata?: Record<string, unknown> };
+type Sub = { user_id: string; pro_since: string | null; pro_until: string | null; auto_renew: boolean; pay_method: string | null; period: string; payments: unknown[] } | null;
+type Btn = { text: string; callback_data?: string; url?: string; web_app?: { url: string } };
+const kb = (rows: Btn[][]) => ({ inline_keyboard: rows });
+const isPro = (s: Sub) => !!s?.pro_until && Date.parse(s.pro_until) > Date.now();
 
-const ADMIN_HELP =
-  `<b>Админ-панель P2Pro</b>\n\n` +
-  `/stats — пользователи и подписки\n` +
-  `/user @ник — карточка пользователя (можно почту или Telegram id)\n` +
-  `/give @ник 30 — выдать PRO на 30 дней (дни добавляются к текущему сроку)\n` +
-  `/revoke @ник — забрать PRO`;
+const MENU = () => kb([[{ text: '📊 Статистика', callback_data: 'st' }, { text: '👥 Пользователи', callback_data: 'l:0' }], [{ text: '🔍 Поиск', callback_data: 'fs' }]]);
+const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
+  `Команды тоже работают: /stats, /user @ник, /give @ник 30, /revoke @ник`;
 
-// Все аккаунты (Supabase отдаёт страницами по 1000)
+// Все аккаунты (Supabase отдаёт страницами по 1000), новые сверху
 async function allUsers(): Promise<AUser[]> {
   const out: AUser[] = [];
   for (let page = 1; page < 100; page++) {
@@ -68,7 +71,12 @@ async function allUsers(): Promise<AUser[]> {
     out.push(...(data.users as AUser[]));
     if (data.users.length < 1000) break;
   }
-  return out;
+  return out.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+}
+
+async function userById(id: string): Promise<AUser | null> {
+  const { data } = await admin.auth.admin.getUserById(id);
+  return (data?.user as AUser) ?? null;
 }
 
 // Ищем по @нику Telegram, Telegram id или почте
@@ -76,9 +84,7 @@ async function findUser(q: string): Promise<AUser | null> {
   q = q.trim().replace(/^https?:\/\/t\.me\//i, '');
   if (/^\d{4,15}$/.test(q)) {
     const { data } = await admin.from('tg_users').select('user_id').eq('tg_id', Number(q)).maybeSingle();
-    if (!data) return null;
-    const { data: u } = await admin.auth.admin.getUserById(data.user_id);
-    return (u?.user as AUser) ?? null;
+    return data ? userById(data.user_id) : null;
   }
   const users = await allUsers();
   if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) return users.find((u) => u.email?.toLowerCase() === q.toLowerCase()) ?? null;
@@ -86,106 +92,169 @@ async function findUser(q: string): Promise<AUser | null> {
   return users.find((u) => String(u.user_metadata?.tg_username ?? '').toLowerCase() === nick) ?? null;
 }
 
-const who = (u: AUser) => {
-  const name = esc(String(u.user_metadata?.name ?? '').slice(0, 40)) || 'без имени';
-  const nick = String(u.user_metadata?.tg_username ?? '');
-  return `<b>${name}</b> · ` + (isTg(u.email) ? (nick ? '@' + esc(nick) : 'Telegram без ника') : esc(u.email ?? ''));
-};
+const nameOf = (u: AUser) => String(u.user_metadata?.name ?? '').slice(0, 40) || 'без имени';
+const contactOf = (u: AUser) => isTg(u.email) ? (u.user_metadata?.tg_username ? '@' + u.user_metadata.tg_username : 'Telegram без ника') : (u.email ?? '');
+const who = (u: AUser) => `<b>${esc(nameOf(u))}</b> · ${esc(contactOf(u))}`;
 
 async function tgIdOf(userId: string): Promise<number | null> {
   const { data } = await admin.from('tg_users').select('tg_id').eq('user_id', userId).maybeSingle();
   return data?.tg_id ?? null;
 }
+async function subOf(userId: string): Promise<Sub> {
+  const { data } = await admin.from('subscriptions').select('*').eq('user_id', userId).maybeSingle();
+  return data as Sub;
+}
 
-async function cmdStats() {
-  const users = await allUsers(), now = Date.now();
+async function statsText() {
+  const users = await allUsers(), now = Date.now(), iso = new Date().toISOString();
   const tgN = users.filter((u) => isTg(u.email)).length;
   const since = (d: number) => users.filter((u) => now - Date.parse(u.created_at) < d * DAY).length;
   const active = users.filter((u) => u.last_sign_in_at && now - Date.parse(u.last_sign_in_at) < 7 * DAY).length;
-  const { count: pro } = await admin.from('subscriptions').select('user_id', { count: 'exact', head: true }).gt('pro_until', new Date().toISOString());
-  const { count: gifts } = await admin.from('subscriptions').select('user_id', { count: 'exact', head: true }).gt('pro_until', new Date().toISOString()).eq('pay_method', 'gift');
+  const { count: pro } = await admin.from('subscriptions').select('user_id', { count: 'exact', head: true }).gt('pro_until', iso);
+  const { count: gifts } = await admin.from('subscriptions').select('user_id', { count: 'exact', head: true }).gt('pro_until', iso).eq('pay_method', 'gift');
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('deleted', false);
   return `<b>📊 Статистика P2Pro</b>\n\n` +
-    `👥 Пользователей: <b>${users.length}</b>\n` +
-    `   через Telegram: ${tgN} · по почте: ${users.length - tgN}\n` +
+    `👥 Пользователей: <b>${users.length}</b>\n   через Telegram: ${tgN} · по почте: ${users.length - tgN}\n` +
     `🆕 Новых за сутки: ${since(1)} · за неделю: ${since(7)} · за месяц: ${since(30)}\n` +
     `🔑 Входили за неделю: ${active}\n\n` +
-    `⭐ PRO сейчас: <b>${pro ?? 0}</b> (из них подарено: ${gifts ?? 0})\n` +
-    `📒 Сделок в базе: ${trades ?? 0}`;
+    `⭐ PRO сейчас: <b>${pro ?? 0}</b> (из них подарено: ${gifts ?? 0})\n📒 Сделок в базе: ${trades ?? 0}`;
 }
 
-async function cmdUser(q: string) {
-  if (!q) return 'Напишите так: <code>/user @ник</code>, <code>/user почта</code> или <code>/user Telegram-id</code>';
-  const u = await findUser(q);
-  if (!u) return 'Не нашёл пользователя. Проверьте ник — человек должен хоть раз войти в P2Pro через Telegram.';
-  const { data: s } = await admin.from('subscriptions').select('*').eq('user_id', u.id).maybeSingle();
+async function listView(page: number) {
+  const users = await allUsers(), pages = Math.max(1, Math.ceil(users.length / PAGE));
+  page = Math.min(Math.max(0, page), pages - 1);
+  const { data: subs } = await admin.from('subscriptions').select('user_id').gt('pro_until', new Date().toISOString());
+  const pro = new Set((subs ?? []).map((x: { user_id: string }) => x.user_id));
+  const rows: Btn[][] = users.slice(page * PAGE, page * PAGE + PAGE)
+    .map((u) => [{ text: `${pro.has(u.id) ? '⭐ ' : ''}${nameOf(u)} | ${contactOf(u)}`.slice(0, 60), callback_data: `u:${u.id}:${page}` }]);
+  rows.push([{ text: '‹‹', callback_data: `l:${page - 1}` }, { text: `${page + 1}/${pages}`, callback_data: 'nop' }, { text: '››', callback_data: `l:${page + 1}` }]);
+  rows.push([{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '‹ Меню', callback_data: 'm' }]);
+  return { text: `<b>👥 Пользователи</b> · всего ${users.length}\n\nНажмите на пользователя, чтобы открыть карточку. ⭐ — есть PRO.`, markup: kb(rows) };
+}
+
+async function cardView(u: AUser, back = 0) {
+  const s = await subOf(u.id), tgId = await tgIdOf(u.id);
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('user_id', u.id).eq('deleted', false);
-  const tgId = await tgIdOf(u.id);
-  const pro = s?.pro_until && Date.parse(s.pro_until) > Date.now();
-  return `<b>👤 Пользователь</b>\n\n${who(u)}\n` +
-    (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
-    `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\n` +
-    `Сделок: ${trades ?? 0}\n\n` +
-    (pro ? `⭐ PRO до <b>${date(s.pro_until)}</b>${s.pay_method === 'gift' ? ' (подарок)' : s.auto_renew ? ' · автопродление' : ''}` : 'Тариф: Free');
+  const text = `<b>👤 Пользователь</b>\n\n${who(u)}\n` + (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
+    `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}\n\n` +
+    (isPro(s) ? `⭐ PRO до <b>${date(s!.pro_until)}</b>${s!.pay_method === 'gift' ? ' (подарок)' : s!.auto_renew ? ' · автопродление' : ''}` : 'Тариф: Free');
+  const id = u.id;
+  const rows: Btn[][] = [
+    [{ text: '🎁 +7 дн', callback_data: `g:${id}:7` }, { text: '🎁 +30 дн', callback_data: `g:${id}:30` }],
+    [{ text: '🎁 +90 дн', callback_data: `g:${id}:90` }, { text: '🎁 +365 дн', callback_data: `g:${id}:365` }],
+  ];
+  if (isPro(s)) rows.push([{ text: '⛔ Забрать PRO', callback_data: `r:${id}` }]);
+  rows.push([{ text: '‹ К списку', callback_data: `l:${back}` }, { text: '‹ Меню', callback_data: 'm' }]);
+  return { text, markup: kb(rows) };
 }
 
-async function cmdGive(q: string, daysStr: string) {
-  const days = Number(daysStr);
-  if (!q || !Number.isInteger(days) || days < 1 || days > 3650) return 'Напишите так: <code>/give @ник 30</code> — число дней от 1 до 3650';
-  const u = await findUser(q);
-  if (!u) return 'Не нашёл пользователя. Проверьте ник — человек должен хоть раз войти в P2Pro через Telegram.';
+// Выдать PRO: дни прибавляются к текущему сроку. Подарок не продлевается сам — автопродление выключаем
+async function giveDays(u: AUser, days: number) {
   await admin.from('subscriptions').upsert({ user_id: u.id }, { onConflict: 'user_id', ignoreDuplicates: true });
-  const { data: s, error } = await admin.from('subscriptions').select('*').eq('user_id', u.id).single();
-  if (error) throw error;
-  const now = Date.now(), cur = s.pro_until ? Date.parse(s.pro_until) : 0, active = cur > now;
+  const s = await subOf(u.id);
+  if (!s) throw new Error('нет записи подписки');
+  const now = Date.now(), cur = s.pro_until ? Date.parse(s.pro_until) : 0;
   const until = new Date(Math.max(cur, now) + days * DAY).toISOString();
-  const pay = { ts: new Date().toISOString(), amount: 0, period: 'm', method: 'gift', days };
-  // Подарок не продлевается сам: автопродление выключаем
-  const { error: ue } = await admin.from('subscriptions').update({
-    pro_until: until, pro_since: active ? s.pro_since : new Date().toISOString(), auto_renew: false, pay_method: 'gift', period: 'm',
-    payments: [pay, ...(Array.isArray(s.payments) ? s.payments : [])],
+  const { error } = await admin.from('subscriptions').update({
+    pro_until: until, pro_since: cur > now ? s.pro_since : new Date().toISOString(), auto_renew: false, pay_method: 'gift', period: 'm',
+    payments: [{ ts: new Date().toISOString(), amount: 0, period: 'm', method: 'gift', days }, ...(Array.isArray(s.payments) ? s.payments : [])],
   }).eq('user_id', u.id);
-  if (ue) throw ue;
-  const tgId = await tgIdOf(u.id);
-  let note = '';
-  if (tgId) {
-    const r = await tg('sendMessage', { chat_id: tgId, parse_mode: 'HTML', reply_markup: keyboard,
-      text: `🎁 Вам выдан <b>P2Pro PRO</b> на ${days} дн. — до ${date(until)}.\n\nОткройте приложение, чтобы начать пользоваться.` });
-    note = r?.ok ? '\nПользователю отправлено сообщение.' : '\nСообщение пользователю не дошло (он не запускал бота) — PRO всё равно выдан.';
-  }
-  return `✅ ${who(u)}\nPRO на ${days} дн. — до <b>${date(until)}</b>.${note}`;
+  if (error) throw error;
+  const notified = await notify(u.id, `🎁 <b>Вам подарен P2Pro PRO</b> на ${days} дн.\n\nPRO действует до <b>${date(until)}</b>: история без ограничений, контрагенты, Excel и карточки без водяного знака.`,
+    kb([[{ text: '🚀 Открыть P2Pro', web_app: { url: APP } }]]));
+  return { until, notified };
 }
 
-async function cmdRevoke(q: string) {
-  if (!q) return 'Напишите так: <code>/revoke @ник</code>';
-  const u = await findUser(q);
-  if (!u) return 'Не нашёл пользователя.';
+async function revokePro(u: AUser) {
+  const s = await subOf(u.id);
+  if (!isPro(s)) return { was: false, notified: false };
   const { error } = await admin.from('subscriptions').update({ pro_until: new Date().toISOString(), auto_renew: false }).eq('user_id', u.id);
   if (error) throw error;
-  return `⛔ ${who(u)}\nPRO отключён, тариф Free.`;
+  const notified = await notify(u.id, `ℹ️ <b>Подписка P2Pro PRO отключена.</b>\n\nВаши сделки и данные сохранены, приложение работает на тарифе Free. Если это ошибка или есть вопросы — напишите в поддержку.`,
+    kb([[{ text: '💬 Поддержка', url: SUPPORT }]]));
+  return { was: true, notified };
 }
 
-async function adminCommand(chatId: number, text: string): Promise<boolean> {
+// Сообщение пользователю. Дойдёт, только если он хоть раз запускал бота
+async function notify(userId: string, text: string, markup: unknown) {
+  const tgId = await tgIdOf(userId);
+  if (!tgId) return false;
+  const r = await tg('sendMessage', { chat_id: tgId, text, parse_mode: 'HTML', reply_markup: markup });
+  return !!r?.ok;
+}
+const noteOf = (u: AUser, ok: boolean) => ok ? '\n📨 Пользователю отправлено уведомление.' : isTg(u.email) ? '\n⚠️ Уведомление не дошло: пользователь не запускал бота.' : '\n⚠️ Уведомление не отправлено: аккаунт по почте, без Telegram.';
+
+const NOT_FOUND = 'Не нашёл пользователя. Ник ищется у тех, кто входил в P2Pro через Telegram; остальных ищите по почте.';
+
+// Ответ: новое сообщение или замена текущего (когда нажали кнопку)
+async function show(chatId: number, msgId: number | null, text: string, markup: unknown) {
+  const body = { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...(markup ? { reply_markup: markup } : {}) };
+  if (msgId) {
+    const r = await tg('editMessageText', { ...body, message_id: msgId });
+    if (r?.ok || /not modified/.test(r?.description ?? '')) return;
+  }
+  await tg('sendMessage', body);
+}
+
+async function adminCallback(cq: { id: string; data?: string; message?: { chat: { id: number }; message_id: number } }) {
+  const chatId = cq.message?.chat.id ?? ADMIN_ID, msgId = cq.message?.message_id ?? null;
+  const [k, a = '', b = ''] = String(cq.data ?? '').split(':');
+  let toastText = '';
+  try {
+    if (k === 'm') await show(chatId, msgId, ADMIN_HELP, MENU());
+    else if (k === 'st') await show(chatId, msgId, await statsText(), kb([[{ text: '🔄 Обновить', callback_data: 'st' }, { text: '‹ Меню', callback_data: 'm' }]]));
+    else if (k === 'l') { const v = await listView(Number(a) || 0); await show(chatId, msgId, v.text, v.markup); }
+    else if (k === 'fs') await show(chatId, msgId, '🔍 Пришлите @ник, почту или Telegram id пользователя.', kb([[{ text: '‹ Меню', callback_data: 'm' }]]));
+    else if (k === 'u' || k === 'g' || k === 'r' || k === 'rr') {
+      const u = await userById(a);
+      if (!u) toastText = 'Пользователь не найден';
+      else if (k === 'u') { const v = await cardView(u, Number(b) || 0); await show(chatId, msgId, v.text, v.markup); }
+      else if (k === 'r') await show(chatId, msgId, `Забрать PRO у ${who(u)}?\nПользователю придёт сообщение с кнопкой поддержки.`,
+        kb([[{ text: '⛔ Да, забрать', callback_data: `rr:${u.id}` }, { text: 'Отмена', callback_data: `u:${u.id}` }]]));
+      else if (k === 'rr') { const r = await revokePro(u); toastText = r.was ? 'PRO отключён' : 'PRO уже не было'; const v = await cardView(u); await show(chatId, msgId, v.text + (r.was ? '\n' + noteOf(u, r.notified) : ''), v.markup); }
+      else {
+        const days = Number(b);
+        if (!Number.isInteger(days) || days < 1 || days > 3650) toastText = 'Неверное число дней';
+        else { const r = await giveDays(u, days); toastText = `Выдано +${days} дн.`; const v = await cardView(u); await show(chatId, msgId, v.text + '\n' + noteOf(u, r.notified), v.markup); }
+      }
+    }
+  } catch (e) {
+    console.error('admin', e);
+    toastText = 'Ошибка сервера';
+  }
+  await tg('answerCallbackQuery', { callback_query_id: cq.id, text: toastText || undefined });
+}
+
+async function adminText(chatId: number, text: string): Promise<boolean> {
   const [cmd, a = '', b = ''] = text.trim().split(/\s+/);
   const c = cmd.toLowerCase().replace(/@\w+$/, '');
-  let reply: string;
   try {
     if (c === '/admin') {
       await tg('setMyCommands', { scope: { type: 'chat', chat_id: ADMIN_ID }, commands: [
-        { command: 'stats', description: 'Статистика' }, { command: 'user', description: 'Карточка: /user @ник' },
-        { command: 'give', description: 'Выдать PRO: /give @ник 30' }, { command: 'revoke', description: 'Забрать PRO: /revoke @ник' },
-        { command: 'admin', description: 'Помощь по админке' }, { command: 'start', description: 'Открыть P2Pro' } ] });
-      reply = ADMIN_HELP;
-    } else if (c === '/stats') reply = await cmdStats();
-    else if (c === '/user') reply = await cmdUser(a);
-    else if (c === '/give') reply = await cmdGive(a, b);
-    else if (c === '/revoke') reply = await cmdRevoke(a);
-    else return false;
+        { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' },
+        { command: 'user', description: 'Карточка: /user @ник' }, { command: 'give', description: 'Выдать PRO: /give @ник 30' },
+        { command: 'revoke', description: 'Забрать PRO: /revoke @ник' }, { command: 'start', description: 'Открыть P2Pro' } ] });
+      await show(chatId, null, ADMIN_HELP, MENU());
+    } else if (c === '/stats') await show(chatId, null, await statsText(), kb([[{ text: '🔄 Обновить', callback_data: 'st' }, { text: '‹ Меню', callback_data: 'm' }]]));
+    else if (c === '/user' || !c.startsWith('/')) {
+      const q = c === '/user' ? a : text.trim();
+      const u = q ? await findUser(q) : null;
+      if (u) { const v = await cardView(u); await show(chatId, null, v.text, v.markup); }
+      else await show(chatId, null, q ? NOT_FOUND : 'Напишите так: <code>/user @ник</code>', kb([[{ text: '‹ Меню', callback_data: 'm' }]]));
+    } else if (c === '/give') {
+      const days = Number(b), u = a ? await findUser(a) : null;
+      if (!Number.isInteger(days) || days < 1 || days > 3650) await show(chatId, null, 'Напишите так: <code>/give @ник 30</code> — число дней от 1 до 3650', null);
+      else if (!u) await show(chatId, null, NOT_FOUND, null);
+      else { const r = await giveDays(u, days); await show(chatId, null, `✅ ${who(u)}\nPRO на ${days} дн. — до <b>${date(r.until)}</b>.${noteOf(u, r.notified)}`, kb([[{ text: '👤 Карточка', callback_data: `u:${u.id}` }]])); }
+    } else if (c === '/revoke') {
+      const u = a ? await findUser(a) : null;
+      if (!u) await show(chatId, null, a ? NOT_FOUND : 'Напишите так: <code>/revoke @ник</code>', null);
+      else { const r = await revokePro(u); await show(chatId, null, r.was ? `⛔ ${who(u)}\nPRO отключён, тариф Free.${noteOf(u, r.notified)}` : `${who(u)}\nPRO и так не было.`, null); }
+    } else return false;
   } catch (e) {
     console.error('admin', e);
-    reply = 'Ошибка сервера: ' + esc(String((e as Error)?.message ?? e)).slice(0, 200);
+    await show(chatId, null, 'Ошибка сервера: ' + esc(String((e as Error)?.message ?? e).slice(0, 200)), null);
   }
-  await send(chatId, reply, false);
   return true;
 }
 
@@ -193,12 +262,20 @@ Deno.serve(async (req) => {
   // Принимаем запросы только от Telegram: он присылает секрет, который мы задали при подключении webhook
   if (!SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== SECRET) return new Response('forbidden', { status: 403 });
   const update = await req.json().catch(() => null);
+  const isAdmin = (id?: number) => id === ADMIN_ID && !!SERVICE && !!TOKEN;
+  // Нажатие кнопки в админ-панели
+  const cq = update?.callback_query;
+  if (cq) {
+    if (isAdmin(cq.from?.id)) await adminCallback(cq).catch(() => {});
+    else await tg('answerCallbackQuery', { callback_query_id: cq.id });
+    return new Response('ok');
+  }
   const msg = update?.message;
   // Отвечаем только в личных чатах; на ошибки Telegram всё равно получает «ok», иначе будет слать повторно
   if (msg?.chat?.type === 'private' && TOKEN) {
     const text: string = msg.text ?? '';
     try {
-      if (msg.from?.id === ADMIN_ID && SERVICE && text.startsWith('/') && await adminCommand(msg.chat.id, text)) return new Response('ok');
+      if (isAdmin(msg.from?.id) && text && !text.startsWith('/start') && await adminText(msg.chat.id, text)) return new Response('ok');
       if (text.startsWith('/start')) await send(msg.chat.id, WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))));
       else await send(msg.chat.id, HELP);
     } catch (_) { /* сеть Telegram недоступна — пропускаем */ }
