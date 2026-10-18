@@ -69,6 +69,8 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 12px calc(104px + env(safe-area-inset-bottom, 0px));
+  /* Страница всегда чуть выше экрана: на пустых вкладках iOS Safari иначе держит свою панель развёрнутой и меню «прыгает» вверх */
+  box-sizing: border-box; min-height: calc(100vh + 2px); min-height: calc(100lvh + 2px);
 }
 .app { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; width: 100%; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -459,6 +461,12 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .au-str { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: -4px; }
 .au-str i { height: 4px; border-radius: 2px; background: rgba(255,255,255,.1); transition: background .25s; }
 .au-str-t { font-size: 12px; color: #8691A2; margin-top: -6px; }
+.chk-row { display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; border-radius: 14px; background: var(--surface-2); text-align: left; }
+.chk-row i { flex: none; width: 22px; height: 22px; border-radius: 7px; border: 1.5px solid var(--line); display: grid; place-items: center; margin-top: 1px; transition: all .15s; }
+.chk-row[aria-checked="true"] i { background: var(--neg); border-color: var(--neg); }
+.chk-row[aria-checked="true"] i::after { content: "✓"; color: #fff; font-size: 14px; font-weight: 800; }
+.chk-row span { display: flex; flex-direction: column; gap: 2px; font-weight: 600; }
+.chk-row small { font-weight: 400; color: var(--muted); font-size: 12.5px; }
 .au-chk { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: #8691A2; text-align: left; }
 .au-chk i { flex: none; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid rgba(255,255,255,.25); display: grid; place-items: center; margin-top: 1px; transition: all .15s; }
 .au-chk[aria-checked="true"] i { background: #F2B54B; border-color: #F2B54B; }
@@ -2187,7 +2195,7 @@ document.addEventListener('click', e => {
   if (b.id === 'backupBtn') return backupFile();
   if (b.id === 'importBtn') return $('importFile').click();
   if (b.id === 'delAccBtn') return confirmSheet('Удалить аккаунт?', 'Аккаунт, все сделки, контрагенты, настройки и подписка будут удалены навсегда — с сервера и с этого устройства. Отменить это нельзя.', 'Удалить навсегда', deleteAccount, true);
-  if (b.id === 'wipeBtn') return confirmSheet('Удалить всю историю?', `Будет удалено сделок: ${S.trades.length}. Отменить это нельзя.`, 'Удалить всё', () => { S.trades = []; persist(); render(); toast('История очищена'); }, true);
+  if (b.id === 'wipeBtn') return wipeSheet();
 });
 function repeat(t) {
   Object.assign(S.draft, { mode: t.mode || 'deal', ex: t.ex, bank: t.bank === '—' ? S.draft.bank : t.bank, buy: String(t.buy), sell: t.mode === 'circle' ? '' : String(t.sell), sum: String(t.sum), feeEx: String(+t.feeEx || 0), feeWd: String(+t.feeWd || 0), note: '',
@@ -2867,6 +2875,29 @@ function backupFile() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000);
   toast('Файл резервной копии скачан');
+}
+// «Удалить всю историю»: сделки удаляются всегда, контрагентов и настройки — по галочкам
+function wipeSheet() {
+  const n = S.trades.length, c = S.cps.length;
+  const chk = (k, t, sub) => `<button type="button" class="chk-row" role="checkbox" aria-checked="false" data-wipe="${k}"><i></i><span>${t}<small>${sub}</small></span></button>`;
+  sheet(`<h3>Удалить всю историю?</h3><span class="muted">Будет удалено сделок: ${n}. Отменить это нельзя.</span>
+    <span class="label">Также удалить</span>
+    ${chk('cps', 'Контрагентов', c ? `${c} ${plural(c, 'запись', 'записи', 'записей')} и чёрный список` : 'список пока пуст')}
+    ${chk('set', 'Настройки расчёта', 'биржи, банки, лимиты, комиссии, цель и капитал — вернутся к стандартным')}
+    <div class="row2"><button class="btn" data-close>Отмена</button><button class="btn danger" id="wipeGo">Удалить</button></div>`);
+  document.querySelectorAll('[data-wipe]').forEach(x => x.onclick = () => x.setAttribute('aria-checked', x.getAttribute('aria-checked') !== 'true'));
+  $('wipeGo').onclick = () => {
+    const on = k => document.querySelector(`[data-wipe="${k}"]`).getAttribute('aria-checked') === 'true', cps = on('cps'), set = on('set');
+    S.trades = [];
+    if (cps) S.cps = [];
+    if (set) {
+      const def = JSON.parse(JSON.stringify(DEFAULT.settings));
+      ['cur', 'feeExType', 'feeWdType', 'goal', 'capital', 'exchanges', 'banks', 'limits', 'feePresets'].forEach(k => S.settings[k] = def[k]);
+      S.draft = JSON.parse(JSON.stringify(DEFAULT.draft));
+    }
+    closeSheet(); persist(); applyTheme(); render();
+    toast(cps && set ? 'Удалены сделки, контрагенты и настройки' : cps ? 'Удалены сделки и контрагенты' : set ? 'Удалены сделки, настройки сброшены' : 'История очищена');
+  };
 }
 function csvExport(list, name) {
   if (!list.length) return toast('Нет сделок для выгрузки');
