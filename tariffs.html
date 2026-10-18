@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0C0F14">
+<meta name="description" content="P2Pro — калькулятор и дневник P2P-сделок. Тарифы Free и PRO, цены и контакты поддержки.">
+<title>P2Pro — тарифы</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700&family=Onest:wght@400;600;700&display=swap">
+<style>
+  :root { --bg: #0C0F14; --card: #141922; --fg: #E8ECF2; --mut: #8691A2; --line: #232A36; --acc: #F2B54B; --pos: #3CD38A; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 Onest, system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .logo { width: 36px; height: 36px; border-radius: 10px; background: var(--acc); color: #1B1405; display: grid; place-items: center; font: 700 15px Unbounded, sans-serif; }
+  header b { font: 700 18px Unbounded, sans-serif; }
+  header a { margin-left: auto; color: var(--acc); text-decoration: none; font-weight: 600; font-size: 14px; }
+  h1 { font: 700 24px/1.25 Unbounded, sans-serif; margin: 0 0 8px; }
+  h2 { font: 700 17px/1.3 Unbounded, sans-serif; margin: 0 0 12px; }
+  .lead { color: #C9D1DC; margin: 0 0 24px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px 18px; margin-bottom: 16px; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .plan { border: 1px solid var(--line); border-radius: 16px; padding: 18px; background: #10141B; }
+  .plan.pro { border-color: color-mix(in srgb, var(--acc) 55%, transparent); }
+  .plan h3 { margin: 0 0 4px; font-size: 18px; }
+  .price { font: 700 26px Unbounded, sans-serif; }
+  .price small { font: 400 14px Onest, sans-serif; color: var(--mut); }
+  .alt { color: var(--mut); font-size: 14px; margin: 2px 0 10px; }
+  ul { padding-left: 0; margin: 10px 0 0; list-style: none; }
+  li { padding-left: 24px; position: relative; color: #C9D1DC; margin: 6px 0; }
+  li::before { content: "✓"; position: absolute; left: 0; color: var(--pos); font-weight: 700; }
+  p { color: #C9D1DC; margin: 6px 0; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); color: var(--fg); text-decoration: none; font-weight: 600; font-size: 14px; }
+  .btn.primary { background: var(--acc); border-color: var(--acc); color: #1B1405; }
+  a { color: var(--acc); }
+  footer { color: var(--mut); font-size: 13px; text-align: center; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <header><div class="logo">P2</div><b>P2Pro</b><a href="./">Открыть приложение →</a></header>
+
+  <h1>Калькулятор и дневник P2P-сделок</h1>
+  <p class="lead">P2Pro считает чистую прибыль с учётом комиссий биржи и вывода, хранит историю сделок, показывает аналитику и помогает вести список контрагентов. Работает в браузере на телефоне и компьютере, данные синхронизируются между устройствами.</p>
+
+  <section>
+    <h2>Тарифы</h2>
+    <div class="plans">
+      <div class="plan">
+        <h3>Free</h3>
+        <div class="price">0 ₽</div>
+        <div class="alt">бесплатно, без ограничения по времени</div>
+        <ul>
+          <li>Калькулятор сделки, круга и треугольника</li>
+          <li>История — до 15 сделок в месяц</li>
+          <li>Аналитика и график прибыли</li>
+          <li>Подбор курса и поиск связок между биржами</li>
+          <li>Синхронизация между устройствами</li>
+        </ul>
+      </div>
+      <div class="plan pro">
+        <h3>PRO</h3>
+        <div class="price">490 ₽ <small>в месяц</small></div>
+        <div class="alt">или 3 990 ₽ в год (≈ 333 ₽ в месяц)</div>
+        <ul>
+          <li>Всё, что в Free</li>
+          <li>История без ограничений</li>
+          <li>Контрагенты и чёрный список</li>
+          <li>Выгрузка всех сделок в Excel</li>
+          <li>Карточки результата без водяного знака</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Оплата и доступ</h2>
+    <p>Оплата подписки PRO — в приложении: Профиль → «Подписка». Цена и способы оплаты показываются в окне оплаты до списания.</p>
+    <p>Доступ к PRO открывается автоматически сразу после успешной оплаты. Подписка продлевается в конце срока, автопродление можно отключить в любой момент — PRO продолжит работать до конца оплаченного срока.</p>
+    <p>Условия возврата — в разделе 7 <a href="legal.html#terms">Пользовательского соглашения</a>.</p>
+    <p>P2Pro — только программа для учёта: мы не проводим сделки, не принимаем и не храним деньги и криптовалюту пользователей.</p>
+  </section>
+
+  <section>
+    <h2>Поддержка</h2>
+    <p>Вопросы по работе сервиса, оплате и возвратам:</p>
+    <p>Эл. почта: <a href="mailto:albakov184@gmail.com">albakov184@gmail.com</a></p>
+    <p>Отвечаем в течение 1–2 рабочих дней.</p>
+    <div class="btns"><a class="btn primary" href="mailto:albakov184@gmail.com?subject=P2Pro%20%E2%80%94%20%D0%BF%D0%BE%D0%B4%D0%B4%D0%B5%D1%80%D0%B6%D0%BA%D0%B0">Написать в поддержку</a></div>
+  </section>
+
+  <section>
+    <h2>Документы</h2>
+    <div class="btns">
+      <a class="btn" href="legal.html#terms">Пользовательское соглашение</a>
+      <a class="btn" href="legal.html#privacy">Политика конфиденциальности</a>
+    </div>
+  </section>
+
+  <footer>© 2026 P2Pro · pay</footer>
+</main>
+</body>
+</html>
