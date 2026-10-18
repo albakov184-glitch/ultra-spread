@@ -2657,8 +2657,8 @@ async function submitAuthInner(btn) {
 }
 // Вход через Telegram: функция telegram-auth проверяет подпись Telegram и выдаёт сессию.
 // Аккаунт привязан к Telegram, почта у него служебная (…@telegram.invalid), пароля нет
-// Функция telegram-auth (supabase/functions/telegram-auth) в Supabase создана под адресом hyper-processor
-const TG_AUTH_FN = 'hyper-processor';
+// Адрес функции входа в Supabase (код — supabase/functions/telegram-auth)
+const TG_AUTH_FN = 'telegram-auth';
 const TG_CHANNEL = 'https://t.me/P2ProChannel';
 const TG_AUTH_ERR = { old: 'Данные входа устарели — закройте P2Pro и откройте снова из бота', bad: 'Telegram не подтвердил вход — откройте P2Pro заново из бота @P2ProAppBot' };
 async function tgLogin(btn) {
