@@ -1047,6 +1047,8 @@ img { max-width: 100%; }
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<!-- Мини-апп в Telegram: грузим асинхронно, чтобы медленный telegram.org не задерживал сайт -->
+<script async src="https://telegram.org/js/telegram-web-app.js" onload="window.tgInit && tgInit()"></script>
 <script>
 /* ================= СОСТОЯНИЕ ================= */
 const KEY = 'ultraSpread.v2';
@@ -2848,6 +2850,18 @@ document.addEventListener('click', e => {
   if (a === 'splash') return location.reload();
   render(); renderTestPanel();
 });
+
+/* ================= TELEGRAM MINI APP ================= */
+// Внутри Telegram: на весь экран, цвета шапки под тему, без закрытия свайпом вниз (мешает обновлению страницы жестом)
+function tgInit() {
+  const tg = window.Telegram?.WebApp; if (!tg?.initData) return;
+  try {
+    tg.ready(); tg.expand(); tg.disableVerticalSwipes?.();
+    const bg = getComputedStyle(document.body).backgroundColor;
+    tg.setHeaderColor?.(bg); tg.setBackgroundColor?.(bg); tg.setBottomBarColor?.(bg);
+  } catch (e) {}
+}
+if (window.Telegram?.WebApp) tgInit();
 
 /* ================= СТАРТ ================= */
 document.addEventListener('keydown', e => {
