@@ -459,6 +459,11 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 a.au-alt { text-decoration: none; }
 .au-btn.au-tg { background: #2AABEE; color: #fff; box-shadow: 0 10px 30px rgba(42,171,238,.25); }
 .au-tg svg { fill: #fff; }
+.subgate { position: fixed; inset: 0; z-index: 110; background: #0C0F14; color: #E8ECF2; display: grid; place-items: center; padding: 24px 16px; }
+.sg-card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.sg-card .logo { width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 6px; font-size: 24px; }
+.sg-card h2 { font-family: var(--f-display); font-size: 21px; letter-spacing: -.02em; margin: 0; }
+.sg-card p { color: #8691A2; margin: 0 0 8px; }
 .au-tg .au-spin { border-color: rgba(255,255,255,.3); border-top-color: #fff; }
 .au-foot { text-align: center; color: #8691A2; font-size: 13.5px; margin-top: 2px; }
 .au-err { color: #FF6B6B; font-size: 12.5px; margin: -4px 2px 0; min-height: 0; }
@@ -2654,6 +2659,7 @@ async function submitAuthInner(btn) {
 // Аккаунт привязан к Telegram, почта у него служебная (…@telegram.invalid), пароля нет
 // Функция telegram-auth (supabase/functions/telegram-auth) в Supabase создана под адресом hyper-processor
 const TG_AUTH_FN = 'hyper-processor';
+const TG_CHANNEL = 'https://t.me/P2ProChannel';
 const TG_AUTH_ERR = { old: 'Данные входа устарели — закройте P2Pro и откройте снова из бота', bad: 'Telegram не подтвердил вход — откройте P2Pro заново из бота @P2ProAppBot' };
 async function tgLogin(btn) {
   const init = window.Telegram?.WebApp?.initData || TG_INIT;
@@ -2665,6 +2671,7 @@ async function tgLogin(btn) {
   try {
     const r = await fetch(SB_URL + '/functions/v1/' + TG_AUTH_FN, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ initData: init }) });
     const j = await r.json().catch(() => ({}));
+    if (j.error === 'sub') return subGate(() => $('auth')?.querySelector('[data-au=tg]')?.click());
     if (!j.access_token) return auErr(TG_AUTH_ERR[j.error] || 'Не получилось войти через Telegram. Попробуйте ещё раз или напишите в поддержку @MVSR_P2P');
     const { data, error } = await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
     if (error || !data.user) return auErr(authErrText(error));
@@ -2911,6 +2918,33 @@ function tgInit() {
 }
 if (window.Telegram?.WebApp) tgInit();
 
+// Обязательная подписка на канал: пользоваться P2Pro в Telegram можно только подписчикам. Проверяет сервер (бот — админ канала).
+// Без связи или при сбое проверки пускаем — вход через Telegram всё равно проверяет подписку на сервере
+async function tgSubscribed() {
+  try {
+    const r = await fetch(SB_URL + '/functions/v1/' + TG_AUTH_FN, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ initData: window.Telegram?.WebApp?.initData || TG_INIT, check: true }) });
+    return (await r.json().catch(() => ({}))).error !== 'sub';
+  } catch (e) { return true; }
+}
+function subGate(onOk) {
+  if ($('subGate')) return;
+  const el = document.createElement('div'); el.id = 'subGate'; el.className = 'subgate'; el.setAttribute('role', 'dialog');
+  el.innerHTML = `<div class="sg-card"><div class="logo">P2</div><h2>Подпишитесь на канал P2Pro</h2>
+    <p>Чтобы пользоваться P2Pro в Telegram, подпишитесь на наш канал — там новости, обновления и полезное для P2P.</p>
+    <button class="au-btn au-tg" id="sgSub">${AI.tg} Подписаться</button>
+    <button class="au-alt" id="sgCheck">Я подписался — проверить</button><div class="au-err" id="sgErr" role="alert"></div></div>`;
+  document.body.appendChild(el); document.documentElement.style.overflow = 'hidden';
+  $('sgSub').onclick = () => { const tg = window.Telegram?.WebApp; tg?.openTelegramLink ? tg.openTelegramLink(TG_CHANNEL) : window.open(TG_CHANNEL, '_blank'); };
+  $('sgCheck').onclick = async () => {
+    const b = $('sgCheck'); if (b.disabled) return;
+    b.disabled = true; b.textContent = 'Проверяем…'; $('sgErr').textContent = '';
+    const ok = await tgSubscribed();
+    if (!ok) { b.disabled = false; b.textContent = 'Я подписался — проверить'; return $('sgErr').textContent = 'Подписка пока не видна. Подпишитесь на канал и нажмите ещё раз'; }
+    el.remove(); if (!$('auth')) document.documentElement.style.overflow = '';
+    toast('Спасибо за подписку!'); onOk?.();
+  };
+}
+
 /* ================= СТАРТ ================= */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closePop(); closeSheet(); }
@@ -3098,6 +3132,7 @@ let installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const inTelegram = () => !!(window.Telegram?.WebApp?.initData || TG_INIT);
+if (inTelegram() && sb) tgSubscribed().then(ok => { if (!ok) subGate(); });   // обязательная подписка на канал
 function maybeA2HS() {
   if (isStandalone() || inTelegram() || S.settings.a2hsSeen || $('a2hs') || !S.trades.length) return;
   const el = document.createElement('div'); el.className = 'a2hs'; el.id = 'a2hs'; el.setAttribute('role', 'dialog');

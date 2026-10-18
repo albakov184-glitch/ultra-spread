@@ -9,6 +9,7 @@ const TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? '';
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ANON = Deno.env.get('SUPABASE_ANON_KEY') || SERVICE;
+const CHANNEL = '@P2ProChannel';   // обязательная подписка. Бот должен быть админом канала, иначе Telegram не скажет, кто подписан
 const MAX_AGE = 24 * 3600;   // initData старше суток не принимаем — пусть перезапустит мини-апп
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -93,6 +94,16 @@ async function savePhoto(tg: TgUser, user: { id: string; user_metadata?: Record<
   await admin.auth.admin.updateUserById(user.id, { user_metadata: { ...meta, avatar, avatar_at: Date.now(), tg_username: tg.username ?? '' } });
 }
 
+// true — подписан, false — нет, null — проверить не удалось (сбой Telegram, бот не админ): тогда пускаем, чтобы не закрыть вход всем
+async function subscribed(id: number): Promise<boolean | null> {
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${TOKEN}/getChatMember?chat_id=${encodeURIComponent(CHANNEL)}&user_id=${id}`, { signal: AbortSignal.timeout(5000) }).then((x) => x.json());
+    if (!r?.ok) return null;
+    const m = r.result;
+    return ['creator', 'administrator', 'member'].includes(m.status) || (m.status === 'restricted' && !!m.is_member);
+  } catch (_) { return null; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
@@ -102,6 +113,9 @@ Deno.serve(async (req) => {
   const tg = initData ? await checkInit(initData) : null;
   if (tg === 'old') return json({ error: 'old' }, 401);
   if (!tg) return json({ error: 'bad' }, 401);
+  if (await subscribed(tg.id) === false) return json({ error: 'sub' }, 403);
+  // Мини-апп при каждом открытии спрашивает только «подписан ли», без входа
+  if (body?.check) return json({ ok: true });
   try {
     const user = await userFor(tg);
     await savePhoto(tg, user).catch((e) => console.error('telegram-auth photo', e));
