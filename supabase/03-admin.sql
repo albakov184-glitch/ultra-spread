@@ -1,11 +1,18 @@
 -- P2Pro, шаг 3: тест-панель подписки работает только для владельца.
 -- Запуск: Supabase → SQL Editor → вставить весь файл → Run. Повторный запуск безопасен.
 
--- Владелец проекта: только эта почта может ставить себе любой срок PRO через тест-панель
-create or replace function public.is_admin() returns boolean
-language sql stable set search_path = public as $$
-  select coalesce(lower(auth.jwt() ->> 'email') = 'albakov184@gmail.com', false);
-$$;
+-- Владелец проекта: только он может ставить себе любой срок PRO через тест-панель.
+-- Проверяем по постоянному id аккаунта, а не по почте: если аккаунт когда-нибудь удалят,
+-- новый человек с той же почтой владельцем не станет. id находим по почте один раз — при запуске скрипта
+do $do$
+declare owner uuid;
+begin
+  select id into owner from auth.users where lower(email) = 'albakov184@gmail.com';
+  if owner is null then raise exception 'Сначала зарегистрируйте аккаунт владельца albakov184@gmail.com'; end if;
+  execute format($f$create or replace function public.is_admin() returns boolean
+    language sql stable set search_path = public as $b$ select coalesce(auth.uid() = %L::uuid, false) $b$$f$, owner);
+end
+$do$;
 
 create or replace function public.demo_set_sub(p_period text, p_until timestamptz, p_auto boolean, p_clear boolean default false)
 returns public.subscriptions

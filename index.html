@@ -114,7 +114,8 @@ button { cursor: pointer; border: 0; background: none; }
 .inp input::placeholder { color: var(--muted); opacity: .55; }
 .inp .unit { padding-right: 14px; color: var(--muted); font-size: 14px; }
 .inp.text input { font-family: var(--f-body); font-size: 15px; }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.row2 > a.btn { overflow-wrap: anywhere; }
 .unit-toggle { display: flex; margin: 4px; background: var(--bg); border-radius: 8px; padding: 2px; flex: none; }
 .unit-toggle button { padding: 5px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .unit-toggle button.on { background: var(--accent); color: var(--accent-ink); }
@@ -1863,13 +1864,17 @@ async function payProcess() {
     await wait(i === 0 ? 1000 : 800);
     $('ppS' + i)?.classList.replace('act', 'done');
   }
-  const res = await req;
+  const before = S.settings.proUntil || 0;
+  let res = await req;
+  // Ответ мог потеряться уже после успешной оплаты: перечитываем подписку, прежде чем предлагать оплатить ещё раз
+  if (res.e) { await syncNow(true); if ((S.settings.proUntil || 0) > before) res = { r: null }; }
   if (res.e) {
     sheet(`<div class="pw-hero"><h3>Не получилось подключить PRO</h3><p>Нет связи с сервером. Деньги не списаны — попробуйте ещё раз.</p></div>
       <div class="row2"><button class="btn" data-close>Закрыть</button><button class="btn primary" data-open-plans="">Ещё раз</button></div>`);
     return;
   }
-  subApply(res.r); const st = S.settings;
+  if (res.r) subApply(res.r);
+  const st = S.settings;
   persist(false); render();
   if ($('ppRing')) {
     $('ppRing').classList.add('ok'); $('ppTitle').textContent = 'Оплата прошла';
@@ -2034,7 +2039,7 @@ document.addEventListener('input', e => {
       if (lc > -1 && ld > -1) v = lc > ld ? v.replace(/\./g, '').replace(',', '.') : v.replace(/,/g, '');
       else if ((v.match(/[.,]/g) || []).length > 1) v = v.replace(/[.,]/g, '');
       // одна запятая/точка и ровно 3 цифры после неё в поле суммы — это тысячи: «100,000»
-      else if (/^\d+[.,]\d{3}$/.test(v) && (['sum', 'pxSum', 'cbSum'].includes(el.id) || el.dataset.limit || el.dataset.k === 'sum')) v = v.replace(/[.,]/, '');
+      else if (/^\d+[.,]\d{3}$/.test(v) && (['sum', 'pxSum', 'cbSum', 'setGoal', 'setCap'].includes(el.id) || el.dataset.limit || el.dataset.k === 'sum')) v = v.replace(/[.,]/, '');
     }
     v = v.replace(/,/g, '.').replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
     if (v !== el.value) el.value = v;
@@ -2167,8 +2172,9 @@ document.addEventListener('click', e => {
     return toast(ex ? `${name}: обновлено` : `${name} добавлен: ${CPS[cpStatus].toLowerCase()}`);
   }
   if (ds.cpdel) return confirmSheet('Удалить контрагента?', ds.cpdel, 'Удалить', () => { S.cps = S.cps.filter(c => c.name !== ds.cpdel); persist(); renderCp(); }, true);
-  if (ds.rmEx) { st.exchanges = st.exchanges.filter(x => x !== ds.rmEx); persist(); return renderProfile(); }
-  if (ds.rmBank) { st.banks = st.banks.filter(x => x !== ds.rmBank); persist(); return renderProfile(); }
+  // Убрали выбранную биржу или банк — выбираем первую оставшуюся, иначе сделка сохранилась бы с удалённой
+  if (ds.rmEx) { st.exchanges = st.exchanges.filter(x => x !== ds.rmEx); if (d.ex === ds.rmEx) d.ex = st.exchanges[0] || '—'; if (S.tools.px.ex === ds.rmEx) S.tools.px.ex = st.exchanges[0] || '—'; persist(); return renderProfile(); }
+  if (ds.rmBank) { st.banks = st.banks.filter(x => x !== ds.rmBank); if (d.bank === ds.rmBank) d.bank = st.banks[0] || '—'; persist(); return renderProfile(); }
   if (b.id === 'exAdd' || b.id === 'bankAdd') {
     const isEx = b.id === 'exAdd', inp = $(isEx ? 'exNew' : 'bankNew'), v = inp.value.trim(), arr = isEx ? st.exchanges : st.banks;
     if (!v) return toast('Введите название'); if (arr.includes(v)) return toast('Уже есть в списке');
@@ -2672,7 +2678,11 @@ async function signOutOnly() {
 }
 async function deleteAccount() {
   try { await cloudRpc('delete_my_account'); }
-  catch (e) { return toast('Не получилось удалить аккаунт: нет связи с сервером. Попробуйте позже'); }
+  catch (e) {
+    // Ответ мог потеряться уже после удаления: если сервер больше не знает пользователя — аккаунт удалён
+    const gone = await sb?.auth.getUser().then(r => !!r.error && r.error.status !== 0 && !/fetch|network/i.test(r.error.message), () => false);
+    if (!gone) return toast(/fetch|network|offline/i.test(e?.message) ? 'Не получилось удалить аккаунт: нет связи с сервером. Попробуйте позже' : 'Не получилось удалить аккаунт. Напишите нам: albakov184@gmail.com');
+  }
   await logout(); toast('Аккаунт удалён');
 }
 async function logout() {
@@ -2713,6 +2723,7 @@ function bootAccount() {
   runSplash(async () => {
     let s = await Promise.race([session, wait(6000).then(() => 'offline')]);
     if (s && s !== 'offline' && lsGet(REM_KEY) === false && !alive && !FROM_RECOVERY && !FROM_SIGNUP) { await signOutOnly(); s = null; }
+    booted = true;
     if (s && s !== 'offline') {
       setUser(s.user); renderAcc();
       try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
@@ -2736,18 +2747,23 @@ const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', st
 const fmtLong = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '');
 const subDaysLeft = () => Math.max(0, Math.ceil(((S.settings.proUntil || 0) - Date.now()) / 864e5));
 // Срок вышел: при автопродлении в демо продлеваем сами (с настоящей оплатой это сделает платёжный сервис на сервере)
-let renewing = false, subWarned = false, subFresh = false;   // subFresh: подписка только что прочитана с сервера
+let renewing = false, subWarned = false, subFresh = false, booted = false, subHold = 0;   // booted: вход проверен; subHold: срок, который сервер считает ещё действующим; subFresh: подписка только что прочитана с сервера
 function subCheck() {
   const st = S.settings;
   if (!st.proUntil) { st.pro = false; return; }
+  if (Date.now() > st.proUntil && st.proUntil === subHold) { st.pro = true; return; }   // часы устройства спешат: сервер считает PRO действующим
   if (Date.now() > st.proUntil) {
+    if (!booted) { st.pro = false; return; }   // до проверки входа ничего не продлеваем
     const was = st.pro; st.pro = false; persist(false);
     // Продлеваем только по только что прочитанным данным сервера; иначе сначала перечитываем — вдруг подписку отменили на другом устройстве
     if (st.autoRenew && st.proSince && me() && sb && !subFresh && !renewing) syncNow(true);
     else if (st.autoRenew && st.proSince && me() && sb && subFresh && !renewing) {
       renewing = true;
-      cloudRpc('demo_renew_pro').catch(e => /demo_renew_pro|PGRST202|not find/i.test(e?.message + e?.code) ? cloudRpc('demo_activate_pro', { p_period: st.proPeriod, p_method: st.payMethod || 'card' }) : Promise.reject(e))
-        .then(r => { subApply(r); persist(false); render(); renderTestPanel(); toast(S.settings.pro ? `PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽` : 'Подписка PRO закончилась — вы на тарифе Free'); })
+      const old = st.proUntil;
+      cloudRpc('demo_renew_pro')
+        .then(r => {
+          if (r?.auto_renew && r.pro_until && Date.parse(r.pro_until) === old) { subHold = old; st.pro = true; return render(); }   // сервер не продлил: по его часам срок ещё идёт
+          subApply(r); persist(false); render(); renderTestPanel(); toast(S.settings.pro ? `PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽` : 'Подписка PRO закончилась — вы на тарифе Free'); })
         .catch(() => {}).finally(() => renewing = false);
     } else if (was && !st.autoRenew) setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 600);   // при автопродлении ждём ответа сервера
     return;
@@ -2842,11 +2858,13 @@ show(TABS.includes(startTab) ? startTab : 'calc');
 // Резервная копия файлом: его потом можно загрузить кнопкой «Загрузить файл». На телефоне — через «Поделиться»
 function backupFile() {
   const text = JSON.stringify({ app: 'ultra-spread', v: 2, trades: S.trades, settings: S.settings, cps: S.cps });
+  // В Telegram файл не скачать — показываем текст для копирования, как раньше
+  if (inTelegram()) return copySheet('Резервная копия', text);
   const name = 'P2Pro-backup-' + new Date().toISOString().slice(0, 10) + '.json', file = new File([text], name, { type: 'application/json' });
-  if (navigator.canShare?.({ files: [file] })) return navigator.share({ files: [file] }).catch(() => {});
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) return navigator.share({ files: [file] }).catch(() => {});
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000);
-  toast('Файл резервной копии сохранён');
+  toast('Файл резервной копии скачан');
 }
 function csvExport(list, name) {
   if (!list.length) return toast('Нет сделок для выгрузки');
