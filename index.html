@@ -117,7 +117,7 @@ button { cursor: pointer; border: 0; background: none; }
 .inp .unit { padding-right: 14px; color: var(--muted); font-size: 14px; }
 .inp.text input { font-family: var(--f-body); font-size: 15px; }
 .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-.row2 > a.btn { overflow-wrap: anywhere; }
+.row2 > a.btn { padding-inline: 8px; font-size: clamp(13px, 3.9vw, 15px); overflow-wrap: anywhere; }   /* узкие экраны: длинное слово не рвём посередине */
 .unit-toggle { display: flex; margin: 4px; background: var(--bg); border-radius: 8px; padding: 2px; flex: none; }
 .unit-toggle button { padding: 5px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .unit-toggle button.on { background: var(--accent); color: var(--accent-ink); }
@@ -999,7 +999,7 @@ img { max-width: 100%; }
 
     <div class="card">
       <span class="card-t">Документы</span>
-      <div class="row2"><a class="btn" href="legal.html#terms" target="_blank" rel="noopener">Соглашение</a><a class="btn" href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a></div>
+      <div class="row2"><a class="btn" href="legal.html#terms" target="_blank" rel="noopener">Соглашение</a><a class="btn" href="legal.html#privacy" target="_blank" rel="noopener" aria-label="Политика конфиденциальности">Приватность</a></div>
       <div class="row2"><a class="btn" href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a class="btn" href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка</a></div>
       <span class="muted small">Поддержка в Telegram: @MVSR_P2P</span>
     </div>

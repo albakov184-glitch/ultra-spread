@@ -86,10 +86,16 @@ async function findUser(q: string): Promise<AUser | null> {
     const { data } = await admin.from('tg_users').select('user_id').eq('tg_id', Number(q)).maybeSingle();
     return data ? userById(data.user_id) : null;
   }
-  const users = await allUsers();
-  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) return users.find((u) => u.email?.toLowerCase() === q.toLowerCase()) ?? null;
-  const nick = q.replace(/^@/, '').toLowerCase();
-  return users.find((u) => String(u.user_metadata?.tg_username ?? '').toLowerCase() === nick) ?? null;
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) return (await allUsers()).find((u) => u.email?.toLowerCase() === q.toLowerCase()) ?? null;
+  const nick = q.replace(/^@/, '');
+  if (!/^\w{3,32}$/.test(nick)) return null;
+  // Ник берём из tg_users — его пишет только сервер при входе. Данные профиля пользователь может подменить
+  const { data: rows, error } = await admin.from('tg_users').select('user_id, username').ilike('username', nick.replace(/_/g, '\\_'));
+  if (!error && rows?.length === 1) return userById(rows[0].user_id);
+  if (!error && rows && rows.length > 1) return null;
+  // Кто входил до обновления — ника в таблице ещё нет: ищем в профиле, но только среди Telegram-аккаунтов и только при единственном совпадении
+  const hits = (await allUsers()).filter((u) => isTg(u.email) && String(u.user_metadata?.tg_username ?? '').toLowerCase() === nick.toLowerCase());
+  return hits.length === 1 ? hits[0] : null;
 }
 
 const nameOf = (u: AUser) => String(u.user_metadata?.name ?? '').slice(0, 40) || 'без имени';
@@ -99,6 +105,10 @@ const who = (u: AUser) => `<b>${esc(nameOf(u))}</b> · ${esc(contactOf(u))}`;
 async function tgIdOf(userId: string): Promise<number | null> {
   const { data } = await admin.from('tg_users').select('tg_id').eq('user_id', userId).maybeSingle();
   return data?.tg_id ?? null;
+}
+async function tgNick(userId: string): Promise<string> {
+  const { data, error } = await admin.from('tg_users').select('username').eq('user_id', userId).maybeSingle();
+  return error ? '' : data?.username ?? '';
 }
 async function subOf(userId: string): Promise<Sub> {
   const { data } = await admin.from('subscriptions').select('*').eq('user_id', userId).maybeSingle();
@@ -125,41 +135,39 @@ async function listView(page: number) {
   page = Math.min(Math.max(0, page), pages - 1);
   const { data: subs } = await admin.from('subscriptions').select('user_id').gt('pro_until', new Date().toISOString());
   const pro = new Set((subs ?? []).map((x: { user_id: string }) => x.user_id));
+  const { data: tgs } = await admin.from('tg_users').select('user_id, username');
+  const nicks = new Map((tgs ?? []).filter((x: { username?: string }) => x.username).map((x: { user_id: string; username: string }) => [x.user_id, x.username]));
+  const view = (u: AUser) => nicks.has(u.id) ? { ...u, user_metadata: { ...u.user_metadata, tg_username: nicks.get(u.id) } } : u;
   const rows: Btn[][] = users.slice(page * PAGE, page * PAGE + PAGE)
-    .map((u) => [{ text: `${pro.has(u.id) ? '⭐ ' : ''}${nameOf(u)} | ${contactOf(u)}`.slice(0, 60), callback_data: `u:${u.id}:${page}` }]);
+    .map(view).map((u) => [{ text: `${pro.has(u.id) ? '⭐ ' : ''}${nameOf(u)} | ${contactOf(u)}`.slice(0, 60), callback_data: `u:${u.id}:${page}` }]);
   rows.push([{ text: '‹‹', callback_data: `l:${page - 1}` }, { text: `${page + 1}/${pages}`, callback_data: 'nop' }, { text: '››', callback_data: `l:${page + 1}` }]);
   rows.push([{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '‹ Меню', callback_data: 'm' }]);
   return { text: `<b>👥 Пользователи</b> · всего ${users.length}\n\nНажмите на пользователя, чтобы открыть карточку. ⭐ — есть PRO.`, markup: kb(rows) };
 }
 
-async function cardView(u: AUser, back = 0) {
-  const s = await subOf(u.id), tgId = await tgIdOf(u.id);
+async function cardView(u: AUser, back = 0) {   // back — страница списка, куда вернуться
+  const s = await subOf(u.id), tgId = await tgIdOf(u.id), nick = await tgNick(u.id);
+  if (nick) u = { ...u, user_metadata: { ...u.user_metadata, tg_username: nick } };   // проверенный ник вместо того, что в профиле
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('user_id', u.id).eq('deleted', false);
   const text = `<b>👤 Пользователь</b>\n\n${who(u)}\n` + (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
     `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}\n\n` +
     (isPro(s) ? `⭐ PRO до <b>${date(s!.pro_until)}</b>${s!.pay_method === 'gift' ? ' (подарок)' : s!.auto_renew ? ' · автопродление' : ''}` : 'Тариф: Free');
   const id = u.id;
   const rows: Btn[][] = [
-    [{ text: '🎁 +7 дн', callback_data: `g:${id}:7` }, { text: '🎁 +30 дн', callback_data: `g:${id}:30` }],
-    [{ text: '🎁 +90 дн', callback_data: `g:${id}:90` }, { text: '🎁 +365 дн', callback_data: `g:${id}:365` }],
+    [{ text: '🎁 +7 дн', callback_data: `g:${id}:7:${back}` }, { text: '🎁 +30 дн', callback_data: `g:${id}:30:${back}` }],
+    [{ text: '🎁 +90 дн', callback_data: `g:${id}:90:${back}` }, { text: '🎁 +365 дн', callback_data: `g:${id}:365:${back}` }],
   ];
-  if (isPro(s)) rows.push([{ text: '⛔ Забрать PRO', callback_data: `r:${id}` }]);
+  if (isPro(s)) rows.push([{ text: '⛔ Забрать PRO', callback_data: `r:${id}:${back}` }]);
   rows.push([{ text: '‹ К списку', callback_data: `l:${back}` }, { text: '‹ Меню', callback_data: 'm' }]);
   return { text, markup: kb(rows) };
 }
 
-// Выдать PRO: дни прибавляются к текущему сроку. Подарок не продлевается сам — автопродление выключаем
+// Выдать PRO: дни прибавляются к текущему сроку. Подарок не продлевается сам
 async function giveDays(u: AUser, days: number) {
-  await admin.from('subscriptions').upsert({ user_id: u.id }, { onConflict: 'user_id', ignoreDuplicates: true });
-  const s = await subOf(u.id);
-  if (!s) throw new Error('нет записи подписки');
-  const now = Date.now(), cur = s.pro_until ? Date.parse(s.pro_until) : 0;
-  const until = new Date(Math.max(cur, now) + days * DAY).toISOString();
-  const { error } = await admin.from('subscriptions').update({
-    pro_until: until, pro_since: cur > now ? s.pro_since : new Date().toISOString(), auto_renew: false, pay_method: 'gift', period: 'm',
-    payments: [{ ts: new Date().toISOString(), amount: 0, period: 'm', method: 'gift', days }, ...(Array.isArray(s.payments) ? s.payments : [])],
-  }).eq('user_id', u.id);
+  // Одним действием на сервере (07-gift.sql): двойное нажатие не потеряет дни, платная подписка останется платной
+  const { data, error } = await admin.rpc('admin_gift_pro', { p_user: u.id, p_days: days });
   if (error) throw error;
+  const until = (data as { pro_until: string }).pro_until;
   const notified = await notify(u.id, `🎁 <b>Вам подарен P2Pro PRO</b> на ${days} дн.\n\nPRO действует до <b>${date(until)}</b>: история без ограничений, контрагенты, Excel и карточки без водяного знака.`,
     kb([[{ text: '🚀 Открыть P2Pro', web_app: { url: APP } }]]));
   return { until, notified };
@@ -198,7 +206,7 @@ async function show(chatId: number, msgId: number | null, text: string, markup: 
 
 async function adminCallback(cq: { id: string; data?: string; message?: { chat: { id: number }; message_id: number } }) {
   const chatId = cq.message?.chat.id ?? ADMIN_ID, msgId = cq.message?.message_id ?? null;
-  const [k, a = '', b = ''] = String(cq.data ?? '').split(':');
+  const [k, a = '', b = '', c = ''] = String(cq.data ?? '').split(':');
   let toastText = '';
   try {
     if (k === 'm') await show(chatId, msgId, ADMIN_HELP, MENU());
@@ -210,12 +218,12 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
       if (!u) toastText = 'Пользователь не найден';
       else if (k === 'u') { const v = await cardView(u, Number(b) || 0); await show(chatId, msgId, v.text, v.markup); }
       else if (k === 'r') await show(chatId, msgId, `Забрать PRO у ${who(u)}?\nПользователю придёт сообщение с кнопкой поддержки.`,
-        kb([[{ text: '⛔ Да, забрать', callback_data: `rr:${u.id}` }, { text: 'Отмена', callback_data: `u:${u.id}` }]]));
-      else if (k === 'rr') { const r = await revokePro(u); toastText = r.was ? 'PRO отключён' : 'PRO уже не было'; const v = await cardView(u); await show(chatId, msgId, v.text + (r.was ? '\n' + noteOf(u, r.notified) : ''), v.markup); }
+        kb([[{ text: '⛔ Да, забрать', callback_data: `rr:${u.id}:${b}` }, { text: 'Отмена', callback_data: `u:${u.id}:${b}` }]]));
+      else if (k === 'rr') { const r = await revokePro(u); toastText = r.was ? 'PRO отключён' : 'PRO уже не было'; const v = await cardView(u, Number(b) || 0); await show(chatId, msgId, v.text + (r.was ? '\n' + noteOf(u, r.notified) : ''), v.markup); }
       else {
         const days = Number(b);
         if (!Number.isInteger(days) || days < 1 || days > 3650) toastText = 'Неверное число дней';
-        else { const r = await giveDays(u, days); toastText = `Выдано +${days} дн.`; const v = await cardView(u); await show(chatId, msgId, v.text + '\n' + noteOf(u, r.notified), v.markup); }
+        else { const r = await giveDays(u, days); toastText = `Выдано +${days} дн.`; const v = await cardView(u, Number(c) || 0); await show(chatId, msgId, v.text + '\n' + noteOf(u, r.notified), v.markup); }
       }
     }
   } catch (e) {

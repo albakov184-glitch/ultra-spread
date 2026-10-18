@@ -121,6 +121,8 @@ Deno.serve(async (req) => {
   if (body?.check) return json({ ok: true });
   try {
     const user = await userFor(tg);
+    // Ник для поиска в админке бота: таблицу пишет только сервер, в отличие от данных профиля
+    await admin.from('tg_users').update({ username: tg.username ?? null }).eq('tg_id', tg.id).then(() => {}, () => {});
     await savePhoto(tg, user).catch((e) => console.error('telegram-auth photo', e));
     // Сессию выдаём через одноразовую ссылку входа: создаём её ключом сервера и сразу же подтверждаем. Письмо не отправляется
     const { data: link, error: le } = await admin.auth.admin.generateLink({ type: 'magiclink', email: user.email! });
