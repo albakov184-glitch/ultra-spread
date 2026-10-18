@@ -1032,6 +1032,8 @@ img { max-width: 100%; }
 /* ================= СОСТОЯНИЕ ================= */
 const KEY = 'ultraSpread.v2';
 const SYM = { RUB: '₽', USD: '$' };
+// Своё свойство объекта (Object.hasOwn нет в Safari до 15.4): имена вроде «toString» не должны считаться допустимыми
+const own = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k);
 const DEFAULT = {
   trades: [],
   settings: {
@@ -1152,7 +1154,7 @@ function compute(i) {
 }
 
 let S = load();
-if (!S) S = structuredClone(DEFAULT);
+if (!S) S = JSON.parse(JSON.stringify(DEFAULT));   // structuredClone нет в Safari до 15.4
 // Примерные сделки из ранних тестовых версий удаляем, свои сделки пользователя не трогаем
 S.trades = S.trades.filter(t => !t.sample);
 
@@ -1168,7 +1170,7 @@ function renderCalcStatic() {
   ['buy', 'sell', 'sum', 'feeEx', 'feeWd', 'note', 'cp', 'cp2', 'cpNote', 'cp2Note'].forEach(k => { if ($(k) !== document.activeElement) $(k).value = d[k] ?? ''; });
   $('cpList').innerHTML = S.cps.map(c => `<option value="${esc(c.name)}">`).join('');
   renderCpWarn();
-  const modes = MODES[st.work] || MODES.all;
+  const modes = own(MODES, st.work) ? MODES[st.work] : MODES.all;
   if (!modes.includes(d.mode)) d.mode = modes[0];
   const tri = d.mode === 'tri';
   $('modeSeg').hidden = modes.length < 2;
@@ -1207,6 +1209,7 @@ function renderCalcStatic() {
   renderQuick();
 }
 function renderSales() {
+  if (document.activeElement?.dataset?.sale != null) return;   // не сбиваем ввод: клавиатура на телефоне закрылась бы
   $('sales').innerHTML = S.draft.sales.map((s, i) => `
     <div class="sale-row">
       <div class="inp"><input type="text" inputmode="decimal" step="0.01" placeholder="Курс" data-sale="${i}" data-k="rate" value="${esc(s.rate)}" aria-label="Курс продажи ${i + 1}"></div>
@@ -1215,6 +1218,7 @@ function renderSales() {
     </div>`).join('');
 }
 function renderSellers() {
+  if (document.activeElement?.dataset?.sel != null) return;
   $('triSellers').innerHTML = S.draft.sellers.map((s, i) => `
     <div class="seller">
       <div class="sale-row">
@@ -2094,7 +2098,7 @@ document.addEventListener('click', e => {
     if (d.triParts && !d.sellers.some(x => x.sum || x.rate)) Object.assign(d.sellers[0], { sum: d.sum, rate: d.buy, cp: d.cp2 || '' });
     persist(); renderCalcStatic(); return renderResult();
   }
-  if (b.id === 'addSeller') { d.sellers.push({ sum: '', rate: d.sellers.at(-1)?.rate || '', cp: '', note: '' }); persist(); renderSellers(); return renderResult(); }
+  if (b.id === 'addSeller') { d.sellers.push({ sum: '', rate: d.sellers[d.sellers.length - 1]?.rate || '', cp: '', note: '' }); persist(); renderSellers(); return renderResult(); }
   if (ds.delSel !== undefined) { d.sellers.splice(+ds.delSel, 1); if (!d.sellers.length) d.sellers.push({ sum: '', rate: '', cp: '', note: '' }); persist(); renderSellers(); renderCpWarn(); return renderResult(); }
   if (b.id === 'resetBtn') { Object.assign(d, { buy: '', sell: '', sum: '', note: '', cp: '', cp2: '', cpNote: '', cp2Note: '', sales: [{ rate: '', qty: '' }], sellers: [{ sum: '', rate: '', cp: '', note: '' }, { sum: '', rate: '', cp: '', note: '' }] }); persist(); renderCalcStatic(); return renderResult(); }
   if (b.id === 'repeatBtn') { const t = S.trades[0]; if (!t) return toast('Сохранённых сделок пока нет'); return repeat(t); }
@@ -2135,12 +2139,14 @@ document.addEventListener('click', e => {
     const f = feesFor(px.ex, px.wd);
     Object.assign(d, { mode: 'deal', ex: px.ex, buy: String(pxLast.buy), sell: String(pxLast.sell), sum: String(pxLast.sum), feeEx: String(f.feeEx), feeWd: String(f.feeWd) });
     Object.assign(st, { cur: 'RUB', feeExType: 'pct', feeWdType: 'fixed' });
+    if (!(own(MODES, st.work) ? MODES[st.work] : MODES.all).includes('deal')) st.work = 'all';
     persist(); show('calc'); return toast('Курсы перенесены в расчёт');
   }
   if (ds.cbgo !== undefined) {
     const o = comboCache[+ds.cbgo]; if (!o) return;
     Object.assign(d, { mode: 'deal', ex: o.b, buy: String(o.buy), sell: String(o.sell), sum: String(S.tools.cb.sum), feeEx: String(o.fees.feeEx), feeWd: String(o.fees.feeWd), note: o.a !== o.b ? `Связка ${o.a} → ${o.b}` : d.note });
     Object.assign(st, { cur: 'RUB', feeExType: 'pct', feeWdType: 'fixed' });
+    if (!(own(MODES, st.work) ? MODES[st.work] : MODES.all).includes('deal')) st.work = 'all';
     persist(); show('calc'); return toast('Связка перенесена в расчёт');
   }
   if (ds.cps) { cpStatus = ds.cps; return renderCp(); }
@@ -2164,7 +2170,7 @@ document.addEventListener('click', e => {
     inp.value = ''; persist(); return renderProfile();
   }
   if (ds.themeSet) { st.theme = ds.themeSet; persist(); applyTheme(); return renderProfile(); }
-  if (b.id === 'backupBtn') return copySheet('Резервная копия', JSON.stringify({ app: 'ultra-spread', v: 2, trades: S.trades, settings: S.settings, cps: S.cps }));
+  if (b.id === 'backupBtn') return backupFile();
   if (b.id === 'importBtn') return $('importFile').click();
   if (b.id === 'wipeBtn') return confirmSheet('Удалить всю историю?', `Будет удалено сделок: ${S.trades.length}. Отменить это нельзя.`, 'Удалить всё', () => { S.trades = []; persist(); render(); toast('История очищена'); }, true);
 });
@@ -2173,6 +2179,8 @@ function repeat(t) {
     cp: '', cp2: '', cpNote: '', cp2Note: '', triParts: !!t.sellers,
     sellers: t.sellers ? t.sellers.map(x => ({ sum: String(x.sum), rate: String(x.rate), cp: '', note: '' })) : [{ sum: '', rate: '', cp: '', note: '' }, { sum: '', rate: '', cp: '', note: '' }],
     sales: t.sales ? t.sales.map(x => ({ rate: String(x.rate), qty: String(x.qty) })) : [{ rate: '', qty: '' }] });
+  // Режим сделки выключен в настройках работы — включаем все режимы, иначе сделка тихо превратится в другую
+  if (!(own(MODES, S.settings.work) ? MODES[S.settings.work] : MODES.all).includes(S.draft.mode)) S.settings.work = 'all';
   S.settings.cur = t.cur; if (t.mode !== 'tri') { S.settings.feeExType = t.feeExType; S.settings.feeWdType = t.feeWdType; }   // у треугольника типы комиссий свои
   persist(); show('calc'); toast('Данные сделки подставлены');
 }
@@ -2194,7 +2202,7 @@ function importJson(text) {
       const ok = t => t && t.id != null && t.ts && !isNaN(new Date(t.ts)) && ['sum', 'buy', 'sell', 'profit'].every(k => isFinite(+t[k]));
       const arr = v => Array.isArray(v) ? v : null, str = v => typeof v === 'string' ? v : '';
       const fresh = trades.filter(ok).filter(t => !ids.has(String(t.id)) && ids.add(String(t.id)))
-        .map(t => ({ ...t, id: String(t.id), sum: +t.sum, buy: +t.buy, sell: +t.sell, profit: +t.profit, cur: SYM[t.cur] ? t.cur : 'RUB', mode: ['deal', 'circle', 'tri'].includes(t.mode) ? t.mode : 'deal',
+        .map(t => ({ ...t, id: String(t.id), sum: +t.sum, buy: +t.buy, sell: +t.sell, profit: +t.profit, cur: own(SYM, t.cur) ? t.cur : 'RUB', mode: ['deal', 'circle', 'tri'].includes(t.mode) ? t.mode : 'deal',
           ex: str(t.ex) || '—', bank: str(t.bank) || '—', note: str(t.note), cp: str(t.cp), cp2: str(t.cp2), cpNote: str(t.cpNote), cp2Note: str(t.cp2Note),
           feeEx: +t.feeEx || 0, feeWd: +t.feeWd || 0, profitU: isFinite(+t.profitU) && t.profitU !== null ? +t.profitU : null,
           feeExType: t.feeExType === 'fixed' ? 'fixed' : 'pct', feeWdType: t.feeWdType === 'pct' ? 'pct' : 'fixed', comm: +t.comm || 0, commEx: +t.commEx || 0, commWd: +t.commWd || 0,
@@ -2209,10 +2217,11 @@ function importJson(text) {
       if (rest.limits) rest.limits = Object.fromEntries(Object.entries(rest.limits).map(([b, v]) => [b, +v || 0]));
       if (rest.feePresets) rest.feePresets = Object.fromEntries(Object.entries(rest.feePresets).filter(([, v]) => v && typeof v === 'object').map(([x, v]) => [x, { ex: +v.ex || 0, wd: +v.wd || 0 }]));
       for (const k of ['goal', 'capital']) if (k in rest) rest[k] = +rest[k] || 0;
-      if ('cur' in rest && !SYM[rest.cur]) delete rest.cur;
+      if ('cur' in rest && !own(SYM, rest.cur)) delete rest.cur;
+      if ('work' in rest && !own(MODES, rest.work)) delete rest.work;
       for (const k of ['feeExType', 'feeWdType']) if (k in rest && !['pct', 'fixed'].includes(rest[k])) delete rest[k];
       const cps = (arr(data.cps) || []).filter(c => typeof c?.name === 'string' && c.name.trim())
-        .map(c => ({ name: c.name.trim(), status: CPS[c.status] ? c.status : 'new', note: str(c.note), ts: +c.ts || Date.now() }));
+        .map(c => ({ name: c.name.trim(), status: own(CPS, c.status) ? c.status : 'new', note: str(c.note), ts: +c.ts || Date.now() }));
       S.trades = S.trades.concat(fresh).sort((a, b) => new Date(b.ts) - new Date(a.ts));
       S.settings = { ...S.settings, ...rest };
       cps.forEach(c => { if (!findCp(c.name)) S.cps.push(c); });
@@ -2363,6 +2372,8 @@ async function pullAll() {
   const cs = pr.data?.settings;
   if (cs && Object.keys(cs).length && (!SH.s || SH.s === fp(cloudSettings()))) {
     CLOUD_SET.forEach(k => { if (cs[k] !== undefined) S.settings[k] = cs[k]; });
+    if (!own(SYM, S.settings.cur)) S.settings.cur = 'RUB';   // испорченное значение из облака не должно ломать запуск
+    if (S.settings.work && !own(MODES, S.settings.work)) S.settings.work = 'all';
     SH.s = fp(cloudSettings()); changed = true;
   }
   if (pr.data?.name && pr.data.name !== U.name) { U.name = pr.data.name; lsSet(USER_KEY, U); renderAcc(); }
@@ -2400,7 +2411,7 @@ const hasLegacy = () => !SH && (S.trades.length > 0 || S.cps.length > 0);
 lsSet(KEY + '.legacy', null);
 function wipeLocal() {
   const keep = { theme: S.settings.theme, incog: S.settings.incog, a2hsSeen: S.settings.a2hsSeen };
-  S.trades = []; S.cps = []; S.settings = { ...structuredClone(DEFAULT.settings), ...keep }; S.draft = structuredClone(DEFAULT.draft);
+  S.trades = []; S.cps = []; S.settings = { ...JSON.parse(JSON.stringify(DEFAULT.settings)), ...keep }; S.draft = JSON.parse(JSON.stringify(DEFAULT.draft));
   persist(false);
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastPull > 20000) syncNow(true); else if (document.visibilityState === 'hidden') syncNow(); });
@@ -2817,6 +2828,15 @@ show(TABS.includes(startTab) ? startTab : 'calc');
 
 /* ================= ТАБЛИЦА EXCEL ================= */
 // CSV с «;» и запятой в дробях — так его правильно открывает русский Excel и Google Таблицы
+// Резервная копия файлом: его потом можно загрузить кнопкой «Загрузить файл». На телефоне — через «Поделиться»
+function backupFile() {
+  const text = JSON.stringify({ app: 'ultra-spread', v: 2, trades: S.trades, settings: S.settings, cps: S.cps });
+  const name = 'P2Pro-backup-' + new Date().toISOString().slice(0, 10) + '.json', file = new File([text], name, { type: 'application/json' });
+  if (navigator.canShare?.({ files: [file] })) return navigator.share({ files: [file] }).catch(() => {});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000);
+  toast('Файл резервной копии сохранён');
+}
 function csvExport(list, name) {
   if (!list.length) return toast('Нет сделок для выгрузки');
   const n = (v, d = 2) => v == null || v === '' || isNaN(v) ? '' : String(+(+v).toFixed(d)).replace('.', ',');
