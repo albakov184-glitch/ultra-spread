@@ -485,6 +485,8 @@ a.btn { text-decoration: none; color: var(--fg); display: flex; align-items: cen
 .top .avatar { margin-left: 8px; }
 .acc { display: flex; align-items: center; gap: 14px; }
 .acc .avatar { width: 52px; height: 52px; font-size: 21px; }
+/* Кнопка-аватарка сверху — это <button>: у неё свои отступы, из-за них по краям фото проступал жёлтый фон */
+.avatar { padding: 0; overflow: hidden; }
 .avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .acc-name { font-family: var(--f-display); font-size: 17px; letter-spacing: -.3px; }
 
