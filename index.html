@@ -2811,7 +2811,7 @@ function bootAccount() {
 /* ================= МОЯ ПОДПИСКА ================= */
 // Срок PRO: месяц — 30 дней, год — 365. Автопродление в демо просто добавляет срок и пишет платёж в историю
 const PERIOD_DAYS = { m: 30, y: 365 }, PERIOD_PRICE = { m: 490, y: 3990 };
-const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', stars: 'Telegram Stars', usdt: 'USDT' };
+const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', stars: 'Telegram Stars', usdt: 'USDT', gift: 'Подарок' };
 const fmtLong = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '');
 const subDaysLeft = () => Math.max(0, Math.ceil(((S.settings.proUntil || 0) - Date.now()) / 864e5));
 // Срок вышел: при автопродлении в демо продлеваем сами (с настоящей оплатой это сделает платёжный сервис на сервере)
@@ -2842,7 +2842,16 @@ function subCheck() {
     : `PRO закончится через ${left} ${plural(left, 'день', 'дня', 'дней')}`), 2600); }
 }
 function subHtml() {
-  const st = S.settings, left = subDaysLeft(), total = PERIOD_DAYS[st.proPeriod] || 30, k = Math.min(1, left / total);
+  const st = S.settings, left = subDaysLeft(), gift = st.payMethod === 'gift';
+  // Подарок от администратора: срок любой, не продлевается и не оплачивается
+  const total = gift ? Math.max(left, Math.round(((st.proUntil || 0) - (st.proSince || 0)) / 864e5) || left) : PERIOD_DAYS[st.proPeriod] || 30, k = Math.min(1, left / (total || 1));
+  if (gift) return `<div class="sub">
+      <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
+        <div><b>${left}</b><span>${plural(left, 'день', 'дня', 'дней')}</span></div></div>
+      <div class="sub-info"><div class="sub-t">PRO · подарок 🎁</div>
+        <span class="muted small">Действует до <b style="color:var(--fg)">${fmtLong(st.proUntil)}</b></span>
+        <span class="muted small">Без списаний. Потом можно продлить или перейти на Free</span></div></div>
+    <div class="row2"><button class="btn" data-sub="hist">История</button><button class="btn primary" data-sub="renew">Продлить</button></div>`;
   return `<div class="sub">
       <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
         <div><b>${left}</b><span>${plural(left, 'день', 'дня', 'дней')}</span></div></div>
@@ -2873,7 +2882,7 @@ document.addEventListener('click', e => {
   if (a === 'renew') return openPlans('renew');
   if (a === 'hist') {
     const P = st.payments || [];
-    sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
+    sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.method === 'gift' ? `подарок на ${+x.days || 0} дн.` : x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
       <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}</span></div><b>${nf0.format(x.amount)} ₽</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div><button class="btn primary" data-close>Закрыть</button>`);
   }
 });

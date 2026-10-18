@@ -8,7 +8,7 @@ declare s public.subscriptions; add_days int; price int;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
   select * into s from public.subscriptions where user_id = auth.uid() for update;
-  if s.user_id is null or not s.auto_renew or s.pro_until is null or s.pro_until > now() then return s; end if;
+  if s.user_id is null or not s.auto_renew or s.pay_method = 'gift' or s.pro_until is null or s.pro_until > now() then return s; end if;   -- подарок (/give в боте) не продлевается
   add_days := case when s.period = 'y' then 365 else 30 end;
   price := case when s.period = 'y' then 3990 else 490 end;
   update public.subscriptions set
