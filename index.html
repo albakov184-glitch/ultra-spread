@@ -2650,6 +2650,8 @@ async function submitAuthInner(btn) {
 }
 // Вход через Telegram: функция telegram-auth проверяет подпись Telegram и выдаёт сессию.
 // Аккаунт привязан к Telegram, почта у него служебная (…@telegram.invalid), пароля нет
+// Функция telegram-auth (supabase/functions/telegram-auth) в Supabase создана под адресом hyper-processor
+const TG_AUTH_FN = 'hyper-processor';
 const TG_AUTH_ERR = { old: 'Данные входа устарели — закройте P2Pro и откройте снова из бота', bad: 'Telegram не подтвердил вход — откройте P2Pro заново из бота @P2ProAppBot' };
 async function tgLogin(btn) {
   const init = window.Telegram?.WebApp?.initData || TG_INIT;
@@ -2659,7 +2661,7 @@ async function tgLogin(btn) {
   const label = btn.innerHTML;
   btn.innerHTML = '<span class="au-spin"></span>Входим через Telegram…';
   try {
-    const r = await fetch(SB_URL + '/functions/v1/telegram-auth', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ initData: init }) });
+    const r = await fetch(SB_URL + '/functions/v1/' + TG_AUTH_FN, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ initData: init }) });
     const j = await r.json().catch(() => ({}));
     if (!j.access_token) return auErr(TG_AUTH_ERR[j.error] || 'Не получилось войти через Telegram. Попробуйте ещё раз или напишите в поддержку @MVSR_P2P');
     const { data, error } = await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
