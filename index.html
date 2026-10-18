@@ -485,6 +485,7 @@ a.btn { text-decoration: none; color: var(--fg); display: flex; align-items: cen
 .top .avatar { margin-left: 8px; }
 .acc { display: flex; align-items: center; gap: 14px; }
 .acc .avatar { width: 52px; height: 52px; font-size: 21px; }
+.avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .acc-name { font-family: var(--f-display); font-size: 17px; letter-spacing: -.3px; }
 
 /* Пустые экраны: живые картинки, нарисованные в SVG (цвета из темы) */
@@ -2687,12 +2688,24 @@ function closeAuth(quiet) {
 }
 const SYNC_TEXT = { ok: '☁ Синхронизировано', wait: 'Синхронизация…', off: 'Нет сети — сохраним, когда появится', err: 'Не удалось синхронизировать — повторим через минуту', local: 'Нет связи с сервером — работаем офлайн' };
 const tgMail = m => /@telegram\.invalid$/i.test(m || '');
+// Фото профиля Telegram: только в мини-аппе и только если вошёл аккаунт этого же человека (почта tg<id>-…@telegram.invalid)
+function tgPhoto(u) {
+  if (!tgMail(u.email)) return '';
+  let t = window.Telegram?.WebApp?.initDataUnsafe?.user;
+  if (!t?.id && TG_INIT) try { t = JSON.parse(new URLSearchParams(TG_INIT).get('user')); } catch (e) {}
+  const url = t?.photo_url || '';
+  return t?.id && u.email.startsWith('tg' + t.id + '-') && /^https:\/\//.test(url) ? url : '';
+}
 function renderAcc() {
   const u = me(); $('topAvatar').hidden = !u; $('accCard').hidden = !u;
   try { renderTestPanel(); } catch (e) {}
   if (!u) return;
-  const ini = (u.name || u.email).trim()[0].toUpperCase();
-  $('topAvatar').textContent = ini; $('accAva').textContent = ini; $('accName').textContent = u.name; $('accMail').textContent = tgMail(u.email) ? 'Вход через Telegram' + (u.tg ? ' · @' + u.tg : '') : u.email;
+  // Первая буква целиком: у «красивых» ников (𝔢𝔡𝔦𝔱 и т. п.) символ занимает две половинки, и одна половинка рисовалась квадратиком
+  const ini = (Array.from((u.name || u.email).trim())[0] || '?').toUpperCase(), photo = tgPhoto(u);
+  for (const el of [$('topAvatar'), $('accAva')]) {
+    el.textContent = ini;
+    if (photo) { const img = new Image(); img.alt = ''; img.referrerPolicy = 'no-referrer'; img.onload = () => { el.textContent = ''; el.appendChild(img); }; img.src = photo; }
+  } $('accName').textContent = u.name; $('accMail').textContent = tgMail(u.email) ? 'Вход через Telegram' + (u.tg ? ' · @' + u.tg : '') : u.email;
   $('accSince').textContent = 'С нами с ' + new Date(u.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + (syncState ? ' · ' + SYNC_TEXT[syncState] : '');
 }
 $('topAvatar').addEventListener('click', () => show('prof'));
