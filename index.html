@@ -463,6 +463,8 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .au-chk[aria-checked="true"] i { background: #F2B54B; border-color: #F2B54B; }
 .au-chk[aria-checked="true"] i::after { content: "✓"; color: #1B1405; font-size: 13px; font-weight: 800; }
 .au-note { position: relative; margin-top: 16px; max-width: 400px; text-align: center; color: #5D6777; font-size: 12px; line-height: 1.5; }
+.au-note a { color: #8691A2; text-decoration: underline; text-underline-offset: 2px; }
+a.btn { text-decoration: none; color: var(--fg); display: flex; align-items: center; justify-content: center; text-align: center; }
 
 /* Аккаунт в шапке и профиле */
 .avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #F2B54B, #FF9F5A); color: #1B1405; flex: none;
@@ -975,6 +977,11 @@ img { max-width: 100%; }
     </div>
 
     <div class="card">
+      <span class="card-t">Документы</span>
+      <div class="row2"><a class="btn" href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a><a class="btn" href="legal.html#terms" target="_blank" rel="noopener">Условия</a></div>
+    </div>
+
+    <div class="card">
       <span class="card-t">Мы в соцсетях</span>
       <a class="social" href="https://www.instagram.com/movsar.io/" target="_blank" rel="noopener">
         <img src="icons/instagram.png" alt="" width="44" height="44">
@@ -999,6 +1006,7 @@ img { max-width: 100%; }
       <input type="file" id="importFile" accept=".json,application/json" hidden>
       <span class="muted small">«Загрузить файл» принимает и экспорт из старой версии калькулятора.</span>
       <button class="btn danger block" id="wipeBtn">Удалить всю историю</button>
+      <button class="btn ghost-neg block" id="delAccBtn">Удалить аккаунт</button>
       <div class="set-row"><span>Тема</span>
         <div class="seg sm"><button data-theme-set="system" class="on">Авто</button><button data-theme-set="dark">Тёмная</button><button data-theme-set="light">Светлая</button></div></div>
     </div>
@@ -1804,7 +1812,7 @@ function plansHtml() {
   return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор и круги</li><li>История — до ${FREE_LIMIT} сделок в месяц</li><li>Аналитика, подбор курса, связки</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
     <div class="plan pro"><h4>PRO</h4><span class="price">490 ₽<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
-    ${pro ? '<span class="muted small">Текущий (демо)</span>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
+    ${pro ? '<span class="muted small">Текущий тариф</span>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
 }
 // Значки способов оплаты: узнаваемые логотипы в цвете
 function payIcon(k, z = 18) {
@@ -1831,8 +1839,7 @@ function openPlans(why) {
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−32%</em><span>Год</span><b>3 990 ₽</b><span>≈ 333 ₽ в месяц</span></button></div>
     <span class="label">Способ оплаты</span>
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
-    <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>
-    <span class="muted small" style="text-align:center">Демо-оплата для теста: реквизиты не нужны, деньги не списываются.</span>`);
+    <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
 }
 const showCheckout = () => openPlans();
 
@@ -1845,8 +1852,7 @@ async function payProcess() {
     <div class="pp-ring" id="ppRing"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" id="ppArc" cx="60" cy="60" r="52"/></svg>
       <div class="pp-icon" id="ppIcon">${payIcon(payMethod, 44)}</div></div>
     <h3 id="ppTitle">Обрабатываем платёж</h3><span class="muted small">${price} · ${M[0]}</span>
-    <ul class="pp-steps">${steps.map((t, i) => `<li id="ppS${i}"><i></i>${t}</li>`).join('')}</ul>
-    <span class="muted small">Демо-оплата: деньги не списываются</span></div>`);
+    <ul class="pp-steps">${steps.map((t, i) => `<li id="ppS${i}"><i></i>${t}</li>`).join('')}</ul></div>`);
   const arc = $('ppArc'); payBusy = true;
   // Подписку включает сервер. Пока крутится кольцо, запрос уже идёт
   const req = cloudRpc('demo_activate_pro', { p_period: payPeriod, p_method: payMethod }).then(r => ({ r }), e => ({ e }));
@@ -1872,7 +1878,7 @@ async function payProcess() {
     await wait(1000);
   }
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO подключён 🎉</h3>
-    <p>Действует до <b>${fmtLong(st.proUntil)}</b>. Демо-оплата, деньги не списывались. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
+    <p>Действует до <b>${fmtLong(st.proUntil)}</b>. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
     <button class="btn primary" data-close>Отлично</button>`);
   confetti();
   } finally { payBusy = false; }
@@ -2172,6 +2178,7 @@ document.addEventListener('click', e => {
   if (ds.themeSet) { st.theme = ds.themeSet; persist(); applyTheme(); return renderProfile(); }
   if (b.id === 'backupBtn') return backupFile();
   if (b.id === 'importBtn') return $('importFile').click();
+  if (b.id === 'delAccBtn') return confirmSheet('Удалить аккаунт?', 'Аккаунт, все сделки, контрагенты, настройки и подписка будут удалены навсегда — с сервера и с этого устройства. Отменить это нельзя.', 'Удалить навсегда', deleteAccount, true);
   if (b.id === 'wipeBtn') return confirmSheet('Удалить всю историю?', `Будет удалено сделок: ${S.trades.length}. Отменить это нельзя.`, 'Удалить всё', () => { S.trades = []; persist(); render(); toast('История очищена'); }, true);
 });
 function repeat(t) {
@@ -2494,7 +2501,7 @@ function showAuth(m) {
     el.innerHTML = `<div class="glow"></div><div class="grid"></div><div class="au-brand"><div class="logo">P2</div><b>P2Pro</b></div>
       <div class="au-wrap" id="auWrap"><span class="au-cn tl"></span><span class="au-cn br"></span><span class="au-dia" id="auDia"></span><span class="au-orb" id="auOrb"></span>
         <form class="au-card" id="auCard" novalidate><div class="au-in" id="auIn"></div></form></div>
-      <p class="au-note">Сделки хранятся в облаке и открываются на любом устройстве.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.</p>`;
+      <p class="au-note">Входя в аккаунт, вы принимаете <a href="legal.html#terms" target="_blank" rel="noopener">Условия использования</a> и <a href="legal.html#privacy" target="_blank" rel="noopener">Политику конфиденциальности</a>.<br>P2Pro — калькулятор: мы не проводим сделки и не храним деньги.</p>`;
     document.body.appendChild(el);
     el.addEventListener('submit', e => { e.preventDefault(); submitAuth(); });
     el.addEventListener('click', authClick);
@@ -2663,6 +2670,11 @@ async function signOutOnly() {
   try { localStorage.removeItem(SB_TOKEN); } catch (e) {}
   U = null; lsSet(USER_KEY, null); syncState = '';
 }
+async function deleteAccount() {
+  try { await cloudRpc('delete_my_account'); }
+  catch (e) { return toast('Не получилось удалить аккаунт: нет связи с сервером. Попробуйте позже'); }
+  await logout(); toast('Аккаунт удалён');
+}
 async function logout() {
   await dropSession(); renderAcc(); render(); show('calc'); showAuth('in');
 }
@@ -2735,14 +2747,14 @@ function subCheck() {
     else if (st.autoRenew && st.proSince && me() && sb && subFresh && !renewing) {
       renewing = true;
       cloudRpc('demo_renew_pro').catch(e => /demo_renew_pro|PGRST202|not find/i.test(e?.message + e?.code) ? cloudRpc('demo_activate_pro', { p_period: st.proPeriod, p_method: st.payMethod || 'card' }) : Promise.reject(e))
-        .then(r => { subApply(r); persist(false); render(); renderTestPanel(); toast(S.settings.pro ? `PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)` : 'Подписка PRO закончилась — вы на тарифе Free'); })
+        .then(r => { subApply(r); persist(false); render(); renderTestPanel(); toast(S.settings.pro ? `PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽` : 'Подписка PRO закончилась — вы на тарифе Free'); })
         .catch(() => {}).finally(() => renewing = false);
     } else if (was && !st.autoRenew) setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 600);   // при автопродлении ждём ответа сервера
     return;
   }
   st.pro = true;
   const left = subDaysLeft();
-  if (left <= 3 && !subWarned) { subWarned = true; setTimeout(() => toast(st.autoRenew ? `Через ${left} ${plural(left, 'день', 'дня', 'дней')} PRO продлится: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)`
+  if (left <= 3 && !subWarned) { subWarned = true; setTimeout(() => toast(st.autoRenew ? `Через ${left} ${plural(left, 'день', 'дня', 'дней')} PRO продлится: ${PERIOD_PRICE[st.proPeriod]} ₽`
     : `PRO закончится через ${left} ${plural(left, 'день', 'дня', 'дней')}`), 2600); }
 }
 function subHtml() {
@@ -2759,7 +2771,7 @@ function subHtml() {
     ${st.autoRenew ? '<button class="btn ghost-neg" data-sub="cancel">Отменить подписку</button>' : ''}`;
 }
 function showSub() {
-  sheet(`<h3>Моя подписка</h3><div class="sub-box app" style="gap:12px">${subHtml()}</div>${tpOn() ? '<button class="btn" data-plan="free" style="font-size:13px">Выключить демо-PRO сейчас</button>' : '<button class="btn" data-close>Закрыть</button>'}`);
+  sheet(`<h3>Моя подписка</h3><div class="sub-box app" style="gap:12px">${subHtml()}</div>${tpOn() ? '<button class="btn" data-plan="free" style="font-size:13px">Выключить PRO сейчас (тест)</button>' : '<button class="btn" data-close>Закрыть</button>'}`);
 }
 function refreshSub() {
   renderProfile(); render();
@@ -2778,8 +2790,7 @@ document.addEventListener('click', e => {
   if (a === 'hist') {
     const P = st.payments || [];
     sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
-      <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}</span></div><b>${nf0.format(x.amount)} ₽</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div>
-      <span class="muted small">Демо-режим: деньги не списывались.</span><button class="btn primary" data-close>Закрыть</button>`);
+      <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}</span></div><b>${nf0.format(x.amount)} ₽</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div><button class="btn primary" data-close>Закрыть</button>`);
   }
 });
 
