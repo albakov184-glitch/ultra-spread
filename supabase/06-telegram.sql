@@ -10,3 +10,7 @@ create table if not exists public.tg_users (
 );
 alter table public.tg_users enable row level security;
 revoke all on public.tg_users from public, anon, authenticated;
+
+-- Аватарки из Telegram: публичная папка в хранилище. Загружает только функция telegram-auth (ключом сервера),
+-- файл называется по id аккаунта
+insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true) on conflict (id) do nothing;

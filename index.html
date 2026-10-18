@@ -2304,7 +2304,7 @@ const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localSt
 let U = lsGet(USER_KEY);
 const me = () => U;
 function setUser(user) {
-  U = { id: user.id, email: user.email, name: user.user_metadata?.name || (U?.id === user.id && U.name) || user.email.split('@')[0], created: user.created_at, tg: user.user_metadata?.tg_username || '' };
+  U = { id: user.id, email: user.email, name: user.user_metadata?.name || (U?.id === user.id && U.name) || user.email.split('@')[0], created: user.created_at, tg: user.user_metadata?.tg_username || '', photo: user.user_metadata?.avatar || '' };
   lsSet(USER_KEY, U);
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -2688,13 +2688,14 @@ function closeAuth(quiet) {
 }
 const SYNC_TEXT = { ok: '☁ Синхронизировано', wait: 'Синхронизация…', off: 'Нет сети — сохраним, когда появится', err: 'Не удалось синхронизировать — повторим через минуту', local: 'Нет связи с сервером — работаем офлайн' };
 const tgMail = m => /@telegram\.invalid$/i.test(m || '');
-// Фото профиля Telegram: только в мини-аппе и только если вошёл аккаунт этого же человека (почта tg<id>-…@telegram.invalid)
+// Фото профиля Telegram: копия, которую сохранила функция входа, а в мини-аппе — ссылка от самого Telegram,
+// если он её дал и вошёл аккаунт этого же человека (почта tg<id>-…@telegram.invalid)
 function tgPhoto(u) {
   if (!tgMail(u.email)) return '';
   let t = window.Telegram?.WebApp?.initDataUnsafe?.user;
   if (!t?.id && TG_INIT) try { t = JSON.parse(new URLSearchParams(TG_INIT).get('user')); } catch (e) {}
-  const url = t?.photo_url || '';
-  return t?.id && u.email.startsWith('tg' + t.id + '-') && /^https:\/\//.test(url) ? url : '';
+  const url = t?.id && u.email.startsWith('tg' + t.id + '-') && t.photo_url || u.photo || '';
+  return /^https:\/\//.test(url) ? url : '';
 }
 function renderAcc() {
   const u = me(); $('topAvatar').hidden = !u; $('accCard').hidden = !u;

@@ -47,7 +47,7 @@ const admin = createClient(SB_URL, SERVICE, { auth: { persistSession: false, aut
 
 // Аккаунт ищем только по таблице tg_users, а не по почте: так никто не сможет заранее зарегистрировать
 // «чужую» почту по форме и попасть в аккаунт человека, который потом войдёт через Telegram
-async function userFor(tg: TgUser, retry = true): Promise<{ id: string; email?: string }> {
+async function userFor(tg: TgUser, retry = true): Promise<{ id: string; email?: string; user_metadata?: Record<string, unknown> }> {
   const { data: row, error } = await admin.from('tg_users').select('user_id').eq('tg_id', tg.id).maybeSingle();
   if (error) throw error;
   if (row) {
@@ -70,6 +70,29 @@ async function userFor(tg: TgUser, retry = true): Promise<{ id: string; email?: 
   return c.user;
 }
 
+// Фото профиля Telegram для аватарки. В данных мини-аппа ссылки на фото чаще всего нет, поэтому берём его
+// через бота и кладём копию в публичное хранилище avatars (ссылка на сам файл Telegram содержит токен бота — отдавать её нельзя).
+// Обновляем не чаще раза в сутки; если не вышло — вход всё равно проходит
+async function savePhoto(tg: TgUser, user: { id: string; user_metadata?: Record<string, unknown> }) {
+  const meta = user.user_metadata ?? {};
+  if (Date.now() - Number(meta.avatar_at || 0) < 864e5 && meta.tg_username === (tg.username ?? '')) return;
+  const api = (m: string) => fetch(`https://api.telegram.org/bot${TOKEN}/${m}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
+  let avatar = '';
+  const ph = await api(`getUserProfilePhotos?user_id=${tg.id}&limit=1`);
+  const sizes: { file_id: string; file_unique_id: string; width: number }[] = ph?.result?.photos?.[0] ?? [];
+  const pick = sizes.find((x) => x.width >= 160) ?? sizes[sizes.length - 1];
+  if (pick) {
+    const f = await api(`getFile?file_id=${encodeURIComponent(pick.file_id)}`);
+    const img = f?.result?.file_path && await fetch(`https://api.telegram.org/file/bot${TOKEN}/${f.result.file_path}`, { signal: AbortSignal.timeout(5000) });
+    if (img?.ok) {
+      const path = `${user.id}.jpg`;
+      const { error } = await admin.storage.from('avatars').upload(path, new Uint8Array(await img.arrayBuffer()), { contentType: 'image/jpeg', upsert: true });
+      if (!error) avatar = admin.storage.from('avatars').getPublicUrl(path).data.publicUrl + '?v=' + pick.file_unique_id;
+    }
+  }
+  await admin.auth.admin.updateUserById(user.id, { user_metadata: { ...meta, avatar, avatar_at: Date.now(), tg_username: tg.username ?? '' } });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
@@ -81,6 +104,7 @@ Deno.serve(async (req) => {
   if (!tg) return json({ error: 'bad' }, 401);
   try {
     const user = await userFor(tg);
+    await savePhoto(tg, user).catch((e) => console.error('telegram-auth photo', e));
     // Сессию выдаём через одноразовую ссылку входа: создаём её ключом сервера и сразу же подтверждаем. Письмо не отправляется
     const { data: link, error: le } = await admin.auth.admin.generateLink({ type: 'magiclink', email: user.email! });
     if (le) throw le;
