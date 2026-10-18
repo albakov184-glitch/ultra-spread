@@ -2117,7 +2117,7 @@ document.addEventListener('click', e => {
   if (ds.openPlans !== undefined) return openPlans(ds.openPlans);
   if (ds.period) { payPeriod = ds.period; document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('on', x.dataset.period === payPeriod)); $('payBtn').textContent = payLabel(); return; }
   if (ds.plan === 'pro') return showCheckout();
-  if (ds.plan) { closeSheet(); return subDo('demo_reset_pro', {}, 'Вы на тарифе Free'); }
+  if (ds.plan) { closeSheet(); return subDo('demo_set_sub', { p_period: st.proPeriod || 'm', p_until: null, p_auto: !!st.autoRenew }, 'Вы на тарифе Free'); }
   if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return; }
   if (b.id === 'payBtn') return payProcess();
   if (ds.tour) return showTour(+ds.tour);
@@ -2276,11 +2276,22 @@ let SH = shFix(lsGet(SYNC_KEY));
 const shSave = () => lsSet(SYNC_KEY, SH);
 // Отпечаток не зависит от порядка ключей: база (jsonb) возвращает объекты с переставленными ключами
 const canon = o => JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).sort().reduce((a, x) => (a[x] = v[x], a), Object.create(null)) : v);
-const fp = o => { const s = canon(o) || ''; let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
+const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
+const fp = o => hash(canon(o) || '');
 // В облако идут только настройки расчёта. Тема, инкогнито и подписка — свои у каждого устройства или у сервера
 const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'capital', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
 const cloudSettings = () => Object.fromEntries(CLOUD_SET.filter(k => S.settings[k] !== undefined).map(k => [k, S.settings[k]]));
 const cpKey = c => String(c.name || '').trim().toLowerCase();
+// Отпечатки старой версии считались без сортировки ключей. Пересчитываем те, что совпадают, — иначе все записи
+// показались бы неотправленными правками и затёрли бы изменения с других устройств
+if (SH && !SH.v) {
+  const old = o => hash(JSON.stringify(o) || '');
+  for (const x of S.trades) { const id = String(x.id); if (SH.t[id] === old(x)) SH.t[id] = fp(x); }
+  const seen = new Set();
+  for (const x of S.cps) { const k = cpKey(x); if (!k || seen.has(k)) continue; seen.add(k); if (SH.c[k] === old(x)) SH.c[k] = fp(x); }
+  if (SH.s && SH.s === old(cloudSettings())) SH.s = fp(cloudSettings());
+  SH.v = 2; shSave();
+}
 
 function diff() {
   const t = Object.create(null), c = Object.create(null), out = { t: [], c: [], s: null };
@@ -2358,7 +2369,7 @@ async function pullAll() {
   subApply(sub.data);
   SH.at = maxAt; SH.pulled = true; shSave(); persist(false);
   if (changed) render();
-  subFresh = true; subCheck();
+  subFresh = true; subCheck(); subFresh = false;
 }
 
 let syncTimer = 0, syncing = null, syncAgain = false, syncAgainPull = false, syncState = '', lastPull = 0;
@@ -2380,7 +2391,7 @@ async function syncNow(pull) {
 // Если данные ничьи (из версии без аккаунтов) — они уедут в облако этого аккаунта
 async function cloudStart() {
   if (!U || !sb) return;
-  if (!SH || SH.owner !== U.id) { if (SH?.owner) wipeLocal(); SH = shFix({ owner: U.id, at: null, t: {}, c: {}, s: '' }); shSave(); }
+  if (!SH || SH.owner !== U.id) { if (SH?.owner) wipeLocal(); SH = shFix({ owner: U.id, v: 2, at: null, t: {}, c: {}, s: '' }); shSave(); }
   syncMark('wait');
   await syncNow(true);
 }
@@ -2634,6 +2645,13 @@ async function dropSession() {
   U = null; lsSet(USER_KEY, null); SH = null; lsSet(SYNC_KEY, null); syncState = ''; subFresh = false;
   wipeLocal();
 }
+// «Запомнить меня» выключено и браузер закрывали: просто выходим. Данные устройства не трогаем —
+// неотправленные сделки уйдут после входа; если войдёт другой аккаунт, cloudStart сам их уберёт
+async function signOutOnly() {
+  try { await sb?.auth.signOut({ scope: 'local' }); } catch (e) {}
+  try { localStorage.removeItem(SB_TOKEN); } catch (e) {}
+  U = null; lsSet(USER_KEY, null); syncState = '';
+}
 async function logout() {
   await dropSession(); renderAcc(); render(); show('calc'); showAuth('in');
 }
@@ -2662,15 +2680,16 @@ function afterAuth() {
 }
 function bootAccount() {
   renderAcc();
-  setInterval(() => { if (U) lsSet(BEAT_KEY, Date.now()); }, 5000);
+  const beat = () => { if (U) lsSet(BEAT_KEY, Date.now()); };
+  setInterval(beat, 5000); addEventListener('pagehide', beat); document.addEventListener('visibilitychange', beat);
   // «Запомнить меня» выключено и браузер закрывали — выходим
   // Вкладка живая, если в ней уже входили или другая открытая вкладка недавно отметилась
-  let alive = true; try { alive = !!sessionStorage.getItem(REM_KEY) || Date.now() - (lsGet(BEAT_KEY) || 0) < 20000; } catch (e) {}
+  let alive = true; try { alive = !!sessionStorage.getItem(REM_KEY) || Date.now() - (lsGet(BEAT_KEY) || 0) < 120000; /* скрытые вкладки браузер будит редко */ } catch (e) {}
   const verify = TOKEN_HASH && sb ? sb.auth.verifyOtp({ token_hash: TOKEN_HASH, type: TOKEN_TYPE }).then(r => { if (r.error) { URL_ERR = LINK_ERR; FROM_RECOVERY = FROM_SIGNUP = false; } }).catch(() => {}) : Promise.resolve();
   const session = sb ? verify.then(() => sb.auth.getSession()).then(r => r.data.session).catch(() => 'offline') : Promise.resolve('offline');
   runSplash(async () => {
     let s = await Promise.race([session, wait(6000).then(() => 'offline')]);
-    if (s && s !== 'offline' && lsGet(REM_KEY) === false && !alive && !FROM_RECOVERY && !FROM_SIGNUP) { await dropSession(); s = null; }
+    if (s && s !== 'offline' && lsGet(REM_KEY) === false && !alive && !FROM_RECOVERY && !FROM_SIGNUP) { await signOutOnly(); s = null; }
     if (s && s !== 'offline') {
       setUser(s.user); renderAcc();
       try { sessionStorage.setItem(REM_KEY, '1'); } catch (e) {}
@@ -2700,12 +2719,14 @@ function subCheck() {
   if (!st.proUntil) { st.pro = false; return; }
   if (Date.now() > st.proUntil) {
     const was = st.pro; st.pro = false; persist(false);
-    if (st.autoRenew && st.proSince && me() && sb && subFresh && !renewing) {
+    // Продлеваем только по только что прочитанным данным сервера; иначе сначала перечитываем — вдруг подписку отменили на другом устройстве
+    if (st.autoRenew && st.proSince && me() && sb && !subFresh && !renewing) syncNow(true);
+    else if (st.autoRenew && st.proSince && me() && sb && subFresh && !renewing) {
       renewing = true;
-      cloudRpc('demo_activate_pro', { p_period: st.proPeriod, p_method: st.payMethod || 'card' })
-        .then(r => { subApply(r); persist(false); render(); renderTestPanel(); toast(`PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)`); })
+      cloudRpc('demo_renew_pro').catch(e => /demo_renew_pro|PGRST202|not find/i.test(e?.message + e?.code) ? cloudRpc('demo_activate_pro', { p_period: st.proPeriod, p_method: st.payMethod || 'card' }) : Promise.reject(e))
+        .then(r => { subApply(r); persist(false); render(); renderTestPanel(); toast(S.settings.pro ? `PRO продлён автоматически: ${PERIOD_PRICE[st.proPeriod]} ₽ (демо)` : 'Подписка PRO закончилась — вы на тарифе Free'); })
         .catch(() => {}).finally(() => renewing = false);
-    } else if (was && !(st.autoRenew && !subFresh)) setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 600);   // при автопродлении ждём ответа сервера
+    } else if (was && !st.autoRenew) setTimeout(() => toast('Подписка PRO закончилась — вы на тарифе Free'), 600);   // при автопродлении ждём ответа сервера
     return;
   }
   st.pro = true;
