@@ -12,6 +12,13 @@ const ANON = Deno.env.get('SUPABASE_ANON_KEY') || SERVICE;
 const CHANNEL = '@P2ProChannel';   // обязательная подписка. Бот должен быть админом канала, иначе Telegram не скажет, кто подписан
 const MAX_AGE = 24 * 3600;   // initData старше суток не принимаем — пусть перезапустит мини-апп
 const STARS = { m: 350, y: 2650 };   // цены PRO в звёздах. Такие же — в боте (telegram-bot) и в приложении (index.html)
+const RUB = { m: 490, y: 3990 };     // цены PRO в рублях (сайт). Такие же — в приложении
+// xRocket Pay — оплата криптой на сайте. Ключи — в Supabase → Edge Functions → Secrets
+const XR_TOKEN = Deno.env.get('XROCKET_API_TOKEN') ?? '';
+const XR_SECRET = Deno.env.get('XROCKET_WEBHOOK_SECRET') ?? '';
+const XR_API = 'https://pay.api.xrocket.exchange';
+const SITE = 'https://albakov184-glitch.github.io/ultra-spread/';
+const ADMIN_ID = 6928515440;
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
@@ -166,11 +173,84 @@ async function webLogin(id: string) {
   return res;
 }
 
+/* ================= xRocket Pay: оплата криптой на сайте (15-xrocket.sql) ================= */
+const xr = (path: string, init: RequestInit = {}) => fetch(XR_API + path, { ...init, signal: AbortSignal.timeout(15000),
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${XR_TOKEN}`, ...(init.headers ?? {}) } })
+  .then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => null) }));
+const tgSend = (chat: number, text: string, markup?: unknown) => fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) }) }).catch(() => null);
+
+// Счёт на PRO в xRocket. Цена в рублях (персональная из админки или обычная); xRocket сам пересчитает в USDT или TON
+async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
+  if (!XR_TOKEN) return json({ error: 'xr_off' }, 503);
+  const period = body.xr_invoice === 'y' ? 'y' : 'm';
+  const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
+  if (ue || !ud?.user) return json({ error: 'auth' }, 401);
+  if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
+  const { data: cp } = await admin.from('custom_prices').select('rm, ry').eq('user_id', ud.user.id).maybeSingle();
+  const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
+  const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
+  const { error: ie } = await admin.from('crypto_invoices').insert({ id, user_id: ud.user.id, period, price_rub: price });
+  if (ie) { console.error('crypto_invoices', ie); return json({ error: 'server' }, 500); }
+  const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
+  const req: Record<string, unknown> = {
+    priceAmount: String(price), priceCurrency: 'RUB', payCurrencies: ['USDT', 'TON'], numPayments: 1, clientInvoiceId: id,
+    description: `P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'}`, expiresIn: 60 * 60e3,
+    callback: { callbackUrl: `${SB_URL}/functions/v1/telegram-auth` }, url: { successUrl: SITE + '?paid=crypto', cancelUrl: SITE },
+    customer: { id: ud.user.id, ...(t?.tg_id ? { telegramId: String(t.tg_id) } : {}) }, data: { u: ud.user.id, p: period },
+  };
+  let r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify(req) });
+  if (!r.ok && r.status === 400) {
+    // xRocket не принял цену в рублях — считаем сумму в USDT по их же курсу и пробуем ещё раз
+    console.error('xr rub price', r.data);
+    const rate = await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB').then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0);
+    if (rate > 0) r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify({ ...req, priceCurrency: 'USDT', priceAmount: (Math.ceil(price / rate * 100) / 100).toFixed(2) }) });
+  }
+  const inv = r.data?.data ?? r.data;
+  if (!r.ok || !inv?.links) { console.error('xr invoice', r.status, r.data); return json({ error: 'server' }, 502); }
+  await admin.from('crypto_invoices').update({ xr_id: String(inv.id ?? '') }).eq('id', id);
+  return json({ id, link: inv.links.webLink || inv.links.telegramMiniAppLink || inv.links.telegramBotLink, tg: inv.links.telegramBotLink });
+}
+
+// Уведомление от xRocket об оплате. Подпись: HMAC-SHA256(секрет вебхука, "{Signature-Timestamp}.{тело}") в hex
+async function xrWebhook(req: Request, raw: string) {
+  const ts = req.headers.get('signature-timestamp') ?? '', sig = (req.headers.get('signature') ?? '').toLowerCase();
+  if (!XR_SECRET || !ts || !sig) return new Response('forbidden', { status: 403 });
+  if (Math.abs(Date.now() - Number(ts)) > 15 * 60e3) return new Response('stale', { status: 403 });   // старое уведомление не принимаем повторно
+  if (!same(hex(await hmac(enc.encode(XR_SECRET), `${ts}.${raw}`)), sig)) return new Response('forbidden', { status: 403 });
+  let w: { data?: { event?: string; invoice?: { id?: string; clientInvoiceId?: string; status?: string; priceAmount?: string; priceCurrency?: string } } } = {};
+  try { w = JSON.parse(raw); } catch (_) { return new Response('bad', { status: 400 }); }
+  const inv = w.data?.invoice;
+  if (w.data?.event !== 'invoice_status_changed' || inv?.status !== 'paid' || !/^p2p_[a-f0-9]{32}$/.test(inv.clientInvoiceId ?? '')) return new Response('ok');
+  // Перепроверяем у самого xRocket, что счёт действительно оплачен
+  const chk = await xr('/api/v1/invoice?clientInvoiceId=' + inv.clientInvoiceId);
+  const live = chk.data?.data ?? chk.data;
+  if (!chk.ok || live?.status !== 'paid') { console.error('xr check', chk.status, live?.status); return new Response('not paid', { status: 409 }); }
+  const { data: g, error } = await admin.rpc('crypto_grant_pro', { p_invoice: inv.clientInvoiceId, p_amount: String(live.priceAmount ?? inv.priceAmount ?? ''), p_currency: String(live.priceCurrency ?? inv.priceCurrency ?? '') });
+  if (error) { console.error('crypto grant', error); return new Response('retry', { status: 500 }); }   // xRocket пришлёт ещё раз
+  const res = g as { fresh: boolean; user_id?: string; period?: string; price_rub?: number; pro_until?: string };
+  if (res.fresh && res.user_id) {
+    const until = res.pro_until ? new Date(res.pro_until).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' }).replace(' г.', '') : '';
+    const { data: t } = await admin.from('tg_users').select('tg_id, username').eq('user_id', res.user_id).maybeSingle();
+    if (t?.tg_id) await tgSend(t.tg_id, `✅ <b>Оплата прошла!</b>\n\nP2Pro PRO ${res.period === 'y' ? 'на год' : 'на месяц'} — действует до <b>${until}</b>. Спасибо!`);
+    const { data: u } = await admin.auth.admin.getUserById(res.user_id);
+    const who = t?.username ? '@' + t.username : String(u?.user?.email ?? res.user_id).replace(/[<>&]/g, '');
+    await tgSend(ADMIN_ID, `💎 <b>Оплата криптой ${res.price_rub} ₽</b>\nPRO · ${res.period === 'y' ? 'год' : 'месяц'}\n${who}\nСчёт: <code>${inv.clientInvoiceId}</code> · ${live.priceAmount ?? ''} ${live.priceCurrency ?? ''}`);
+  }
+  return new Response('ok');
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
   if (!TOKEN || !SB_URL || !SERVICE) return json({ error: 'server' }, 500);
-  const body = await req.json().catch(() => null);
+  const raw = await req.text().catch(() => '');
+  if (req.headers.get('signature')) return xrWebhook(req, raw);   // уведомление от xRocket об оплате
+  // deno-lint-ignore no-explicit-any
+  let body: any = null;
+  try { body = JSON.parse(raw); } catch (_) { /* не JSON */ }
+  if (typeof body?.xr_invoice === 'string') return xrInvoice(body);
   if (typeof body?.web_login === 'string') return webLogin(body.web_login);
   const initData = typeof body?.initData === 'string' ? body.initData.slice(0, 8192) : '';
   const tg = initData ? await checkInit(initData) : null;

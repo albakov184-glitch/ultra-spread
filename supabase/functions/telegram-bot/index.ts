@@ -65,11 +65,16 @@ const isPro = (s: Sub) => !!s?.pro_until && Date.parse(s.pro_until) > Date.now()
 const isBanned = (u: AUser) => !!u.banned_until && Date.parse(u.banned_until) > Date.now();
 const FREE_METHODS = ['gift', 'promo'];
 const STARS: Record<string, number> = { m: 350, y: 2650 };   // цены PRO в звёздах. Такие же — в telegram-auth и в приложении
-// Цена для конкретного человека: персональная (11-prices.sql, задаётся в карточке) или обычная
-async function priceOf(userId: string): Promise<{ m: number; y: number; custom: boolean }> {
-  const { data, error } = await admin.from('custom_prices').select('m, y').eq('user_id', userId).maybeSingle();
-  return !error && data ? { m: data.m, y: data.y, custom: true } : { m: STARS.m, y: STARS.y, custom: false };
+const RUB: Record<string, number> = { m: 490, y: 3990 };     // цены PRO в рублях (оплата криптой на сайте). Такие же — в telegram-auth и в приложении
+type Price = { m: number; y: number; rm: number; ry: number; custom: boolean };
+// Цена для конкретного человека: персональная (11-prices.sql и 15-xrocket.sql, задаётся в карточке) или обычная
+async function priceOf(userId: string): Promise<Price> {
+  let { data, error } = await admin.from('custom_prices').select('m, y, rm, ry').eq('user_id', userId).maybeSingle();
+  if (error) ({ data, error } = await admin.from('custom_prices').select('m, y').eq('user_id', userId).maybeSingle());   // 15-xrocket.sql ещё не запущен
+  const d = !error && data ? data as { m: number; y: number; rm?: number | null; ry?: number | null } : null;
+  return { m: d?.m ?? STARS.m, y: d?.y ?? STARS.y, rm: d?.rm || RUB.m, ry: d?.ry || RUB.y, custom: !!d };
 }
+const priceLine = (p: Price) => `${p.m} ⭐ / ${p.y} ⭐ · ${p.rm.toLocaleString('ru-RU')} ₽ / ${p.ry.toLocaleString('ru-RU')} ₽`;
 const pct = (v: number, base: number) => Math.round((1 - v / base) * 100);
 const openBtn = (text = '🚀 Открыть P2Pro') => kb([[{ text, web_app: { url: APP } }]]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -100,7 +105,7 @@ const MENU = () => kb([
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
-  `Команды: /stats, /user @ник, /give @ник 30, /revoke @ник, /promo КОД ДНИ [ЛИМИТ] [СРОК_ДНЕЙ], /price @ник МЕСЯЦ [ГОД], /refund НОМЕР_ПЛАТЕЖА, /cancel`;
+  `Команды: /stats, /user @ник, /give @ник 30, /revoke @ник, /promo КОД ДНИ [ЛИМИТ] [СРОК_ДНЕЙ], /price @ник МЕСЯЦ [ГОД], /pricerub @ник МЕСЯЦ [ГОД], /refund НОМЕР_ПЛАТЕЖА, /cancel`;
 
 // Все аккаунты (Supabase отдаёт страницами по 1000), новые сверху
 async function allUsers(): Promise<AUser[]> {
@@ -161,6 +166,7 @@ async function allSubs(): Promise<NonNullable<Sub>[]> {
 const mskDay = (t: number) => new Date(t + 3 * 3600e3).toISOString().slice(0, 10);
 // Оплата в рублях (карта, СБП). Звёзды считаем отдельно, подарки и промокоды — не деньги
 const realPay = (p: Pay) => +p.amount > 0 && !FREE_METHODS.includes(p.method ?? '') && p.method !== 'stars';
+const cryptoPay = (p: Pay) => p.method === 'crypto' && +p.amount > 0;
 const starPay = (p: Pay) => p.method === 'stars' && +p.amount > 0;
 
 /* ---------- Статистика ---------- */
@@ -172,10 +178,11 @@ async function statsText() {
   const pro = subs.filter(isPro), gifts = pro.filter((s) => FREE_METHODS.includes(s.pay_method ?? '')).length;
   // Выручка за текущий месяц по Москве
   const month = mskDay(now).slice(0, 7);
-  let rev = 0, pays = 0, stars = 0, starN = 0;
+  let rev = 0, pays = 0, stars = 0, starN = 0, cr = 0, crN = 0;
   for (const s of subs) for (const p of s.payments ?? []) {
     if (!mskDay(Date.parse(p.ts)).startsWith(month)) continue;
     if (realPay(p)) { rev += +p.amount; pays++; }
+    if (cryptoPay(p)) { cr += +p.amount; crN++; }
     if (p.method === 'stars') { stars += +p.amount; if (+p.amount > 0) starN++; }   // возвраты записаны с минусом
   }
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('deleted', false);
@@ -190,7 +197,7 @@ async function statsText() {
     `🆕 Новых за сутки: ${since(1)} · за неделю: ${since(7)} · за месяц: ${since(30)}\n` +
     `🔑 Входили за неделю: ${active}\n\n` +
     `⭐ PRO сейчас: <b>${pro.length}</b> (подарки и промокоды: ${gifts})\n` +
-    `💰 Выручка за месяц: <b>${rev.toLocaleString('ru-RU')} ₽</b> · оплат: ${pays}\n⭐ Звёздами за месяц: <b>${stars.toLocaleString('ru-RU')} ⭐</b> · оплат: ${starN}\n📒 Сделок в базе: ${trades ?? 0}\n\n` +
+    `💰 Выручка за месяц: <b>${rev.toLocaleString('ru-RU')} ₽</b> · оплат: ${pays}${crN ? `\n   из них криптой: ${cr.toLocaleString('ru-RU')} ₽ · оплат: ${crN}` : ''}\n⭐ Звёздами за месяц: <b>${stars.toLocaleString('ru-RU')} ⭐</b> · оплат: ${starN}\n📒 Сделок в базе: ${trades ?? 0}\n\n` +
     `<b>Новые пользователи за 14 дней</b>\n<pre>${chart}</pre>`;
 }
 
@@ -217,14 +224,14 @@ async function cardView(u: AUser, back = 0) {   // back — страница с�
   const { data: last } = await admin.from('trades').select('updated_at').eq('user_id', u.id).order('updated_at', { ascending: false }).limit(1);
   const { data: promos } = await admin.from('promo_uses').select('code, used_at').eq('user_id', u.id);
   const { data: tgRow } = await admin.from('tg_users').select('daily_off').eq('user_id', u.id).maybeSingle();
-  const PAY_NAME: Record<string, string> = { stars: 'звёзды', gift: 'подарок', promo: 'промокод', card: 'карта', sbp: 'СБП', usdt: 'USDT' };
-  const pays = (s?.payments ?? []).slice(0, 5).map((p) => `• ${date(p.ts)} · ${p.method === 'stars' ? `${p.amount} ⭐` : +p.amount ? `${(+p.amount).toLocaleString('ru-RU')} ₽` : `${p.days ?? ''} дн.`} · ${PAY_NAME[p.method ?? ''] ?? esc(p.method ?? '')}${(p as { refund?: boolean }).refund ? ' (возврат)' : ''}`);
-  const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.pay_method === 'stars' ? ' (звёзды)' : s?.auto_renew ? ' · автопродление' : '';
+  const PAY_NAME: Record<string, string> = { stars: 'звёзды', gift: 'подарок', promo: 'промокод', card: 'карта', sbp: 'СБП', usdt: 'USDT', crypto: 'крипта' };
+  const pays = (s?.payments ?? []).slice(0, 5).map((p) => `• ${date(p.ts)} · ${p.method === 'stars' ? `${p.amount} ⭐` : +p.amount ? `${(+p.amount).toLocaleString('ru-RU')} ₽` : `${p.days ?? ''} дн.`} · ${PAY_NAME[p.method ?? ''] ?? esc(p.method ?? '')}${(p as { paid?: string }).paid ? ` (${esc((p as { paid?: string }).paid!)})` : ''}${(p as { refund?: boolean }).refund ? ' (возврат)' : ''}`);
+  const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.pay_method === 'stars' ? ' (звёзды)' : s?.pay_method === 'crypto' ? ' (крипта)' : s?.auto_renew ? ' · автопродление' : '';
   const text = `<b>👤 Пользователь</b>\n\n${who(u)}\n` + (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
     `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}${last?.[0] ? ` · последняя запись ${date(last[0].updated_at)}` : ''}\n` +
     (tgRow ? `Итоги дня: ${tgRow.daily_off ? 'отключены' : 'приходят'}\n` : '') + '\n' +
     (isPro(s) ? `⭐ PRO до <b>${date(s!.pro_until)}</b>${how}` : 'Тариф: Free') +
-    `\n💲 Цена: ${price.m} ⭐ / ${price.y} ⭐ в год${price.custom ? ` <b>(персональная, −${pct(price.m, STARS.m)}%)</b>` : ' (обычная)'}` +
+    `\n💲 Цена (месяц / год): ${priceLine(price)}${price.custom ? ' <b>(персональная)</b>' : ' (обычная)'}` +
     (pays.length ? `\n\n💳 <b>Оплаты и подарки</b>\n${pays.join('\n')}` : '') +
     (promos?.length ? `\n🎟 Промокоды: ${promos.map((p: { code: string }) => esc(p.code)).join(', ')}` : '') +
     (isBanned(u) ? '\n\n🚫 <b>Аккаунт заблокирован</b>' : '');
@@ -429,21 +436,42 @@ async function refund(charge: string) {
 /* ---------- Персональная цена ---------- */
 async function priceView(u: AUser, back: number) {
   const p = await priceOf(u.id), id = u.id;
-  return { text: `<b>💲 Цена PRO для</b> ${who(u)}\n\nСейчас: <b>${p.m} ⭐</b> в месяц · <b>${p.y} ⭐</b> в год${p.custom ? ' (персональная)' : ' (обычная)'}\n` +
-    `Обычная: ${STARS.m} ⭐ / ${STARS.y} ⭐\n\nВыберите скидку или задайте точную цену командой:\n<code>/price ${esc(contactOf(u))} 250 1900</code> — месяц и год в звёздах (год можно не писать).\n\nЧеловек увидит новую цену в окне оплаты и получит сообщение, если цена ниже обычной.`,
+  return { text: `<b>💲 Цена PRO для</b> ${who(u)}\n\nСейчас (месяц / год): <b>${priceLine(p)}</b>${p.custom ? ' (персональная)' : ' (обычная)'}\n` +
+    `Обычная: ${STARS.m} ⭐ / ${STARS.y} ⭐ · ${RUB.m} ₽ / ${RUB.y.toLocaleString('ru-RU')} ₽\n\n⭐ — оплата звёздами в Telegram, ₽ — оплата криптой на сайте (xRocket посчитает сумму в USDT/TON по курсу).\n\n` +
+    `Кнопка скидки меняет обе цены. Точная цена командой:\n<code>/price ${esc(contactOf(u))} 250 1900</code> — в звёздах\n<code>/pricerub ${esc(contactOf(u))} 350 2900</code> — в рублях\n(год можно не писать — посчитается с той же скидкой).\n\nЧеловек увидит новую цену в окне оплаты и получит сообщение, если цена ниже обычной.`,
     markup: kb([
       [10, 20, 30].map((d) => ({ text: `−${d}%`, callback_data: `ps:${id}:${d}:${back}` })),
       [40, 50, 70].map((d) => ({ text: `−${d}%`, callback_data: `ps:${id}:${d}:${back}` })),
       ...(p.custom ? [[{ text: '↩️ Вернуть обычную цену', callback_data: `px:${id}:${back}` }]] : []),
       [{ text: '‹ К карточке', callback_data: `u:${id}:${back}` }]]) };
 }
-async function setPrice(u: AUser, m: number, y?: number) {
-  y = y ?? Math.max(1, Math.round(m * STARS.y / STARS.m));   // год — с той же скидкой, что и месяц
-  if (!Number.isInteger(m) || m < 1 || m > 100000 || !Number.isInteger(y) || y < 1 || y > 1000000) throw new Error('Цена — целое число звёзд от 1');
-  const { error } = await admin.from('custom_prices').upsert({ user_id: u.id, m, y, updated_at: new Date().toISOString() });
+// cur: 'stars' — цена в звёздах, 'rub' — в рублях. Вторая валюта остаётся как была
+async function setPrice(u: AUser, m: number, y?: number, cur: 'stars' | 'rub' = 'stars') {
+  const B = cur === 'rub' ? RUB : STARS, sign = cur === 'rub' ? ' ₽' : ' ⭐';
+  y = y ?? Math.max(1, Math.round(m * B.y / B.m));   // год — с той же скидкой, что и месяц
+  if (!Number.isInteger(m) || m < 1 || m > 100000 || !Number.isInteger(y) || y < 1 || y > 1000000) throw new Error(`Цена — целое число${sign} от 1`);
+  const p = await priceOf(u.id);
+  const row = cur === 'rub' ? { m: p.m, y: p.y, rm: m, ry: y } : { m, y };
+  const { error } = await admin.from('custom_prices').upsert({ user_id: u.id, ...row, updated_at: new Date().toISOString() });
   if (error) throw error;
-  const notified = m < STARS.m ? await notify(u.id, `🎁 <b>Персональная цена P2Pro PRO для вас</b>\n\n<s>${STARS.m}</s> <b>${m} ⭐</b> в месяц · <s>${STARS.y}</s> <b>${y} ⭐</b> в год.\n\nОткройте приложение: Профиль → «Подключить PRO».`, openBtn('⭐ Подключить PRO')) : false;
+  const f = (v: number) => v.toLocaleString('ru-RU');
+  const notified = m < B.m ? await notify(u.id, `🎁 <b>Персональная цена P2Pro PRO для вас</b>\n\n<s>${f(B.m)}</s> <b>${f(m)}${sign}</b> в месяц · <s>${f(B.y)}</s> <b>${f(y)}${sign}</b> в год` +
+    (cur === 'rub' ? ' — при оплате криптовалютой на сайте.\n\nОткройте P2Pro в браузере: Профиль → «Подключить PRO».' : '.\n\nОткройте приложение: Профиль → «Подключить PRO».'),
+    cur === 'rub' ? kb([[{ text: '💎 Открыть сайт', url: APP }]]) : openBtn('⭐ Подключить PRO')) : false;
   return { m, y, notified };
+}
+// Скидка кнопкой: сразу и в звёздах, и в рублях, одним сообщением человеку
+async function setDiscount(u: AUser, d: number) {
+  const k = (v: number) => Math.max(1, Math.round(v * (1 - d / 100))), r = { m: k(STARS.m), y: k(STARS.y), rm: k(RUB.m), ry: k(RUB.y) };
+  const { error } = await admin.from('custom_prices').upsert({ user_id: u.id, ...r, updated_at: new Date().toISOString() });
+  if (error) {   // 15-xrocket.sql ещё не запущен — меняем только звёзды
+    const s = await setPrice(u, r.m, r.y);
+    return { ...r, rm: RUB.m, ry: RUB.y, notified: s.notified };
+  }
+  const notified = await notify(u.id, `🎁 <b>Персональная скидка ${d}% на P2Pro PRO</b>\n\n` +
+    `В Telegram (звёзды): <s>${STARS.m}</s> <b>${r.m} ⭐</b> в месяц · <s>${STARS.y}</s> <b>${r.y} ⭐</b> в год\n` +
+    `На сайте (криптовалюта): <s>${RUB.m} ₽</s> <b>${r.rm} ₽</b> · <s>${RUB.y.toLocaleString('ru-RU')} ₽</s> <b>${r.ry.toLocaleString('ru-RU')} ₽</b>\n\nОткройте приложение: Профиль → «Подключить PRO».`, openBtn('⭐ Подключить PRO'));
+  return { ...r, notified };
 }
 
 /* ---------- Вход на сайт через бота (12-tglogin.sql) ---------- */
@@ -495,8 +523,17 @@ async function daySummary(userId: string, day: string) {
   const others = [...byCur.entries()].filter(([c]) => c !== cur).map(([c, l]) => money(l.reduce((a, t) => a + (+t.data.profit! || 0), 0), c));
   const { data: prof } = await admin.from('profiles').select('settings').eq('id', userId).maybeSingle();
   const goal = cur === 'RUB' ? +(prof?.settings?.goal ?? 0) || 0 : 0;
-  return { n: list.length, cur, profit, turnover, best, exes, pair, others, goal };
+  return { n: list.length, cur, profit, turnover, best, exes, pair, others, goal, rateOff: !!prof?.settings?.rateOff };
 }
+// Биржевой курс USDT в рублях на конец дня — с биржи xRocket (тот же, что в калькуляторе). Не ответила — без курса
+async function usdtRate(): Promise<{ rate: number; ch: number } | null> {
+  try {
+    const j = await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB', { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
+    const rate = +j?.USDT?.rate;
+    return rate > 0 ? { rate, ch: +j.USDT.rateChangePercent24h || 0 } : null;
+  } catch (_) { return null; }
+}
+const rub2 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 let rsv: Promise<{ Resvg: new (svg: string, o: unknown) => { render(): { asPng(): Uint8Array } }; fonts: Uint8Array[] }> | null = null;
 function renderer() {
@@ -509,7 +546,7 @@ function renderer() {
   })().catch((e) => { rsv = null; throw e; });
 }
 
-function dayCardSvg(d: { pro: boolean; date: string; title: string; big: string; pos: boolean; sub: string; count: string; turnover: string; best: string; goalLabel: string; goal: string; pair: string }) {
+function dayCardSvg(d: { pro: boolean; date: string; rate: string; title: string; big: string; pos: boolean; sub: string; count: string; turnover: string; best: string; goalLabel: string; goal: string; pair: string }) {
   const W = 1080, H = 1350, x = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
   const col = d.pos ? '#3CD38A' : '#FF6B6B', bw = (W - 220) / 2;
   const box = (bx: number, by: number, w: number, label: string, value: string) => `<rect x="${bx}" y="${by}" width="${w}" height="150" rx="26" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".08"/>
@@ -529,7 +566,8 @@ function dayCardSvg(d: { pro: boolean; date: string; title: string; big: string;
   <text x="160" y="200" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="15" letter-spacing="5" fill="#1B1405">PRO</text>
   <text x="250" y="160" font-family="Unbounded" font-weight="800" font-size="48" fill="#E8ECF2">P2Pro</text>
   <text x="250" y="202" font-family="Onest" font-size="28" fill="#8691A2">Учёт P2P-сделок</text>
-  <text x="${W - 100}" y="168" text-anchor="end" font-family="Onest" font-size="28" fill="#8691A2">${x(d.date)}</text>
+  <text x="${W - 100}" y="${d.rate ? 152 : 168}" text-anchor="end" font-family="Onest" font-size="28" fill="#8691A2">${x(d.date)}</text>
+  ${d.rate ? `<text x="${W - 100}" y="198" text-anchor="end" font-family="JetBrains Mono" font-weight="600" font-size="24" fill="#8691A2">${x(d.rate)}</text>` : ''}
   <text x="100" y="360" font-family="Onest" font-weight="600" font-size="30" letter-spacing="9" fill="#F2B54B">ИТОГИ ДНЯ</text>
   <text x="100" y="430" font-family="Unbounded" font-weight="800" font-size="46" fill="#E8ECF2">${x(d.title)}</text>
   <text x="96" y="580" font-family="Unbounded" font-weight="800" font-size="${bigSize}" fill="${col}">${x(d.big)}</text>
@@ -556,7 +594,7 @@ async function dailySend(userId: string, day: string, manual = false) {
     if (manual) await tg('sendMessage', { chat_id: t.tg_id, text: `📊 Сегодня (${dateLong}) сделок пока нет.\n\nЗапишите сделку в P2Pro — итоги дня придут в 23:59.`, reply_markup: dayButtons(!!t.daily_off) });
     return;
   }
-  const pro = isPro(await subOf(userId)), avg = d.profit / d.n;
+  const pro = isPro(await subOf(userId)), avg = d.profit / d.n, xr = d.rateOff ? null : await usdtRate();
   const pct = d.turnover ? d.profit / d.turnover * 100 : 0, goalPct = d.goal ? Math.round(d.profit / d.goal * 100) : 0;
   const title = `${d.n} ${plural(d.n, 'сделка', 'сделки', 'сделок')}${d.exes.length ? ' · ' + d.exes.slice(0, 2).join(', ') : ''}`.slice(0, 34);
   const text = `📊 <b>Итоги дня · ${dateLong}</b>\n\n` +
@@ -565,11 +603,12 @@ async function dailySend(userId: string, day: string, manual = false) {
     `🏆 Лучшая сделка: ${money(d.best, d.cur)}\n` +
     (d.goal ? `🎯 Цель ${d.goal.toLocaleString('ru-RU')} ₽: ${goalPct >= 100 ? `выполнена на ${goalPct}% ✅` : `${goalPct}%`}\n` : '') +
     (d.pair ? `🔥 Чаще всего: ${esc(d.pair[0])} (${d.pair[1]})\n` : '') +
+    (xr ? `💱 Курс USDT на конец дня: ${rub2(xr.rate)} ₽ (${xr.ch >= 0 ? '+' : '−'}${rub2(Math.abs(xr.ch))}% за сутки) · биржа xRocket\n` : '') +
     (pro ? '' : `\n<i>Карточка без водяного знака — в PRO.</i>`);
   let png: Uint8Array | null = null;
   try {
     const r = await renderer();
-    const svg = dayCardSvg({ pro, date: dateLong, title, big: money(d.profit, d.cur), pos: d.profit >= 0,
+    const svg = dayCardSvg({ pro, date: dateLong, rate: xr ? `USDT ${rub2(xr.rate)} ₽ · xRocket` : '', title, big: money(d.profit, d.cur), pos: d.profit >= 0,
       sub: `${pct >= 0 ? '+' : ''}${pct.toFixed(2).replace('.', ',')}% к обороту · средняя ${money(avg, d.cur)}`,
       count: String(d.n), turnover: `${Math.round(d.turnover).toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}`, best: money(d.best, d.cur, 0),
       goalLabel: d.goal ? `Цель ${d.goal.toLocaleString('ru-RU')} ₽` : 'Средняя сделка', goal: d.goal ? `${goalPct}%${goalPct >= 100 ? ' ✓' : ''}` : money(avg, d.cur, 0),
@@ -671,7 +710,7 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
       if (!u) toastText = 'Пользователь не найден';
       else if (k === 'u') await view(await cardView(u, page));
       else if (k === 'pr') await view(await priceView(u, page));
-      else if (k === 'ps') { const r = await setPrice(u, Math.max(1, Math.round(STARS.m * (1 - Number(b) / 100))), Math.max(1, Math.round(STARS.y * (1 - Number(b) / 100)))); toastText = `Цена: ${r.m} ⭐ / ${r.y} ⭐`; const v = await cardView(u, page); await show(chatId, msgId, v.text + (r.notified ? '\n\n📨 Пользователю отправлено сообщение о новой цене.' : ''), v.markup); }
+      else if (k === 'ps') { const r = await setDiscount(u, Number(b)); toastText = `Цена: ${r.m} ⭐ · ${r.rm} ₽`; const v = await cardView(u, page); await show(chatId, msgId, v.text + (r.notified ? '\n\n📨 Пользователю отправлено сообщение о новой цене.' : ''), v.markup); }
       else if (k === 'px') { await admin.from('custom_prices').delete().eq('user_id', u.id); toastText = 'Обычная цена'; await view(await cardView(u, page)); }
       else if (k === 'r') await show(chatId, msgId, `Забрать PRO у ${who(u)}?\nПользователю придёт сообщение с кнопкой поддержки.`,
         kb([[{ text: '⛔ Да, забрать', callback_data: `rr:${u.id}:${page}` }, { text: 'Отмена', callback_data: `u:${u.id}:${page}` }]]));
@@ -717,7 +756,7 @@ async function adminMessage(msg: Msg): Promise<boolean> {
         { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' },
         { command: 'user', description: 'Карточка: /user @ник' }, { command: 'give', description: 'Выдать PRO: /give @ник 30' },
         { command: 'revoke', description: 'Забрать PRO: /revoke @ник' }, { command: 'promo', description: 'Промокод: /promo КОД ДНИ' },
-        { command: 'price', description: 'Цена: /price @ник 250 1900' }, { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
+        { command: 'price', description: 'Цена в ⭐: /price @ник 250 1900' }, { command: 'pricerub', description: 'Цена в ₽: /pricerub @ник 350 2900' }, { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
       await tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть P2Pro' }, { command: 'itogi', description: 'Итоги дня прямо сейчас' }] });
       await stSet('await', null);
       await show(chatId, null, ADMIN_HELP, MENU());
@@ -725,11 +764,12 @@ async function adminMessage(msg: Msg): Promise<boolean> {
     else if (c === '/stats') await show(chatId, null, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (c === '/promo') await show(chatId, null, await promoCreate(args), kb([[{ text: '🎟 Промокоды', callback_data: 'pl' }]]));
     else if (c === '/refund') await show(chatId, null, await refund(a), null);
-    else if (c === '/price') {
+    else if (c === '/price' || c === '/pricerub') {
+      const rub = c === '/pricerub', sign = rub ? '₽' : '⭐';
       const u = a ? await findUser(a) : null, m = Number(b), y = args[2] ? Number(args[2]) : undefined;
-      if (!u) await show(chatId, null, a ? NOT_FOUND : 'Напишите так: <code>/price @ник 250 1900</code> — цена за месяц и за год в звёздах', null);
+      if (!u) await show(chatId, null, a ? NOT_FOUND : rub ? 'Напишите так: <code>/pricerub @ник 350 2900</code> — цена за месяц и за год в рублях (оплата криптой на сайте)' : 'Напишите так: <code>/price @ник 250 1900</code> — цена за месяц и за год в звёздах', null);
       else if (!b) await view0(await priceView(u, 0));
-      else { const r = await setPrice(u, m, y); await show(chatId, null, `✅ ${who(u)}\nПерсональная цена: <b>${r.m} ⭐</b> / <b>${r.y} ⭐</b> в год.${r.notified ? '\n📨 Пользователю отправлено сообщение.' : ''}`, kb([[{ text: '👤 Карточка', callback_data: `u:${u.id}` }]])); }
+      else { const r = await setPrice(u, m, y, rub ? 'rub' : 'stars'); await show(chatId, null, `✅ ${who(u)}\nПерсональная цена: <b>${r.m} ${sign}</b> / <b>${r.y} ${sign}</b> в год.${r.notified ? '\n📨 Пользователю отправлено сообщение.' : ''}`, kb([[{ text: '👤 Карточка', callback_data: `u:${u.id}` }]])); }
     }
     else if (c === '/user' || !c.startsWith('/')) {
       const q = c === '/user' ? a : text;
@@ -766,7 +806,7 @@ async function tick() {
       text: (fresh.length === 1 ? '🆕 <b>Новый пользователь</b>\n' : `🆕 <b>Новых пользователей: ${fresh.length}</b>\n`) + fresh.slice(0, 10).map(who).join('\n') + (fresh.length > 10 ? '\n…' : '') });
     const { data: subs } = await admin.from('subscriptions').select('user_id, payments').gt('updated_at', seen.at);
     for (const s of (subs ?? []) as NonNullable<Sub>[]) for (const p of s.payments ?? []) {
-      if (!realPay(p) || Date.parse(p.ts) <= since || Date.parse(p.ts) > Date.parse(nowIso)) continue;   // о звёздах бот сообщает сразу при оплате
+      if (!realPay(p) || cryptoPay(p) || Date.parse(p.ts) <= since || Date.parse(p.ts) > Date.parse(nowIso)) continue;   // о звёздах и крипте сообщаем сразу при оплате
       const u = await userById(s.user_id);
       await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
         text: `💰 <b>Оплата ${(+p.amount).toLocaleString('ru-RU')} ₽</b>\nPRO · ${p.period === 'y' ? 'год' : 'месяц'}${(p as { auto?: boolean }).auto ? ' · автопродление' : ''}\n${u ? who(u) : s.user_id}` });

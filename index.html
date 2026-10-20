@@ -534,6 +534,11 @@ html, body { overscroll-behavior-y: contain; }
 
 /* Карточка результата */
 .share-prev { width: 100%; border-radius: 16px; display: block; border: 1px solid var(--line); background: #0C0F14; aspect-ratio: 4 / 5; object-fit: contain; }
+.rate-line { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); padding: 7px 10px; border-radius: 10px; background: var(--surface-2); width: max-content; max-width: 100%; margin: -2px 0 2px; }
+.rate-line .dot { width: 7px; height: 7px; border-radius: 50%; background: #3CD38A; flex: none; }
+.rate-line .dot.off { background: var(--muted); }
+.rate-line b { font-family: var(--f-mono); color: var(--fg); font-size: 13.5px; font-weight: 600; }
+.rate-line .up { color: #3CD38A; font-weight: 600; } .rate-line .dn { color: #FF6B6B; font-weight: 600; } .rate-line .ar { margin-left: 2px; }
 .sw-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
 .toggle { width: 46px; height: 28px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); position: relative; flex: none; transition: background .2s; }
 .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--muted); transition: transform .2s, background .2s; }
@@ -965,6 +970,11 @@ img { max-width: 100%; }
     <div class="card">
       <div class="card-h"><span class="card-t">Как я работаю</span><button class="btn slim" data-change-work style="padding:8px 12px;font-size:13px">Изменить</button></div>
       <span class="muted" id="workNow"></span>
+    </div>
+    <div class="card">
+      <span class="card-t">Отображение</span>
+      <div class="sw-row"><span>Биржевой курс USDT в калькуляторе<br><span class="muted small">Источник: xRocket, обновляется раз в минуту</span></span>
+        <button class="toggle" role="switch" id="rateToggle" aria-checked="true" aria-label="Биржевой курс в калькуляторе"></button></div>
     </div>
     <div class="card">
       <div class="card-h"><span class="card-t">Цели и капитал</span><button class="info" data-info="capital" aria-label="Что такое капитал">i</button></div>
@@ -1848,44 +1858,60 @@ function payIcon(k, z = 18) {
   const sv = (body, extra = '') => `<svg width="${z}" height="${z}" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${body}</svg>`;
   if (k === 'usdt') return sv('<circle cx="12" cy="12" r="12" fill="#26A17B"/><path fill="#fff" d="M6.4 5.9h11.2v2.7h-4.2v2.15c2.55.15 4.45.7 4.45 1.35s-1.9 1.2-4.45 1.35v4.7h-2.8v-4.7C8 13.3 6.15 12.75 6.15 12.1s1.85-1.2 4.45-1.35V8.6H6.4zm4.2 5.6c-1.95.12-3.3.42-3.3.6 0 .2 1.5.52 3.3.62V11.5zm2.8 0v1.22c1.8-.1 3.3-.42 3.3-.62 0-.18-1.35-.48-3.3-.6z"/>');
   if (k === 'stars') return sv('<defs><linearGradient id="stG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD84D"/><stop offset="1" stop-color="#F5A300"/></linearGradient></defs><path fill="url(#stG)" d="m12 1.8 3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8l-6.2 3.3 1.2-7-5.1-4.9 7-1z"/>');
+  if (k === 'crypto') return sv('<circle cx="12" cy="12" r="12" fill="#0098EA"/><path fill="#fff" d="M7.6 7h8.8c.8 0 1.3.9.9 1.6l-4.6 8a.8.8 0 0 1-1.4 0l-4.6-8C6.3 7.9 6.8 7 7.6 7zm3.6 1.6H8.4l2.8 5zm1.6 0v5l2.8-5z"/>');
   if (k === 'sbp') return `<img src="icons/sbp.png" width="${z}" height="${z}" alt="" style="display:block">`;
   return sv('<rect x="2" y="5" width="20" height="14" rx="3" fill="#F2B54B"/><rect x="2" y="8.2" width="20" height="2.6" fill="#1B1405" opacity=".75"/><rect x="5" y="14" width="6" height="1.8" rx=".9" fill="#1B1405" opacity=".55"/>');
 }
-// Окно PRO. В Telegram — оплата звёздами (настоящая), на сайте пока демо: деньги не списываются
-let payMethod = 'card', payPeriod = 'm';
+// Окно PRO. В Telegram — оплата звёздами, на сайте — криптовалютой через xRocket (карта и СБП — скоро, Platega)
+let payMethod = 'crypto', payPeriod = 'm';
 const STARS = { m: 350, y: 2650 };   // цены в звёздах. Такие же — в функциях telegram-auth и telegram-bot
 const PAY_SOON = true;
 // Персональная цена в звёздах (задаёт владелец в админке бота). Подгружается при открытии окна оплаты
-let myStars = { ...STARS };
+// и в рублях (rm, ry — для оплаты на сайте; пусто — обычная цена)
+const RUB = { m: 490, y: 3990 };   // такие же — в функции telegram-auth
+let myStars = { ...STARS }, myRub = { ...RUB };
 async function loadMyStars() {
   if (!sb || !me()) return;
-  try { const { data } = await sb.from('custom_prices').select('m, y').maybeSingle(); myStars = data ? { m: data.m, y: data.y } : { ...STARS }; } catch (e) {}
+  try {
+    let { data, error } = await sb.from('custom_prices').select('m, y, rm, ry').maybeSingle();
+    if (error) ({ data } = await sb.from('custom_prices').select('m, y').maybeSingle());   // 15-xrocket.sql ещё не запущен
+    myStars = data ? { m: data.m, y: data.y } : { ...STARS };
+    myRub = { m: data?.rm || RUB.m, y: data?.ry || RUB.y };
+  } catch (e) {}
 }
 const starsPlans = () => {
   // Персональная скидка: новая цена крупно, обычная — зачёркнутой строкой под ней
   const was = k => myStars[k] < STARS[k] ? `<span><s>${nf0.format(STARS[k])} ⭐</s></span>` : '';
   return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myStars.m)} ⭐</b>${was('m') || '<span>в месяц</span>'}</button>
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−${Math.max(0, Math.round((1 - myStars.y / (myStars.m * 12)) * 100))}%</em><span>Год</span><b>${nf0.format(myStars.y)} ⭐</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myStars.y / 12))} ⭐ в месяц</span>`}</button>`;
-};   // пока Platega не подключена: на сайте вместо демо-оплаты — переход в Telegram
+};
+// То же для цен в рублях на сайте
+const rubPlans = () => {
+  const was = k => myRub[k] < RUB[k] ? `<span><s>${nf0.format(RUB[k])} ₽</s></span>` : '';
+  return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myRub.m)} ₽</b>${was('m') || '<span>в месяц</span>'}</button>
+      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−${Math.max(0, Math.round((1 - myRub.y / (myRub.m * 12)) * 100))}%</em><span>Год</span><b>${nf0.format(myRub.y)} ₽</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myRub.y / 12))} ₽ в месяц</span>`}</button>`;
+};
 const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
-const payLabel = () => inTelegram() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
+const payLabel = () => inTelegram() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${nf0.format(myRub[payPeriod])} ₽`;
 function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
   payPeriod = why === 'renew' ? 'y' : 'm';
   const F = [['∞', 'История без ограничений'], ['★', 'Контрагенты и чёрный список'], ['⤓', 'Выгрузка всех сделок в Excel'], ['▣', 'Карточки результата без водяного знака'], ['⚡', 'Скоро: живые курсы и уведомления', 'soon']];
-  const M = [['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars'], ['usdt', 'USDT']];
+  const M = [['crypto', 'Крипта · USDT, TON'], ['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars']];
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
     <ul class="pw-list">${F.map(([i, t, c], k) => `<li class="${c || ''}" style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>
     ${inTelegram() ? `<div class="pw-plans" id="starPlans">${starsPlans()}</div>
-    <span class="muted small" style="display:flex;align-items:center;gap:6px">${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить</span>` : `<div class="pw-plans">
-      <button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>490 ₽</b><span>в месяц</span></button>
-      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−32%</em><span>Год</span><b>3 990 ₽</b><span>≈ 333 ₽ в месяц</span></button></div>
+    <span class="muted small" style="display:flex;align-items:center;gap:6px">${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить</span>` : `<div class="pw-plans" id="rubPlans">${rubPlans()}</div>
     <span class="label">Способ оплаты</span>
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>`}
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
   // Персональная цена могла поменяться — перечитываем и перерисовываем цены
-  if (inTelegram()) loadMyStars().then(() => { if ($('starPlans')) { $('starPlans').innerHTML = starsPlans(); if (!$('payBtn').disabled) $('payBtn').textContent = payLabel(); } });
+  loadMyStars().then(() => {
+    const el = $('starPlans') || $('rubPlans'); if (!el) return;
+    el.innerHTML = el.id === 'starPlans' ? starsPlans() : rubPlans();
+    if (!$('payBtn').disabled) $('payBtn').textContent = payLabel();
+  });
 }
 const showCheckout = () => openPlans();
 
@@ -1923,12 +1949,47 @@ async function starsPay() {
     confetti();
   });
 }
+// Оплата криптой на сайте (xRocket Pay): сервер (telegram-auth) выставляет счёт в рублях, xRocket пересчитывает
+// в USDT или TON. PRO включает сервер, когда xRocket сообщит об оплате. Приложение ждёт новый срок с сервера
+async function cryptoPay() {
+  if (!sb || !me()) return toast('Войдите в аккаунт, чтобы оплатить');
+  const btn = $('payBtn'); if (!btn || btn.disabled) return;
+  btn.disabled = true; btn.textContent = 'Выставляем счёт…';
+  let res = {};
+  try {
+    const token = (await sb.auth.getSession()).data?.session?.access_token;
+    res = await (await tgAuthCall({ xr_invoice: payPeriod, access_token: token })).json().catch(() => ({}));
+  } catch (e) {}
+  if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
+  if (res.error === 'blocked') return blockedScreen();
+  if (!res.link) return toast('Не получилось выставить счёт. Проверьте интернет и попробуйте ещё раз');
+  const before = S.settings.proUntil || 0, price = `${nf0.format(myRub[payPeriod])} ₽ · ${payPeriod === 'y' ? 'год' : 'месяц'}`;
+  // Ссылку открывает сам человек кнопкой: так её не заблокирует браузер (всплывающие окна после ожидания запрещены)
+  sheet(`<div class="pay-proc" id="xrWait" role="status" aria-live="polite"><div class="pp-ring"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" cx="60" cy="60" r="52" style="stroke-dashoffset:110"/></svg>
+      <div class="pp-icon">${payIcon('crypto', 44)}</div></div><h3>Счёт готов</h3><span class="muted small">${price} · USDT или TON</span>
+      <p class="muted small" style="text-align:center;margin:0">Откроется xRocket: выберите монету и оплатите с любого кошелька или биржи. Сумма в крипте посчитается по курсу. Счёт действует 1 час.</p></div>
+    <a class="btn primary" href="${esc(res.link)}" target="_blank" rel="noopener">Перейти к оплате</a>
+    <span class="muted small" style="text-align:center">После оплаты вернитесь сюда — PRO включится сам. Ждём оплату…</span>
+    <button class="btn" data-close>Закрыть</button>`);
+  payBusy = true;
+  try {
+    // Ждём, пока окно открыто (до часа — столько живёт счёт)
+    for (let i = 0; i < 1200 && $('xrWait') && (S.settings.proUntil || 0) <= before; i++) { await wait(3000); if (!document.hidden) await syncNow(true); }
+  } finally { payBusy = false; }
+  if ((S.settings.proUntil || 0) <= before) return;
+  navigator.vibrate?.([12, 60, 18]);
+  sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO подключён 🎉</h3>
+    <p>Оплата криптой прошла. PRO действует до <b>${fmtLong(S.settings.proUntil)}</b>. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
+    <button class="btn primary" data-close>Отлично</button>`);
+  confetti();
+}
 // Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
 async function payProcess() {
   if (inTelegram()) return starsPay();
+  if (payMethod === 'crypto') return cryptoPay();
   // На сайте оплата картой и СБП ещё подключается (Platega). Демо-покупку не показываем: она давала PRO бесплатно
   if (PAY_SOON) return sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>Оплата картой — скоро</h3>
-    <p>Оплату картой и СБП на сайте подключаем прямо сейчас. Купить PRO уже можно в Telegram — звёздами: 350 ⭐ в месяц или 2 650 ⭐ в год.</p>
+    <p>Оплату картой и СБП на сайте подключаем прямо сейчас. Купить PRO уже можно криптовалютой (USDT, TON) здесь или в Telegram — звёздами: 350 ⭐ в месяц или 2 650 ⭐ в год.</p>
     <p class="muted small">В Telegram войдите в тот же аккаунт (по почте), чтобы PRO включился именно в нём.</p></div>
     <div class="row2"><button class="btn" data-close>Закрыть</button><a class="btn primary" href="https://t.me/P2ProAppBot" target="_blank" rel="noopener">Открыть в Telegram</a></div>`);
   const M = { card: ['Банковская карта', 'Связываемся с банком'], sbp: ['СБП', 'Ждём подтверждение СБП'],
@@ -1999,6 +2060,7 @@ function bankUsage(bank) {
     .reduce((a, t) => a + t.sum + t.gross, 0);
 }
 function renderProfile() {
+  $('rateToggle')?.setAttribute('aria-checked', !S.settings.rateOff);
   const st = S.settings;
   if ($('setGoal') !== document.activeElement) $('setGoal').value = st.goal || '';
   if ($('setCap') !== document.activeElement) $('setCap').value = st.capital || '';
@@ -2104,7 +2166,7 @@ function render() {
   if (S.settings.pro && S.settings.proUntil && Date.now() > S.settings.proUntil) subCheck();
   const pro = S.settings.pro;
   $('planPill').textContent = pro ? `PRO · ${subDaysLeft()} дн.` : 'Free'; $('planPill').classList.toggle('pro', pro);
-  if (current === 'calc') { renderCalcStatic(); renderResult(); renderToday(); }
+  if (current === 'calc') { renderCalcStatic(); renderResult(); renderToday(); renderRate(); xrRefresh(); }
   if (current === 'hist') renderHistory();
   if (current === 'stats') renderStats();
   if (current === 'tools') renderTools();
@@ -2359,6 +2421,7 @@ const URL_HASH = location.hash, URL_Q = new URLSearchParams(location.search);
 const TG_INIT = (() => { try { return new URLSearchParams(location.hash.slice(1)).get('tgWebAppData') || ''; } catch (e) { return ''; } })();
 // Открыто внутри Telegram. Объявлено здесь, до первой отрисовки: её вызывает и стартовый экран (например, Профиль)
 const inTelegram = () => !!(window.Telegram?.WebApp?.initData || TG_INIT);
+
 const TOKEN_HASH = URL_Q.get('token_hash'), TOKEN_TYPE = URL_Q.get('type') || 'email';
 let FROM_RECOVERY = /type=recovery/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE === 'recovery'), FROM_SIGNUP = /type=signup/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE !== 'recovery');
 const LINK_ERR = 'Ссылка из письма уже использована или устарела. Если вы подтверждали почту — просто войдите, иначе запросите письмо снова';
@@ -2370,6 +2433,65 @@ if (URL_ERR || TOKEN_HASH) history.replaceState(null, '', APP_URL);
 const USER_KEY = KEY + '.user', SYNC_KEY = KEY + '.sync', REM_KEY = KEY + '.rem', BEAT_KEY = KEY + '.beat';
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+/* ================= БИРЖЕВОЙ КУРС USDT (xRocket) ================= */
+// Ориентир для P2P: средний курс USDT на бирже xRocket. Открытый API, ключ не нужен. Обновляется раз в минуту,
+// пока открыт калькулятор; последний курс хранится на устройстве. Выключается в Профиле → «Отображение»
+const XR_URL = 'https://exchange.api.xrocket.exchange/api/v1/rates?base=';
+const XR_FIATS = [['KZT', '🇰🇿', '₸'], ['UAH', '🇺🇦', '₴'], ['BYN', '🇧🇾', 'Br'], ['EUR', '🇪🇺', '€']];
+let xrRate = lsGet(KEY + '.xr'), xrBusy = false;
+async function xrFetch(base) {
+  const j = await (await fetch(XR_URL + base, { cache: 'no-store' })).json();
+  if (!(+j?.USDT?.rate > 0)) throw new Error('no rate');
+  return { rate: +j.USDT.rate, ch: +j.USDT.rateChangePercent24h || 0, at: Date.now() };
+}
+async function xrRefresh(force) {
+  if (xrBusy || (!force && xrRate && Date.now() - xrRate.at < 55e3)) return;
+  xrBusy = true;
+  try { xrRate = await xrFetch('RUB'); lsSet(KEY + '.xr', xrRate); } catch (e) {} finally { xrBusy = false; }
+  renderRate();
+}
+const xrAgo = ms => ms < 120e3 ? 'только что' : ms < 3600e3 ? `${Math.round(ms / 60e3)} мин назад` : `${Math.round(ms / 3600e3)} ч назад`;
+const xrPct = v => `${v >= 0 ? '+' : '−'}${nf2.format(Math.abs(v))}%`;
+function renderRate() {
+  let el = $('rateLine');
+  if (S.settings.rateOff || S.settings.cur !== 'RUB') return el?.remove();   // курс к рублю: для расчётов в $ не нужен
+  if (!el) {
+    const row = $('buyLbl')?.closest('.row2'); if (!row) return;
+    row.insertAdjacentHTML('beforebegin', '<button type="button" class="rate-line" id="rateLine" aria-label="Биржевой курс USDT, подробнее"></button>');
+    el = $('rateLine');
+  }
+  if (!xrRate) return el.innerHTML = '<span class="dot off"></span>USDT · загружаем курс…';
+  const age = Date.now() - xrRate.at, up = xrRate.ch >= 0;
+  el.innerHTML = `<span class="dot ${age < 5 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(xrRate.rate)} ₽</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(xrRate.ch))}%</span>· xRocket${age < 5 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
+}
+// Окно с подробностями: источник, сравнение сделки с биржей, другие валюты, подстановка курса
+function rateSheet() {
+  if (!xrRate) return xrRefresh(true);
+  const r = xrRate.rate, pv = id => +String($(id)?.value || '').replace(/\s/g, '').replace(',', '.') || 0, buy = pv('buy'), sell = pv('sell');
+  const cell = (label, v, good) => `<div><span class="muted small">${label}</span><br><b style="font-family:var(--f-mono);color:${v == null ? 'var(--muted)' : good ? '#3CD38A' : '#FF6B6B'}">${v == null ? '—' : xrPct(v)}</b></div>`;
+  const bP = buy ? (buy / r - 1) * 100 : null, sP = sell ? (sell / r - 1) * 100 : null, spr = buy && sell ? (sell / buy - 1) * 100 : null;
+  sheet(`<h3>Биржевой курс USDT</h3>
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="font-family:var(--f-display);font-size:34px">${nf2.format(r)} ₽</b>
+      <span style="color:${xrRate.ch >= 0 ? '#3CD38A' : '#FF6B6B'};font-weight:600;white-space:nowrap">${xrRate.ch >= 0 ? '▲' : '▼'} ${nf2.format(Math.abs(xrRate.ch))}% за сутки</span></div>
+    <span class="muted small">Источник: биржа <b style="color:var(--fg)">xRocket</b> (@xRocket в Telegram). Обновлено ${xrAgo(Date.now() - xrRate.at)}.<br>Это средний курс USDT на бирже — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
+    <div class="kpi"><span class="label">Ваша сделка к бирже</span>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px;font-size:13px">${cell('Покупка', bP, bP != null && bP <= 0)}${cell('Продажа', sP, sP != null && sP >= 0)}${cell('Спред', spr, spr != null && spr >= 0)}</div>
+      ${buy || sell ? '' : '<span class="muted small">Введите курсы покупки и продажи — покажем, насколько они выше или ниже биржи</span>'}</div>
+    <div class="kpi"><span class="label">Другие валюты</span><div id="xrFiats" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;font-family:var(--f-mono);font-size:14px">
+      ${XR_FIATS.map(([c, f, sym]) => `<span id="xr${c}">${f} … ${sym}</span>`).join('')}</div></div>
+    <div class="row2"><button class="btn" data-xr-fill="buy" style="font-size:14px">В «Купил»</button><button class="btn" data-xr-fill="sell" style="font-size:14px">В «Продал»</button></div>
+    <button class="btn primary" data-close>Готово</button>`);
+  XR_FIATS.forEach(([c, f, sym]) => xrFetch(c).then(x => { if ($('xr' + c)) $('xr' + c).textContent = `${f} ${nf2.format(x.rate)} ${sym}`; }, () => { if ($('xr' + c)) $('xr' + c).textContent = `${f} — ${sym}`; }));
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('#rateLine')) return rateSheet();
+  const f = e.target.closest('[data-xr-fill]');
+  if (f && xrRate) { const inp = $(f.dataset.xrFill); if (inp) { inp.value = xrRate.rate.toFixed(2); inp.dispatchEvent(new Event('input', { bubbles: true })); } closeSheet(); toast('Курс подставлен'); }
+  if (e.target.closest('#rateToggle')) { S.settings.rateOff = !S.settings.rateOff; persist(false); e.target.closest('#rateToggle').setAttribute('aria-checked', !S.settings.rateOff); toast(S.settings.rateOff ? 'Курс в калькуляторе скрыт' : 'Курс в калькуляторе включён'); }
+});
+setInterval(() => { if (current === 'calc' && document.visibilityState === 'visible') xrRefresh(); }, 60e3);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && current === 'calc') xrRefresh(); });
 // Вошедший пользователь. Копия лежит в памяти браузера, чтобы приложение открывалось и без интернета
 let U = lsGet(USER_KEY);
 const me = () => U;
@@ -2932,7 +3054,7 @@ function bootAccount() {
 /* ================= МОЯ ПОДПИСКА ================= */
 // Срок PRO: месяц — 30 дней, год — 365. Автопродление в демо просто добавляет срок и пишет платёж в историю
 const PERIOD_DAYS = { m: 30, y: 365 }, PERIOD_PRICE = { m: 490, y: 3990 };
-const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', stars: 'Telegram Stars', usdt: 'USDT', gift: 'Подарок', promo: 'Промокод' };
+const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', stars: 'Telegram Stars', usdt: 'USDT', crypto: 'Криптовалюта', gift: 'Подарок', promo: 'Промокод' };
 const fmtLong = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '');
 const subDaysLeft = () => Math.max(0, Math.ceil(((S.settings.proUntil || 0) - Date.now()) / 864e5));
 // Срок вышел: при автопродлении в демо продлеваем сами (с настоящей оплатой это сделает платёжный сервис на сервере)
@@ -2963,15 +3085,15 @@ function subCheck() {
     : `PRO закончится через ${left} ${plural(left, 'день', 'дня', 'дней')}`), 2600); }
 }
 function subHtml() {
-  const st = S.settings, left = subDaysLeft(), gift = ['gift', 'promo', 'stars'].includes(st.payMethod);   // разовые сроки: без автопродления
+  const st = S.settings, left = subDaysLeft(), gift = ['gift', 'promo', 'stars', 'crypto'].includes(st.payMethod);   // разовые сроки: без автопродления
   // Подарок от администратора: срок любой, не продлевается и не оплачивается
   const total = gift ? Math.max(left, Math.round(((st.proUntil || 0) - (st.proSince || 0)) / 864e5) || left) : PERIOD_DAYS[st.proPeriod] || 30, k = Math.min(1, left / (total || 1));
   if (gift) return `<div class="sub">
       <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
         <div><b>${left}</b><span>${plural(left, 'день', 'дня', 'дней')}</span></div></div>
-      <div class="sub-info"><div class="sub-t">PRO · ${st.payMethod === 'promo' ? 'промокод 🎟' : st.payMethod === 'stars' ? (st.proPeriod === 'y' ? 'год ⭐' : 'месяц ⭐') : 'подарок 🎁'}</div>
+      <div class="sub-info"><div class="sub-t">PRO · ${st.payMethod === 'promo' ? 'промокод 🎟' : st.payMethod === 'stars' ? (st.proPeriod === 'y' ? 'год ⭐' : 'месяц ⭐') : st.payMethod === 'crypto' ? (st.proPeriod === 'y' ? 'год 💎' : 'месяц 💎') : 'подарок 🎁'}</div>
         <span class="muted small">Действует до <b style="color:var(--fg)">${fmtLong(st.proUntil)}</b></span>
-        <span class="muted small">${st.payMethod === 'stars' ? 'Оплачено звёздами, без автопродления' : 'Без списаний'}. Потом можно продлить или перейти на Free</span></div></div>
+        <span class="muted small">${st.payMethod === 'stars' ? 'Оплачено звёздами, без автопродления' : st.payMethod === 'crypto' ? 'Оплачено криптой, без автопродления' : 'Без списаний'}. Потом можно продлить или перейти на Free</span></div></div>
     <div class="row2"><button class="btn" data-sub="hist">История</button><button class="btn primary" data-sub="renew">Продлить</button></div>`;
   return `<div class="sub">
       <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
@@ -3031,7 +3153,7 @@ document.addEventListener('click', e => {
   if (a === 'hist') {
     const P = st.payments || [];
     sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.method === 'gift' ? `подарок на ${+x.days || 0} дн.` : x.method === 'promo' ? `промокод ${esc(String(x.code || ''))} на ${+x.days || 0} дн.` : x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
-      <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}${x.refund ? ' · возврат' : ''}</span></div><b>${nf0.format(x.amount)} ${x.method === 'stars' ? '⭐' : '₽'}</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div><button class="btn primary" data-close>Закрыть</button>`);
+      <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}${x.paid ? ' · ' + esc(x.paid) : ''}${x.refund ? ' · возврат' : ''}</span></div><b>${nf0.format(x.amount)} ${x.method === 'stars' ? '⭐' : '₽'}</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div><button class="btn primary" data-close>Закрыть</button>`);
   }
 });
 
