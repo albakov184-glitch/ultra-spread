@@ -195,17 +195,23 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
   if (ie) { console.error('crypto_invoices', ie); return json({ error: 'server' }, 500); }
   const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
   const req: Record<string, unknown> = {
-    priceAmount: String(price), priceCurrency: 'RUB', payCurrencies: ['USDT', 'TON'], numPayments: 1, clientInvoiceId: id,
+    priceAmount: String(price), priceCurrency: 'rub', payCurrencies: ['USDT', 'GRAM'], numPayments: 1, clientInvoiceId: id,
     description: `P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'}`, expiresIn: 60 * 60e3,
     callback: { callbackUrl: `${SB_URL}/functions/v1/telegram-auth` }, url: { successUrl: SITE + '?paid=crypto', cancelUrl: SITE },
     customer: { id: ud.user.id, ...(t?.tg_id ? { telegramId: String(t.tg_id) } : {}) }, data: { u: ud.user.id, p: period },
   };
+  // Коды монет у xRocket: USDT, GRAM (это TON). Рубль — 'rub' маленькими буквами
   let r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify(req) });
+  if (!r.ok && r.status === 400) {   // не приняли список монет — пусть человек выберет любую
+    console.error('xr pay currencies', r.data);
+    const { payCurrencies: _, ...rest } = req;
+    r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify(rest) });
+  }
   if (!r.ok && r.status === 400) {
     // xRocket не принял цену в рублях — считаем сумму в USDT по их же курсу и пробуем ещё раз
     console.error('xr rub price', r.data);
     const rate = await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB').then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0);
-    if (rate > 0) r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify({ ...req, priceCurrency: 'USDT', priceAmount: (Math.ceil(price / rate * 100) / 100).toFixed(2) }) });
+    if (rate > 0) r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify({ ...req, payCurrencies: ['USDT'], priceCurrency: 'USDT', priceAmount: (Math.ceil(price / rate * 100) / 100).toFixed(2) }) });
   }
   const inv = r.data?.data ?? r.data;
   if (!r.ok || !inv?.links) { console.error('xr invoice', r.status, r.data); return json({ error: 'server' }, 502); }

@@ -1879,39 +1879,48 @@ async function loadMyStars() {
     myRub = { m: data?.rm || RUB.m, y: data?.ry || RUB.y };
   } catch (e) {}
 }
+// Скидка за год к 12 месяцам. Нет скидки (персональная цена за месяц) — значок не показываем
+const yearOff = p => { const k = Math.round((1 - p.y / (p.m * 12)) * 100); return k > 0 ? `<em>−${k}%</em>` : ''; };
 const starsPlans = () => {
   // Персональная скидка: новая цена крупно, обычная — зачёркнутой строкой под ней
   const was = k => myStars[k] < STARS[k] ? `<span><s>${nf0.format(STARS[k])} ⭐</s></span>` : '';
   return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myStars.m)} ⭐</b>${was('m') || '<span>в месяц</span>'}</button>
-      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−${Math.max(0, Math.round((1 - myStars.y / (myStars.m * 12)) * 100))}%</em><span>Год</span><b>${nf0.format(myStars.y)} ⭐</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myStars.y / 12))} ⭐ в месяц</span>`}</button>`;
+      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y">${yearOff(myStars)}<span>Год</span><b>${nf0.format(myStars.y)} ⭐</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myStars.y / 12))} ⭐ в месяц</span>`}</button>`;
 };
 // То же для цен в рублях на сайте
 const rubPlans = () => {
   const was = k => myRub[k] < RUB[k] ? `<span><s>${nf0.format(RUB[k])} ₽</s></span>` : '';
   return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myRub.m)} ₽</b>${was('m') || '<span>в месяц</span>'}</button>
-      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−${Math.max(0, Math.round((1 - myRub.y / (myRub.m * 12)) * 100))}%</em><span>Год</span><b>${nf0.format(myRub.y)} ₽</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myRub.y / 12))} ₽ в месяц</span>`}</button>`;
+      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y">${yearOff(myRub)}<span>Год</span><b>${nf0.format(myRub.y)} ₽</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myRub.y / 12))} ₽ в месяц</span>`}</button>`;
 };
 const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
-const payLabel = () => inTelegram() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${nf0.format(myRub[payPeriod])} ₽`;
+// В Telegram два способа: звёзды и крипта (цены в рублях, как на сайте)
+const payStars = () => inTelegram() && payMethod === 'stars';
+const payLabel = () => payStars() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${nf0.format(myRub[payPeriod])} ₽`;
+const payHint = () => payStars() ? `${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить`
+  : `${payIcon('crypto', 16)}Оплата криптой через xRocket: сумма в USDT или TON по курсу`;
+// Перерисовать цены и кнопку после смены способа оплаты или загрузки персональной цены
+function payRefresh() {
+  if ($('payPlans')) $('payPlans').innerHTML = payStars() ? starsPlans() : rubPlans();
+  if ($('payHint')) $('payHint').innerHTML = payHint();
+  if ($('payBtn') && !$('payBtn').disabled) $('payBtn').textContent = payLabel();
+}
 function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
   payPeriod = why === 'renew' ? 'y' : 'm';
   const F = [['∞', 'История без ограничений'], ['★', 'Контрагенты и чёрный список'], ['⤓', 'Выгрузка всех сделок в Excel'], ['▣', 'Карточки результата без водяного знака'], ['⚡', 'Скоро: живые курсы и уведомления', 'soon']];
-  const M = [['crypto', 'Крипта · USDT, TON'], ['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars']];
+  const M = inTelegram() ? [['stars', 'Звёзды'], ['crypto', 'Крипта · USDT, TON']] : [['crypto', 'Крипта · USDT, TON'], ['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars']];
+  payMethod = inTelegram() ? 'stars' : 'crypto';   // в Telegram по умолчанию звёзды, на сайте — крипта
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
     <ul class="pw-list">${F.map(([i, t, c], k) => `<li class="${c || ''}" style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>
-    ${inTelegram() ? `<div class="pw-plans" id="starPlans">${starsPlans()}</div>
-    <span class="muted small" style="display:flex;align-items:center;gap:6px">${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить</span>` : `<div class="pw-plans" id="rubPlans">${rubPlans()}</div>
+    <div class="pw-plans" id="payPlans">${payStars() ? starsPlans() : rubPlans()}</div>
     <span class="label">Способ оплаты</span>
-    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>`}
+    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
+    ${inTelegram() ? `<span class="muted small" id="payHint" style="display:flex;align-items:center;gap:6px">${payHint()}</span>` : ''}
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
   // Персональная цена могла поменяться — перечитываем и перерисовываем цены
-  loadMyStars().then(() => {
-    const el = $('starPlans') || $('rubPlans'); if (!el) return;
-    el.innerHTML = el.id === 'starPlans' ? starsPlans() : rubPlans();
-    if (!$('payBtn').disabled) $('payBtn').textContent = payLabel();
-  });
+  loadMyStars().then(payRefresh);
 }
 const showCheckout = () => openPlans();
 
@@ -1968,8 +1977,9 @@ async function cryptoPay() {
   sheet(`<div class="pay-proc" id="xrWait" role="status" aria-live="polite"><div class="pp-ring"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" cx="60" cy="60" r="52" style="stroke-dashoffset:110"/></svg>
       <div class="pp-icon">${payIcon('crypto', 44)}</div></div><h3>Счёт готов</h3><span class="muted small">${price} · USDT или TON</span>
       <p class="muted small" style="text-align:center;margin:0">Откроется xRocket: выберите монету и оплатите с любого кошелька или биржи. Сумма в крипте посчитается по курсу. Счёт действует 1 час.</p></div>
-    <a class="btn primary" href="${esc(res.link)}" target="_blank" rel="noopener">Перейти к оплате</a>
-    <span class="muted small" style="text-align:center">После оплаты вернитесь сюда — PRO включится сам. Ждём оплату…</span>
+    ${inTelegram() ? `<button class="btn primary" id="xrGo" data-link="${esc(res.tg || '')}" data-web="${esc(res.link)}">Перейти к оплате</button>`
+      : `<a class="btn primary" href="${esc(res.link)}" target="_blank" rel="noopener">Перейти к оплате</a>`}
+    <span class="muted small" style="text-align:center">После оплаты вернитесь сюда — PRO включится сам, а бот пришлёт сообщение. Ждём оплату…</span>
     <button class="btn" data-close>Закрыть</button>`);
   payBusy = true;
   try {
@@ -1983,10 +1993,17 @@ async function cryptoPay() {
     <button class="btn primary" data-close>Отлично</button>`);
   confetti();
 }
+// В Telegram счёт открываем в самом xRocket (бот), мини-апп остаётся открытым; нет ссылки на бота — веб-страница счёта
+function xrOpen(tgLink, web) {
+  const tg = window.Telegram?.WebApp;
+  if (tgLink && /^https:\/\/t\.me\//.test(tgLink) && tg?.openTelegramLink) return tg.openTelegramLink(tgLink);
+  if (tg?.openLink) return tg.openLink(web);
+  open(web, '_blank', 'noopener');
+}
 // Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
 async function payProcess() {
-  if (inTelegram()) return starsPay();
   if (payMethod === 'crypto') return cryptoPay();
+  if (inTelegram()) return starsPay();
   // На сайте оплата картой и СБП ещё подключается (Platega). Демо-покупку не показываем: она давала PRO бесплатно
   if (PAY_SOON) return sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>Оплата картой — скоро</h3>
     <p>Оплату картой и СБП на сайте подключаем прямо сейчас. Купить PRO уже можно криптовалютой (USDT, TON) здесь или в Telegram — звёздами: 350 ⭐ в месяц или 2 650 ⭐ в год.</p>
@@ -2280,7 +2297,8 @@ document.addEventListener('click', e => {
   if (ds.period) { payPeriod = ds.period; document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('on', x.dataset.period === payPeriod)); $('payBtn').textContent = payLabel(); return; }
   if (ds.plan === 'pro') return showCheckout();
   if (ds.plan) { closeSheet(); return subDo('demo_set_sub', { p_period: st.proPeriod || 'm', p_until: null, p_auto: !!st.autoRenew }, 'Вы на тарифе Free'); }
-  if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return; }
+  if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return payRefresh(); }
+  if (b.id === 'xrGo') return xrOpen(b.dataset.link, b.dataset.web);
   if (b.id === 'payBtn') return payProcess();
   if (ds.tour) return showTour(+ds.tour);
   if (b.id === 'tourBtn') return showTour(0);
