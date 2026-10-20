@@ -2335,6 +2335,8 @@ const APP_URL = location.origin + location.pathname;
 const URL_HASH = location.hash, URL_Q = new URLSearchParams(location.search);
 // Мини-апп Telegram передаёт подписанные данные пользователя в адресе (#tgWebAppData=…). Берём сразу: скрипт Telegram грузится позже
 const TG_INIT = (() => { try { return new URLSearchParams(location.hash.slice(1)).get('tgWebAppData') || ''; } catch (e) { return ''; } })();
+// Открыто внутри Telegram. Объявлено здесь, до первой отрисовки: её вызывает и стартовый экран (например, Профиль)
+const inTelegram = () => !!(window.Telegram?.WebApp?.initData || TG_INIT);
 const TOKEN_HASH = URL_Q.get('token_hash'), TOKEN_TYPE = URL_Q.get('type') || 'email';
 let FROM_RECOVERY = /type=recovery/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE === 'recovery'), FROM_SIGNUP = /type=signup/.test(URL_HASH) || (TOKEN_HASH && TOKEN_TYPE !== 'recovery');
 const LINK_ERR = 'Ссылка из письма уже использована или устарела. Если вы подтверждали почту — просто войдите, иначе запросите письмо снова';
@@ -3252,7 +3254,6 @@ document.addEventListener('click', e => { if (e.target.closest('#monthCardBtn'))
 let installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-const inTelegram = () => !!(window.Telegram?.WebApp?.initData || TG_INIT);
 if (inTelegram() && sb) tgSubscribed().then(ok => { if (!ok) subGate(); });   // обязательная подписка на канал
 function maybeA2HS() {
   if (isStandalone() || inTelegram() || S.settings.a2hsSeen || $('a2hs') || !S.trades.length) return;
