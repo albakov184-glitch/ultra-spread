@@ -101,7 +101,9 @@ async function stTake<T>(key: string): Promise<T | null> {   // забрать �
 const MENU = () => kb([
   [{ text: '📊 Статистика', callback_data: 'st' }, { text: '👥 Пользователи', callback_data: 'l:0' }],
   [{ text: '📣 Рассылка', callback_data: 'bc' }, { text: '🎟 Промокоды', callback_data: 'pl' }],
-  [{ text: '📢 Канал', callback_data: 'ch' }, { text: '🔍 Поиск', callback_data: 'fs' }],
+  [{ text: '📢 Канал', callback_data: 'ch' }, { text: '💱 Курс в канал', callback_data: 'rc' }],
+  [{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '🌅 Утренний отчёт', callback_data: 'rp' }],
+  [{ text: '🔍 Поиск', callback_data: 'fs' }],
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
@@ -390,17 +392,19 @@ async function preCheckout(q: { id: string; currency: string; total_amount: numb
     const p = JSON.parse(q.invoice_payload);
     const u = p?.u ? await userById(String(p.u)) : null;
     const price = u ? await priceOf(u.id) : null;
-    if (q.currency === 'XTR' && u && (p?.p === 'm' || p?.p === 'y') && price![p.p as 'm' | 'y'] === q.total_amount) { ok = !isBanned(u); if (!ok) why = 'Аккаунт заблокирован — напишите в поддержку'; }
+    const g = p?.g ? await userById(String(p.g)) : null;   // подарок: кому
+    if (q.currency === 'XTR' && u && (p?.p === 'm' || p?.p === 'y') && price![p.p as 'm' | 'y'] === q.total_amount && (!p?.g || g)) { ok = !isBanned(u); if (!ok) why = 'Аккаунт заблокирован — напишите в поддержку'; }
   } catch (_) { /* битый payload */ }
   await tg('answerPreCheckoutQuery', ok ? { pre_checkout_query_id: q.id, ok: true } : { pre_checkout_query_id: q.id, ok: false, error_message: why });
 }
 // Оплата прошла: выдаём PRO (один платёж — одна выдача) и сообщаем покупателю и владельцу
 async function paid(msg: Msg & { successful_payment: { currency: string; total_amount: number; invoice_payload: string; telegram_payment_charge_id: string } }) {
   const sp = msg.successful_payment;
-  let p: { u?: string; p?: string } = {};
+  let p: { u?: string; p?: string; g?: string } = {};
   try { p = JSON.parse(sp.invoice_payload); } catch (_) { /* не наш счёт */ }
   const period = p.p === 'y' ? 'y' : 'm';
-  const { data, error } = await admin.rpc('stars_grant_pro', { p_user: p.u, p_period: period, p_charge: sp.telegram_payment_charge_id, p_stars: sp.total_amount, p_tg: msg.from?.id ?? null });
+  // Подарок: PRO получает друг (g), платёж и возврат звёзд — у покупателя
+  const { data, error } = await admin.rpc('stars_grant_pro', { p_user: p.g || p.u, p_period: period, p_charge: sp.telegram_payment_charge_id, p_stars: sp.total_amount, p_tg: msg.from?.id ?? null });
   if (error) {
     console.error('stars grant', error);
     await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `⚠️ <b>Оплата звёздами не применилась</b>\n${sp.total_amount} ⭐ от ${msg.from?.id}\nПлатёж: <code>${esc(sp.telegram_payment_charge_id)}</code>\nОшибка: ${esc(error.message)}` });
@@ -409,11 +413,20 @@ async function paid(msg: Msg & { successful_payment: { currency: string; total_a
   }
   if (!(data as { fresh: boolean }).fresh) return;   // Telegram прислал тот же платёж повторно
   const until = (data as { pro_until: string }).pro_until;
-  await tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML', reply_markup: openBtn(),
+  const u = p.u ? await userById(p.u) : null, g = p.g ? await userById(p.g) : null;
+  if (g) {
+    await giftNotify(g.id, u, period, until);
+    await tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML', reply_markup: openBtn(),
+      text: `🎁 <b>Подарок отправлен!</b>\n\n${esc(nameOf(g))} получил P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} — до <b>${date(until)}</b>. Мы сообщили ему в боте. Спасибо!` });
+  } else await tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML', reply_markup: openBtn(),
     text: `✅ <b>Оплата прошла!</b>\n\nP2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} — действует до <b>${date(until)}</b>. Спасибо!` });
-  const u = p.u ? await userById(p.u) : null;
   await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
-    text: `💰 <b>Оплата ${sp.total_amount} ⭐</b>\nPRO · ${period === 'y' ? 'год' : 'месяц'}\n${u ? who(u) : esc(String(p.u))}\nПлатёж: <code>${esc(sp.telegram_payment_charge_id)}</code>` });
+    text: `💰 <b>Оплата ${sp.total_amount} ⭐</b>${g ? ' · 🎁 подарок' : ''}\nPRO · ${period === 'y' ? 'год' : 'месяц'}\n${u ? who(u) : esc(String(p.u))}${g ? `\n→ для ${who(g)}` : ''}\nПлатёж: <code>${esc(sp.telegram_payment_charge_id)}</code>` });
+}
+// Сообщение другу о подарке
+async function giftNotify(toId: string, from: AUser | null, period: string, until: string) {
+  const fromName = from ? (from.user_metadata?.tg_username ? '@' + from.user_metadata.tg_username : nameOf(from)) : 'Друг';
+  return notify(toId, `🎁 <b>Вам подарили P2Pro PRO!</b>\n\n${esc(fromName)} подарил вам PRO ${period === 'y' ? 'на год' : 'на месяц'} — действует до <b>${date(until)}</b>.\n\nБезлимитная история, контрагенты, Excel, график и уведомления о курсе уже включены.`, openBtn('🚀 Открыть P2Pro'));
 }
 // Возврат звёзд: /refund НОМЕР_ПЛАТЕЖА (номер приходит в уведомлении об оплате)
 async function refund(charge: string) {
@@ -647,6 +660,154 @@ async function dailyToggle(cq: { id: string; data?: string; from: { id: number }
   await tg('answerCallbackQuery', { callback_query_id: cq.id, text: off ? 'Итоги дня больше не придут. Получить вручную: /itogi' : 'Итоги будут приходить каждый день в 23:59' });
 }
 
+/* ---------- Курс USDT: история, уведомления (16-rate-gifts.sql) и карточка в канал ---------- */
+// Раз в 10 минут: записываем курс (для графика в приложении) и проверяем уведомления «выше / ниже»
+async function rateTick(now: number) {
+  const r = await usdtRate(); if (!r) return;
+  await admin.from('rate_history').insert({ usdt: r.rate }).then(() => {}, () => {});
+  await admin.from('rate_history').delete().lt('ts', new Date(now - 8 * DAY).toISOString()).then(() => {}, () => {});
+  const { data: al } = await admin.from('rate_alerts').select('id, user_id, dir, price').is('fired_at', null);
+  for (const a of (al ?? []) as { id: number; user_id: string; dir: string; price: number }[]) {
+    if (a.dir === 'above' ? r.rate < +a.price : r.rate > +a.price) continue;
+    if (!isPro(await subOf(a.user_id))) continue;   // уведомления — в PRO; закончится PRO — подождут продления
+    const { data: upd } = await admin.from('rate_alerts').update({ fired_at: new Date(now).toISOString() }).eq('id', a.id).is('fired_at', null).select('id');
+    if (!upd?.length) continue;   // уже сработало в параллельном запуске
+    await notify(a.user_id, `🔔 <b>Курс USDT ${a.dir === 'above' ? 'выше' : 'ниже'} ${rub2(+a.price)} ₽</b>\n\nСейчас на бирже xRocket: <b>${rub2(r.rate)} ₽</b> (${r.ch >= 0 ? '+' : '−'}${rub2(Math.abs(r.ch))}% за сутки).\n\nНовое уведомление можно поставить в P2Pro: калькулятор → строка курса.`, openBtn('💱 Открыть P2Pro'));
+  }
+}
+type RatePost = { on: boolean; times: number[]; done: Record<string, string> };   // times — часы по МСК; done — в какой день час уже опубликован
+const RP_DEF: RatePost = { on: false, times: [10, 20], done: {} };
+const RP_HOURS = [8, 9, 10, 12, 14, 16, 18, 20, 22];
+const RP_FIATS: [string, string, string][] = [['KZT', 'Тенге', '₸'], ['UAH', 'Гривна', '₴'], ['BYN', 'Бел. рубль', 'Br'], ['EUR', 'Евро', '€'], ['KGS', 'Сом', 'с'], ['UZS', 'Сум', 'сум']];
+async function fiatRate(base: string) {
+  try { const j = await fetch(`https://exchange.api.xrocket.exchange/api/v1/rates?base=${base}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()); return +j?.USDT?.rate || 0; }
+  catch (_) { return 0; }
+}
+function rateCardSvg(d: { when: string; rate: string; ch: number; hist: number[]; fiats: { name: string; v: string }[] }) {
+  const W = 1080, H = 1080, x = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+  const up = d.ch >= 0, col = up ? '#3CD38A' : '#FF6B6B';
+  let chart = '';
+  if (d.hist.length > 2) {
+    const lo = Math.min(...d.hist), hi = Math.max(...d.hist), pad = (hi - lo) * .15 || .05, cw = W - 200, ch = 170, y0 = 470;
+    const pts = d.hist.map((v, i) => `${(100 + i / (d.hist.length - 1) * cw).toFixed(1)},${(y0 + ch - (v - lo + pad) / (hi - lo + 2 * pad) * ch).toFixed(1)}`);
+    chart = `<path d="M${pts.join(' L')} L${100 + cw},${y0 + ch} L100,${y0 + ch}Z" fill="url(#cg)"/><polyline points="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${pts[pts.length - 1].split(',')[0]}" cy="${pts[pts.length - 1].split(',')[1]}" r="10" fill="${col}"/>
+      <text x="100" y="${y0 + ch + 44}" font-family="Onest" font-size="26" fill="#8691A2">24 часа назад</text><text x="${W - 100}" y="${y0 + ch + 44}" text-anchor="end" font-family="Onest" font-size="26" fill="#8691A2">сейчас</text>`;
+  }
+  const cell = (i: number, f: { name: string; v: string }) => { const cx = 100 + (i % 3) * 300, cy = 770 + Math.floor(i / 3) * 120;
+    return `<rect x="${cx}" y="${cy}" width="280" height="104" rx="22" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".08"/>
+      <text x="${cx + 26}" y="${cy + 40}" font-family="Onest" font-size="24" fill="#8691A2">${x(f.name)}</text>
+      <text x="${cx + 26}" y="${cy + 82}" font-family="Onest" font-weight="600" font-size="34" fill="#E8ECF2">${x(f.v)}</text>`; };
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs><radialGradient id="g1" cx="20%" cy="12%" r="60%"><stop offset="0" stop-color="#F2B54B" stop-opacity=".22"/><stop offset="1" stop-color="#F2B54B" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="88%" cy="55%" r="50%"><stop offset="0" stop-color="${col}" stop-opacity=".13"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>
+    <linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".3"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+  <rect width="${W}" height="${H}" fill="#0C0F14"/><rect width="${W}" height="${H}" fill="url(#g1)"/><rect width="${W}" height="${H}" fill="url(#g2)"/>
+  <rect x="100" y="90" width="100" height="100" rx="28" fill="#F2B54B"/>
+  <text x="150" y="150" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="38" fill="#1B1405">P2</text>
+  <text x="150" y="174" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="13" letter-spacing="4" fill="#1B1405">PRO</text>
+  <text x="226" y="138" font-family="Unbounded" font-weight="800" font-size="40" fill="#E8ECF2">Курс USDT</text>
+  <text x="226" y="178" font-family="Onest" font-size="26" fill="#8691A2">${x(d.when)}</text>
+  <text x="100" y="300" font-family="Onest" font-weight="600" font-size="28" letter-spacing="8" fill="#F2B54B">USDT → РУБЛЬ</text>
+  <text x="94" y="420" font-family="Unbounded" font-weight="800" font-size="120" fill="#E8ECF2">${x(d.rate)}</text>
+  <rect x="${W - 330}" y="345" width="230" height="64" rx="32" fill="${col}" fill-opacity=".14"/>
+  <text x="${W - 215}" y="388" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="30" fill="${col}">${up ? '▲' : '▼'} ${x(rub2(Math.abs(d.ch)))}%</text>
+  ${chart}
+  ${d.fiats.map((f, i) => cell(i, f)).join('')}
+  <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">Биржа xRocket · за 1 USDT</text>
+  <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
+}
+// Карточка курса: в канал (chat = CHANNEL) или владельцу для предпросмотра. Рисуется в отдельном запуске функции
+async function ratePost(chat: number | string) {
+  const main = await usdtRate(); if (!main) return false;
+  const vals = await Promise.all(RP_FIATS.map(([c]) => fiatRate(c)));
+  const { data: hist } = await admin.from('rate_history').select('usdt').gte('ts', new Date(Date.now() - DAY).toISOString()).order('ts');
+  const now = new Date();
+  const when = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }) + ', ' + now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }) + ' МСК';
+  const fiats = RP_FIATS.map(([, name, sym], i) => ({ name, v: vals[i] ? `${vals[i] >= 1000 ? Math.round(vals[i]).toLocaleString('ru-RU') : rub2(vals[i])} ${sym}` : '—' }));
+  const caption = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${main.ch >= 0 ? '+' : '−'}${rub2(Math.abs(main.ch))}% за сутки)\n` +
+    RP_FIATS.map(([, name], i) => vals[i] ? `${name}: ${fiats[i].v}` : '').filter(Boolean).join(' · ') +
+    `\n\nБиржа xRocket. Считайте P2P-сделки в P2Pro — бесплатно.`;
+  const markup = kb([[{ text: '🚀 Открыть P2Pro', url: BOT_LINK }]]);
+  try {
+    const r = await renderer();
+    const svg = rateCardSvg({ when, rate: `${rub2(main.rate)} ₽`, ch: main.ch, hist: ((hist ?? []) as { usdt: number }[]).map((h) => +h.usdt), fiats });
+    const png = new r.Resvg(svg, { font: { fontBuffers: r.fonts, defaultFontFamily: 'Onest', loadSystemFonts: false }, fitTo: { mode: 'width', value: 1080 } }).render().asPng();
+    const fd = new FormData();
+    fd.append('chat_id', String(chat)); fd.append('caption', caption); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(markup));
+    fd.append('photo', new Blob([png], { type: 'image/png' }), 'P2Pro-rate.png');
+    const res = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+    if (res?.ok) return true;
+    console.error('rate post', res);
+  } catch (e) { console.error('rate card', e); }
+  const t = await tg('sendMessage', { chat_id: chat, text: caption, parse_mode: 'HTML', reply_markup: markup });   // картинка не вышла — хотя бы текст
+  return !!t?.ok;
+}
+const selfCall = (body: unknown) => fetch(`${SB_URL}/functions/v1/telegram-bot`, { method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-telegram-bot-api-secret-token': SECRET }, body: JSON.stringify(body) }).then((r) => r.text()).catch(() => '');
+async function rcMenu() {
+  const rp = await stGet<RatePost>('ratepost', RP_DEF);
+  const hh = (h: number) => String(h).padStart(2, '0') + ':00';
+  return { text: `<b>💱 Курс в канал ${CHANNEL}</b>\n\nБот сам рисует карточку: курс USDT в рублях, изменение и график за сутки, тенге, гривна, бел. рубль, евро, сом и сум. Под постом — кнопка P2Pro.\n\n` +
+    `Автопубликация: <b>${rp.on ? 'включена' : 'выключена'}</b>\nВремя (МСК): <b>${rp.times.length ? [...rp.times].sort((a, b) => a - b).map(hh).join(', ') : 'не выбрано'}</b>\n\nНажмите на час, чтобы добавить или убрать его.`, markup: kb([
+    [{ text: rp.on ? '⏸ Выключить' : '▶️ Включить', callback_data: 'rct' }],
+    RP_HOURS.slice(0, 5).map((h) => ({ text: (rp.times.includes(h) ? '✅ ' : '') + hh(h), callback_data: `rch:${h}` })),
+    RP_HOURS.slice(5).map((h) => ({ text: (rp.times.includes(h) ? '✅ ' : '') + hh(h), callback_data: `rch:${h}` })),
+    [{ text: '👁 Прислать мне', callback_data: 'rcp' }, { text: '📤 Опубликовать сейчас', callback_data: 'rcn' }],
+    [{ text: '‹ Меню', callback_data: 'm' }]]) };
+}
+
+/* ---------- Отложенные рассылки и посты ---------- */
+type Sched = { id: string; kind: string; aud?: Aud; chat: number; mid: number; at: number };
+const whenText = (t: number) => new Date(t).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }) + ' МСК';
+// «18:30» — сегодня (или завтра, если уже прошло), «25.10 10:00» — в этот день. Время московское
+function parseWhen(t: string): number | null {
+  const m = t.trim().match(/^(?:(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\s+)?(\d{1,2})[:.](\d{2})$/);
+  if (!m) return null;
+  const now = Date.now(), msk = new Date(now + 3 * 3600e3), h = +m[4], mi = +m[5];
+  const y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : msk.getUTCFullYear(), mo = m[2] ? +m[2] - 1 : msk.getUTCMonth(), d = m[1] ? +m[1] : msk.getUTCDate();
+  if (h > 23 || mi > 59 || mo < 0 || mo > 11 || d < 1 || d > 31) return null;
+  let at = Date.UTC(y, mo, d, h, mi) - 3 * 3600e3;
+  if (!m[1] && at <= now) at += DAY;
+  return at > now && at - now < 60 * DAY ? at : null;
+}
+async function schedList() {
+  const list = (await stGet<Sched[]>('sched', [])).sort((a, b) => a.at - b.at);
+  const what = (s: Sched) => s.kind === 'post' ? `пост в ${CHANNEL}` : `рассылка ${AUD[s.aud ?? 'all']}`;
+  return { text: `<b>⏰ Запланировано</b>\n\n` + (list.length ? list.map((s) => `• ${whenText(s.at)} — ${what(s)}`).join('\n') + '\n\nНажмите, чтобы отменить. Отправка — с точностью до 10 минут.'
+    : 'Пока ничего. Создайте рассылку или пост и нажмите «⏰ Запланировать».'), markup: kb([
+    ...list.map((s) => [{ text: `✖ ${whenText(s.at)} · ${s.kind === 'post' ? 'пост' : 'рассылка'}`, callback_data: `sx:${s.id}` }]),
+    [{ text: '‹ Меню', callback_data: 'm' }]]) };
+}
+
+/* ---------- Утренний отчёт владельцу ---------- */
+async function morningReport() {
+  const now = Date.now(), y = mskDay(now - DAY), start = Date.parse(y + 'T00:00:00+03:00'), end = start + DAY, inY = (t?: string | null) => !!t && Date.parse(t) >= start && Date.parse(t) < end;
+  const users = await allUsers(), subs = await allSubs(), month = mskDay(now).slice(0, 7);
+  let rub = 0, rubN = 0, cr = 0, crN = 0, st = 0, stN = 0, monthRub = 0;
+  for (const s of subs) for (const p of s.payments ?? []) {
+    if (realPay(p) && mskDay(Date.parse(p.ts)).startsWith(month)) monthRub += +p.amount;
+    if (!inY(p.ts)) continue;
+    if (cryptoPay(p)) { cr += +p.amount; crN++; } else if (realPay(p)) { rub += +p.amount; rubN++; }
+    if (starPay(p)) { st += +p.amount; stN++; }
+  }
+  const pro = subs.filter(isPro), exp = pro.filter((s) => Date.parse(s.pro_until!) - now <= 3 * DAY).length;
+  const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('deleted', false).gte('ts', new Date(start).toISOString()).lt('ts', new Date(end).toISOString());
+  const fresh = users.filter((u) => inY(u.created_at)), active = users.filter((u) => inY(u.last_sign_in_at)).length, f = (v: number) => v.toLocaleString('ru-RU');
+  await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', reply_markup: kb([[{ text: '📊 Статистика', callback_data: 'st' }, { text: '🌅 Настройки отчёта', callback_data: 'rp' }]]),
+    text: `🌅 <b>Доброе утро! Итоги за ${date(start + 12 * 3600e3)}</b>\n\n` +
+      `🆕 Новых пользователей: <b>${fresh.length}</b>${fresh.length ? '\n' + fresh.slice(0, 5).map(who).join('\n') + (fresh.length > 5 ? '\n…' : '') : ''}\n` +
+      `🔑 Заходили: ${active} · 📒 Сделок записано: ${trades ?? 0}\n\n` +
+      `💰 Оплаты: <b>${f(rub + cr)} ₽</b> (${rubN + crN} шт.)${crN ? ` · из них криптой ${f(cr)} ₽` : ''}\n⭐ Звёздами: <b>${f(st)} ⭐</b> (${stN} шт.)\n` +
+      `📅 Выручка с начала месяца: <b>${f(monthRub)} ₽</b>\n\n⭐ PRO сейчас: ${pro.length}${exp ? ` · закончится за 3 дня: ${exp}` : ''}` });
+}
+async function rpMenu() {
+  const rp = await stGet('report', { on: true, day: '' });
+  return { text: `<b>🌅 Утренний отчёт</b>\n\nКаждое утро в 9:00 МСК: новые пользователи, кто заходил, сколько сделок, оплаты рублями, криптой и звёздами, выручка с начала месяца, у кого скоро закончится PRO.\n\nСейчас: <b>${rp.on ? 'включён' : 'выключен'}</b>`, markup: kb([
+    [{ text: rp.on ? '⏸ Выключить' : '▶️ Включить', callback_data: 'rpt' }, { text: '📨 Прислать сейчас', callback_data: 'rpn' }],
+    [{ text: '‹ Меню', callback_data: 'm' }]]) };
+}
+
 /* ---------- Ответы ---------- */
 // Новое сообщение или замена текущего (когда нажали кнопку)
 async function show(chatId: number, msgId: number | null, text: string, markup: unknown) {
@@ -665,7 +826,7 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
   const view = async (v: { text: string; markup: unknown }) => show(chatId, msgId, v.text, v.markup);
   try {
     // Любая другая кнопка отменяет ожидание текста рассылки/поста: иначе следующий поиск по @нику стал бы рассылкой
-    if (!['ba', 'cp', 'go', 'no', 'nop'].includes(k)) await stSet('await', null);
+    if (!['ba', 'cp', 'go', 'no', 'nop', 'sq'].includes(k)) await stSet('await', null);
     if (k === 'm') { await stSet('await', null); await show(chatId, msgId, ADMIN_HELP, MENU()); }
     else if (k === 'st') await show(chatId, msgId, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (k === 'l') await view(await listView(Number(a) || 0));
@@ -696,7 +857,30 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
         background(broadcast(d.chat, d.mid, d.aud ?? 'all'));
       }
     }
-    else if (k === 'no') { await stTake('draft'); await show(chatId, msgId, 'Отменено.', toMenu()); }
+    else if (k === 'no') { await stTake('draft'); await stSet('await', null); await show(chatId, msgId, 'Отменено.', toMenu()); }
+    // отложить черновик: спрашиваем время
+    else if (k === 'sq') {
+      if (!await stGet('draft', null)) toastText = 'Уже отправлено или отменено';
+      else { await stSet('await', { kind: 'when', at: Date.now() }); await show(chatId, msgId, '⏰ Когда отправить? Пришлите время по Москве:\n<code>18:30</code> — сегодня (или завтра, если уже прошло)\n<code>25.10 10:00</code> — в этот день', kb([[{ text: 'Отмена', callback_data: 'no' }]])); }
+    }
+    else if (k === 'sl') await view(await schedList());
+    else if (k === 'sx') { const list = await stGet<Sched[]>('sched', []); await stSet('sched', list.filter((s) => s.id !== a)); toastText = 'Отменено'; await view(await schedList()); }
+    // курс в канал
+    else if (k === 'rc') await view(await rcMenu());
+    else if (k === 'rct' || k === 'rch') {
+      const rp = await stGet<RatePost>('ratepost', RP_DEF), day = mskDay(Date.now()), hour = new Date(Date.now() + 3 * 3600e3).getUTCHours();
+      if (k === 'rct') rp.on = !rp.on;
+      else { const h = Number(a); rp.times = rp.times.includes(h) ? rp.times.filter((x) => x !== h) : [...rp.times, h]; }
+      // Уже прошедшие сегодня часы не публикуем задним числом
+      for (const h of rp.times) if (h <= hour && !rp.done[h]) rp.done[h] = day;
+      await stSet('ratepost', rp); toastText = k === 'rct' ? (rp.on ? 'Автопубликация включена' : 'Автопубликация выключена') : 'Сохранено';
+      await view(await rcMenu());
+    }
+    else if (k === 'rcp' || k === 'rcn') { toastText = 'Рисую карточку…'; background(selfCall({ rate_post: k === 'rcn' ? 'channel' : 'admin' })); }
+    // утренний отчёт
+    else if (k === 'rp') await view(await rpMenu());
+    else if (k === 'rpt') { const rp = await stGet('report', { on: true, day: '' }); await stSet('report', { ...rp, on: !rp.on }); toastText = rp.on ? 'Отчёт выключен' : 'Отчёт включён'; await view(await rpMenu()); }
+    else if (k === 'rpn') { toastText = 'Собираю отчёт…'; background(morningReport()); }
     // промокоды
     else if (k === 'pl') await view(await promoList());
     else if (k === 'pc') await view(await promoCard(a));
@@ -740,12 +924,25 @@ async function adminMessage(msg: Msg): Promise<boolean> {
   if (text.startsWith('/start')) return false;
   try {
     const aw = await stGet<{ kind: string; aud?: Aud; at: number } | null>('await', null);
-    if (aw && Date.now() - aw.at < 60 * 60e3 && !text.startsWith('/')) {
+    // Время для отложенной рассылки/поста
+    if (aw?.kind === 'when' && Date.now() - aw.at < 60 * 60e3 && !text.startsWith('/')) {
+      const at = parseWhen(text);
+      if (!at) { await show(chatId, null, 'Не понял время. Пришлите так: <code>18:30</code> или <code>25.10 10:00</code> (по Москве, не дальше 60 дней).', kb([[{ text: 'Отмена', callback_data: 'no' }]])); return true; }
+      await stSet('await', null);
+      const d = await stTake<{ kind: string; aud?: Aud; chat: number; mid: number }>('draft');
+      if (!d) { await show(chatId, null, 'Черновик уже отправлен или отменён.', toMenu()); return true; }
+      const list = await stGet<Sched[]>('sched', []);
+      list.push({ id: crypto.randomUUID().slice(0, 8), kind: d.kind, aud: d.aud, chat: d.chat, mid: d.mid, at });
+      await stSet('sched', list);
+      await show(chatId, null, `⏰ Запланировано на <b>${whenText(at)}</b>: ${d.kind === 'post' ? `пост в ${CHANNEL}` : `рассылка ${AUD[d.aud ?? 'all']}`}.\nНе удаляйте это сообщение из чата с ботом до отправки.`, kb([[{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '‹ Меню', callback_data: 'm' }]]));
+      return true;
+    }
+    if (aw && aw.kind !== 'when' && Date.now() - aw.at < 60 * 60e3 && !text.startsWith('/')) {
       await stSet('await', null);
       await stSet('draft', { kind: aw.kind, aud: aw.aud, chat: chatId, mid: msg.message_id });
       const n = aw.kind === 'bc' ? (await recipients(aw.aud ?? 'all')).length : 0;
       await show(chatId, null, aw.kind === 'post' ? `Опубликовать это сообщение в ${CHANNEL}?` : `Отправить это сообщение <b>${AUD[aw.aud ?? 'all']}</b>? Получателей: <b>${n}</b>.`,
-        kb([[{ text: aw.kind === 'post' ? '✅ Опубликовать' : `✅ Отправить (${n})`, callback_data: 'go' }, { text: 'Отмена', callback_data: 'no' }]]));
+        kb([[{ text: aw.kind === 'post' ? '✅ Опубликовать' : `✅ Отправить (${n})`, callback_data: 'go' }], [{ text: '⏰ Запланировать', callback_data: 'sq' }, { text: 'Отмена', callback_data: 'no' }]]));
       return true;
     }
     if (!text) return false;
@@ -823,6 +1020,28 @@ async function tick() {
   // 3. Раз в неделю — совет в канал, если автопосты включены
   const ap = await stGet('autopost', { on: false, idx: 0, last: 0 });
   if (ap.on && hourMsk >= 12 && now - ap.last > 6.5 * DAY) await postTip();
+  // 4. Курс: история для графика и уведомления «выше / ниже»
+  await rateTick(now).catch((e) => console.error('rate tick', e));
+  // 5. Карточка курса в канал по расписанию (рисуется в отдельном запуске)
+  const rp = await stGet<RatePost>('ratepost', RP_DEF), today = mskDay(now);
+  if (rp.on) {
+    const due = rp.times.filter((h) => hourMsk >= h && hourMsk < h + 2 && rp.done[h] !== today);
+    if (due.length) { due.forEach((h) => rp.done[h] = today); await stSet('ratepost', rp); await selfCall({ rate_post: 'channel' }); }
+  }
+  // 6. Отложенные рассылки и посты
+  const sched = await stGet<Sched[]>('sched', []), dueS = sched.filter((s) => s.at <= now);
+  if (dueS.length) {
+    await stSet('sched', sched.filter((s) => s.at > now));   // сначала убираем из списка: следующий запуск не отправит второй раз
+    for (const s of dueS) {
+      if (s.kind === 'post') {
+        const r = await tg('copyMessage', { chat_id: CHANNEL, from_chat_id: s.chat, message_id: s.mid, reply_markup: kb([[{ text: '🚀 Открыть P2Pro', url: BOT_LINK }]]) });
+        await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: r?.ok ? `⏰ Отложенный пост опубликован в ${CHANNEL}.` : `⚠️ Отложенный пост не опубликован: ${esc(r?.description ?? 'нет ответа')}` });
+      } else background(broadcast(s.chat, s.mid, s.aud ?? 'all'));
+    }
+  }
+  // 7. Утренний отчёт владельцу в 9:00 МСК
+  const rep = await stGet('report', { on: true, day: '' });
+  if (rep.on && hourMsk >= 9 && rep.day !== today) { await stSet('report', { ...rep, day: today }); await morningReport().catch((e) => console.error('report', e)); }
 }
 
 async function remindExpiring() {
@@ -844,6 +1063,11 @@ Deno.serve(async (req) => {
   const update = await req.json().catch(() => null);
   if (update?.cron === 'daily') { if (TOKEN && SERVICE) background(dailyFanout()); return new Response('ok'); }
   if (update?.cron) { if (TOKEN && SERVICE) await tick().catch((e) => console.error('tick', e)); return new Response('ok'); }
+  if (update?.rate_post === 'channel' || update?.rate_post === 'admin') {
+    if (TOKEN && SERVICE) { const ok = await ratePost(update.rate_post === 'channel' ? CHANNEL : ADMIN_ID).catch((e) => { console.error('rate post', e); return false; });
+      if (!ok && update.rate_post === 'channel') await tg('sendMessage', { chat_id: ADMIN_ID, text: '⚠️ Карточка курса не опубликована: проверьте, что у бота есть право «Публикация сообщений» в канале.' }); }
+    return new Response('ok');
+  }
   if (typeof update?.daily_user === 'string') { if (TOKEN && SERVICE) await dailySend(update.daily_user, String(update.day ?? mskDay(Date.now()))).catch((e) => console.error('daily', e)); return new Response('ok'); }
   const isAdmin = (id?: number) => id === ADMIN_ID && !!SERVICE && !!TOKEN;
   // Оплата звёздами: проверка перед списанием и успешный платёж

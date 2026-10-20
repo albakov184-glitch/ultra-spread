@@ -394,6 +394,60 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .sp-msg { margin-top: 12px; font-size: 13px; color: #8691A2; min-height: 18px; animation: fade .4s .7s both; }
 @keyframes fade { from { opacity: 0; } }
 
+.pin { position: fixed; inset: 0; z-index: 101; background: #0C0F14; color: #E8ECF2; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px)); transition: opacity .4s ease, visibility .4s; }
+.pin.modal { z-index: 130; }
+.pin.out { opacity: 0; visibility: hidden; }
+.pin-card { position: relative; width: 100%; max-width: 340px; border-radius: 26px; padding: 30px 20px 24px; display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center;
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025)); border: 1px solid rgba(255,255,255,.09);
+  backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08); animation: cardIn .6s cubic-bezier(.2,.9,.3,1) both; overflow: hidden; }
+.pin-card::before { content: ""; position: absolute; top: 10px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: rgba(255,255,255,.14); }
+.pin-card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .7s ease;
+  background: radial-gradient(70% 60% at 50% 78%, rgba(60,211,138,.26), transparent 72%); }
+.pin-card.ok { border-color: rgba(60,211,138,.28); transition: border-color .6s; }
+.pin-card.ok::after { opacity: 1; }
+.pin-h { position: relative; z-index: 1; }
+.pin-h h2 { font-family: var(--f-display); font-size: 20px; letter-spacing: -.5px; margin: 0 0 6px; }
+.pin-h p { margin: 0; font-size: 13px; line-height: 1.4; color: #8691A2; }
+.pin-h.swap { animation: unblur .45s ease both; }
+.pin-cells { position: relative; z-index: 1; display: flex; gap: 12px; height: 58px; }
+.pin-cells > i { position: relative; width: 50px; height: 58px; border-radius: 14px; background: rgba(0,0,0,.35); border: 1.5px solid rgba(255,255,255,.1); display: grid; place-items: center;
+  transition: transform .42s cubic-bezier(.5,0,.2,1), border-color .2s, background .2s, opacity .25s, box-shadow .2s; }
+.pin-cells > i > * { grid-area: 1 / 1; }
+.pin-cells > i b { width: 12px; height: 12px; border-radius: 50%; background: #E8ECF2; transform: scale(0); transition: transform .25s cubic-bezier(.3,1.6,.5,1); }
+.pin-cells > i.fill b { transform: scale(1); }
+.pin-cells > i.act { border-color: #F2B54B; box-shadow: 0 0 0 4px rgba(242,181,75,.13); }
+.pin-cells > i.act::after { content: ""; grid-area: 1 / 1; width: 2px; height: 22px; border-radius: 1px; background: #F2B54B; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.pin-cells.bad > i { border-color: #FF6B6B; background: rgba(255,107,107,.1); box-shadow: none; }
+.pin-cells.bad > i::after { display: none; }
+.pin-cells.bad { animation: shake .45s cubic-bezier(.36,.07,.19,.97); }
+@keyframes shake { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); } 30%, 50%, 70% { transform: translateX(-8px); } 40%, 60% { transform: translateX(8px); } }
+.pin-cells.merge > i { border-color: #F2B54B; background: rgba(27,20,5,.85); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.pin-cells.merge > i::after { display: none; }
+.pin-cells.gone > i { opacity: 0; }
+.pin-ok { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 16px; border: 2px solid #3CD38A; background: rgba(60,211,138,.12);
+  display: grid; place-items: center; color: #3CD38A; opacity: 0; transform: rotate(-16deg) scale(.82); pointer-events: none; box-shadow: 0 0 34px rgba(60,211,138,.35); }
+.pin-ok path { stroke-dasharray: 24; stroke-dashoffset: 24; }
+.pin-cells.done .pin-ok { opacity: 1; transform: none; transition: transform .5s cubic-bezier(.3,1.5,.5,1), opacity .2s; }
+.pin-cells.done .pin-ok path { stroke-dashoffset: 0; transition: stroke-dashoffset .4s .28s ease; }
+.pin-err { position: relative; z-index: 1; min-height: 18px; margin-top: -10px; font-size: 13px; color: #FF6B6B; }
+.pin-pad { position: relative; display: grid; grid-template-columns: repeat(3, 72px); gap: 14px 22px; animation: fade .5s .15s both; }
+.pin-pad button { width: 72px; height: 72px; border-radius: 50%; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: #E8ECF2;
+  font-family: var(--f-mono); font-size: 26px; font-weight: 600; display: grid; place-items: center; transition: background .15s, transform .1s; -webkit-tap-highlight-color: transparent; }
+.pin-pad button:active { background: rgba(242,181,75,.22); transform: scale(.93); }
+.pin-pad button.ghost { background: none; border-color: transparent; }
+.pin-pad button:disabled { opacity: .35; }
+.pin-pad .nil { visibility: hidden; }
+.pin-link { position: relative; background: none; border: 0; color: #8691A2; font: inherit; font-size: 14px; padding: 6px 12px; }
+.pin-ask { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 1.45; color: #8691A2; }
+.pin-ask .row2 { display: flex; gap: 8px; }
+.pin-ask .row2 button { flex: 1; padding: 11px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: #E8ECF2; font: inherit; font-weight: 600; }
+.pin-ask .row2 button.neg { background: rgba(255,107,107,.16); border-color: rgba(255,107,107,.35); color: #FF8A8A; }
+@media (max-height: 660px) { .pin { gap: 14px; } .pin-pad { gap: 10px 20px; } .pin-pad button { width: 62px; height: 62px; font-size: 23px; } .pin-card { padding: 24px 18px 18px; gap: 16px; } }
+@media (prefers-reduced-motion: reduce) { .pin-cells > i, .pin-ok, .pin-ok path { transition: none !important; } .pin-cells.bad { animation: none; } }
+
 .auth { justify-content: flex-start; overflow-y: auto; padding: calc(28px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
 .au-brand { position: relative; display: flex; align-items: center; gap: 10px; margin: 8px 0 22px; animation: fade .5s both; }
 .au-brand .logo { width: 36px; height: 36px; border-radius: 11px; font-size: 14px; background: #F2B54B; color: #0C0F14; }
@@ -537,6 +591,17 @@ html, body { overscroll-behavior-y: contain; }
 .rate-line { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); padding: 7px 10px; border-radius: 10px; background: var(--surface-2); width: max-content; max-width: 100%; margin: -2px 0 2px; }
 .rate-line .dot { width: 7px; height: 7px; border-radius: 50%; background: #3CD38A; flex: none; }
 .rate-line .dot.off { background: var(--muted); }
+.xr-ch { position: relative; margin-top: 8px; min-height: 120px; }
+.xr-ch svg { display: block; width: 100%; height: 120px; overflow: visible; }
+.xr-ch .ax { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: var(--f-mono); margin-top: 4px; }
+.xr-ch.lock svg { filter: blur(3px); opacity: .55; }
+.xr-ch .lk { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; font-size: 13px; }
+.xr-al-f { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; margin-top: 8px; }
+.xr-al-f .inp input { padding: 9px 10px; font-size: 16px; }
+.xr-al-f .btn { padding: 10px 12px; font-size: 14px; }
+.xr-al { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--surface); font-size: 14px; margin-top: 6px; }
+.xr-al b { font-family: var(--f-mono); }
+@media (max-width: 360px) { .xr-al-f { grid-template-columns: 1fr 1fr; } .xr-al-f .seg { grid-column: 1 / -1; } }
 .rate-line b { font-family: var(--f-mono); color: var(--fg); font-size: 13.5px; font-weight: 600; }
 .rate-line .up { color: #3CD38A; font-weight: 600; } .rate-line .dn { color: #FF6B6B; font-weight: 600; } .rate-line .ar { margin-left: 2px; }
 .sw-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
@@ -977,6 +1042,14 @@ img { max-width: 100%; }
         <button class="toggle" role="switch" id="rateToggle" aria-checked="true" aria-label="Биржевой курс в калькуляторе"></button></div>
     </div>
     <div class="card">
+      <span class="card-t">Безопасность</span>
+      <div class="sw-row"><span>PIN-код при входе<br><span class="muted small">4 цифры при каждом открытии P2Pro. Хранится только на этом устройстве</span></span>
+        <button class="toggle" role="switch" id="pinToggle" aria-checked="false" aria-label="PIN-код при входе"></button></div>
+      <div class="sw-row" id="bioRow" hidden><span>Face ID / отпечаток<br><span class="muted small">Открывать P2Pro без ввода PIN</span></span>
+        <button class="toggle" role="switch" id="bioToggle" aria-checked="false" aria-label="Вход по Face ID или отпечатку"></button></div>
+      <button class="btn" id="pinChange" hidden>Сменить PIN-код</button>
+    </div>
+    <div class="card">
       <div class="card-h"><span class="card-t">Цели и капитал</span><button class="info" data-info="capital" aria-label="Что такое капитал">i</button></div>
       <div class="set-row"><span>Цель на день</span><div class="inp"><input id="setGoal" type="text" inputmode="decimal" placeholder="3000"><span class="unit">₽</span></div></div>
       <div class="set-row"><span>Капитал в обороте</span><div class="inp"><input id="setCap" type="text" inputmode="decimal" placeholder="300000"><span class="unit">₽</span></div></div>
@@ -1382,6 +1455,14 @@ function buildTrade() {
   } };
 }
 const monthCount = () => { const n = new Date(); return S.trades.filter(t => new Date(t.ts).getMonth() === n.getMonth() && new Date(t.ts).getFullYear() === n.getFullYear()).length; };
+// У каждого режима (сделка, круг, треугольник) свой контрагент: при переключении запоминаем и подставляем свой
+const CP_KEYS = ['cp', 'cp2', 'cpNote', 'cp2Note'];
+function cpSwap(d, mode) {
+  if (mode === d.mode) return;
+  d.cpBy = d.cpBy && typeof d.cpBy === 'object' ? d.cpBy : {};
+  d.cpBy[d.mode] = Object.fromEntries(CP_KEYS.map(k => [k, d[k] || '']));
+  CP_KEYS.forEach(k => d[k] = d.cpBy[mode]?.[k] || '');
+}
 function save() {
   const { t, err } = buildTrade();
   if (err) return toast(err);
@@ -1393,6 +1474,9 @@ function save() {
     if ($('saveBtn').disabled) return;
     $('saveBtn').disabled = true;
     S.trades.unshift(t);
+    // Контрагент относится к одной сделке: после сохранения поля очищаем, чтобы ник не перешёл в следующую
+    const dr = S.draft; CP_KEYS.forEach(k => dr[k] = ''); if (dr.cpBy) delete dr.cpBy[dr.mode];
+    dr.sellers.forEach(x => { x.cp = ''; x.note = ''; });
     // Новые ники сразу попадают в книжку контрагентов со статусом «без отметки»
     const seen = new Set();
     const added = tradeCps(t).filter(n => { const k = n.trim().toLowerCase(); if (!k || seen.has(k) || findCp(n)) return false; seen.add(k); return true; });
@@ -1893,7 +1977,7 @@ const rubPlans = () => {
   return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myRub.m)} ₽</b>${was('m') || '<span>в месяц</span>'}</button>
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y">${yearOff(myRub)}<span>Год</span><b>${nf0.format(myRub.y)} ₽</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myRub.y / 12))} ₽ в месяц</span>`}</button>`;
 };
-const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
+const PW_WHY = { rate: 'График курса и уведомления о курсе — в PRO', excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
 // В Telegram два способа: звёзды и крипта (цены в рублях, как на сайте)
 const payStars = () => inTelegram() && payMethod === 'stars';
 const payLabel = () => payStars() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${nf0.format(myRub[payPeriod])} ₽`;
@@ -1905,7 +1989,39 @@ function payRefresh() {
   if ($('payHint')) $('payHint').innerHTML = payHint();
   if ($('payBtn') && !$('payBtn').disabled) $('payBtn').textContent = payLabel();
 }
+// Подарок другу: тот же выбор срока и способа оплаты, плюс ник получателя. Сервер проверяет ник (gift_find)
+let payGift = '';
+function giftSheet() {
+  payGift = ''; payPeriod = 'm'; payMethod = inTelegram() ? 'stars' : 'crypto';
+  const M = inTelegram() ? [['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['crypto', 'Крипта · USDT']];
+  sheet(`<div class="pw-hero"><div class="pw-badge">🎁</div><h3>Подарить PRO</h3><span class="muted small">Друг получит PRO и сообщение от бота @P2ProAppBot</span></div>
+    <label class="field"><span>Ник друга в Telegram</span><div class="inp text"><input id="gfNick" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="@username"></div></label>
+    <span class="muted small" id="gfWho">Друг должен хотя бы раз открыть P2Pro через Telegram — так мы его найдём</span>
+    <div class="pw-plans" id="payPlans">${payStars() ? starsPlans() : rubPlans()}</div>
+    <span class="label">Способ оплаты</span>
+    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
+    <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
+  loadMyStars().then(payRefresh);
+}
+// Проверяем ник у сервера и показываем, кто получит подарок
+async function giftCheck() {
+  const nick = ($('gfNick')?.value || '').trim();
+  if (!nick) { $('gfNick')?.focus(); toast('Впишите ник друга в Telegram'); return false; }
+  if (!sb || !me()) { toast('Войдите в аккаунт, чтобы подарить PRO'); return false; }
+  const btn = $('payBtn'); btn.disabled = true; btn.textContent = 'Ищем друга…';
+  let res = {};
+  try { const token = (await sb.auth.getSession()).data?.session?.access_token; res = await (await tgAuthCall({ gift_find: nick, access_token: token })).json().catch(() => ({})); } catch (e) {}
+  if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
+  const ERR = { gift_bad: 'Ник Telegram — латиница, цифры и _, от 4 символов', gift_nf: 'Не нашли такого человека в P2Pro. Попросите друга один раз открыть @P2ProAppBot и нажать «Открыть P2Pro»', gift_self: 'Это ваш ник — себе PRO можно купить в обычном окне', auth: 'Войдите заново и попробуйте ещё раз' };
+  if (!res.ok) { if ($('gfWho')) { $('gfWho').textContent = ERR[res.error] || 'Не получилось проверить ник. Проверьте интернет'; $('gfWho').style.color = '#FF6B6B'; } return false; }
+  payGift = res.nick;
+  if ($('gfWho')) { $('gfWho').innerHTML = `Получатель: <b style="color:var(--fg)">${esc(res.name)}</b> · @${esc(res.nick)}`; $('gfWho').style.color = ''; }
+  return true;
+}
+const giftDone = () => { sheet(`<div class="pw-hero"><div class="pw-badge">🎁</div><h3>Подарок отправлен!</h3>
+  <p>@${esc(payGift)} получил PRO — мы сообщили ему в боте. Спасибо!</p></div><button class="btn primary" data-close>Отлично</button>`); confetti(); };
 function openPlans(why) {
+  payGift = '';
   if (S.settings.pro && why !== 'renew') return showSub();
   payPeriod = why === 'renew' ? 'y' : 'm';
   const F = [['∞', 'История без ограничений'], ['★', 'Контрагенты и чёрный список'], ['⤓', 'Выгрузка всех сделок в Excel'], ['▣', 'Карточки результата без водяного знака'], ['⚡', 'Скоро: живые курсы и уведомления', 'soon']];
@@ -1918,7 +2034,8 @@ function openPlans(why) {
     <span class="label">Способ оплаты</span>
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
     ${inTelegram() ? `<span class="muted small" id="payHint" style="display:flex;align-items:center;gap:6px">${payHint()}</span>` : ''}
-    <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
+    <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>
+    <button class="btn" id="giftOpen">🎁 Подарить PRO другу</button>`);
   // Персональная цена могла поменяться — перечитываем и перерисовываем цены
   loadMyStars().then(payRefresh);
 }
@@ -1935,7 +2052,7 @@ async function starsPay() {
   let link = '';
   try {
     const token = (await sb.auth.getSession()).data?.session?.access_token;
-    const r = await tgAuthCall({ initData: tg.initData || TG_INIT, invoice: payPeriod, access_token: token });
+    const r = await tgAuthCall({ initData: tg.initData || TG_INIT, invoice: payPeriod, access_token: token, ...(payGift ? { gift: payGift } : {}) });
     link = (await r.json().catch(() => ({}))).link || '';
   } catch (e) {}
   if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
@@ -1945,6 +2062,7 @@ async function starsPay() {
     if (status === 'cancelled') return;
     // pending — Telegram ещё проводит платёж: ждём так же, как после «оплачено»
     if (status !== 'paid' && status !== 'pending') return toast('Оплата не прошла — звёзды не списаны');
+    if (payGift) { tg.HapticFeedback?.notificationOccurred('success'); return giftDone(); }
     sheet(`<div class="pay-proc" role="status" aria-live="polite"><div class="pp-ring" id="ppRing"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" id="ppArc" cx="60" cy="60" r="52" style="stroke-dashoffset:110"/></svg>
       <div class="pp-icon" id="ppIcon">${payIcon('stars', 44)}</div></div><h3 id="ppTitle">Подключаем PRO</h3><span class="muted small">Оплата прошла, ждём подтверждение</span></div>`);
     payBusy = true;
@@ -1967,7 +2085,7 @@ async function cryptoPay() {
   let res = {};
   try {
     const token = (await sb.auth.getSession()).data?.session?.access_token;
-    const r = await tgAuthCall({ xr_invoice: payPeriod, access_token: token });
+    const r = await tgAuthCall({ xr_invoice: payPeriod, access_token: token, ...(payGift ? { gift: payGift } : {}) });
     res = await r.json().catch(() => ({ error: 'http ' + r.status }));
   } catch (e) { res = { error: e?.name === 'TimeoutError' ? 'timeout' : 'network', detail: e?.name === 'TimeoutError' ? 'сервер не ответил за 45 секунд' : String(e?.message || e).slice(0, 100) }; }
   if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
@@ -1984,14 +2102,12 @@ async function cryptoPay() {
       <p class="muted small" style="text-align:center;margin:0">Откроется xRocket: оплатите USDT с баланса xRocket, любого кошелька или биржи (сети TON, TRON, BSC и др.). Сумма посчитана по курсу биржи. Счёт действует 1 час.</p></div>
     ${inTelegram() ? `<button class="btn primary" id="xrGo" data-link="${esc(res.tg || '')}" data-web="${esc(res.link)}">Перейти к оплате</button>`
       : `<a class="btn primary" href="${esc(res.link)}" target="_blank" rel="noopener">Перейти к оплате</a>`}
-    <span class="muted small" style="text-align:center">После оплаты вернитесь сюда — PRO включится сам, а бот пришлёт сообщение. Ждём оплату…</span>
+    <span class="muted small" style="text-align:center">${payGift ? `После оплаты @${esc(payGift)} получит PRO и сообщение от бота, а вам бот пришлёт подтверждение.` : 'После оплаты вернитесь сюда — PRO включится сам, а бот пришлёт сообщение. Ждём оплату…'}</span>
     <button class="btn" data-close>Закрыть</button>`);
-  payBusy = true;
-  try {
-    // Ждём, пока окно открыто (до часа — столько живёт счёт)
-    for (let i = 0; i < 1200 && $('xrWait') && (S.settings.proUntil || 0) <= before; i++) { await wait(3000); if (!document.hidden) await syncNow(true); }
-  } finally { payBusy = false; }
-  if ((S.settings.proUntil || 0) <= before) return;
+  if (payGift) return;   // подарок: срок меняется у друга, подтверждение пришлёт бот
+  // Ждём, пока окно открыто (до часа — столько живёт счёт). Окно можно закрыть: PRO включится и так, бот пришлёт сообщение
+  for (let i = 0; i < 1200 && $('xrWait') && (S.settings.proUntil || 0) <= before; i++) { await wait(3000); if ($('xrWait') && !document.hidden) await syncNow(true); }
+  if ((S.settings.proUntil || 0) <= before || !$('xrWait')) return;
   navigator.vibrate?.([12, 60, 18]);
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO подключён 🎉</h3>
     <p>Оплата криптой прошла. PRO действует до <b>${fmtLong(S.settings.proUntil)}</b>. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
@@ -2007,6 +2123,8 @@ function xrOpen(tgLink, web) {
 }
 // Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
 async function payProcess() {
+  if ($('gfNick') && !await giftCheck()) return;
+  if (!$('gfNick')) payGift = '';
   if (payMethod === 'crypto') return cryptoPay();
   if (inTelegram()) return starsPay();
   // На сайте оплата картой и СБП ещё подключается (Platega). Демо-покупку не показываем: она давала PRO бесплатно
@@ -2083,6 +2201,7 @@ function bankUsage(bank) {
 }
 function renderProfile() {
   $('rateToggle')?.setAttribute('aria-checked', !S.settings.rateOff);
+  renderPinRow();
   const st = S.settings;
   if ($('setGoal') !== document.activeElement) $('setGoal').value = st.goal || '';
   if ($('setCap') !== document.activeElement) $('setCap').value = st.capital || '';
@@ -2106,7 +2225,7 @@ function renderProfile() {
   $('exEdit').innerHTML = st.exchanges.map(x => `<span class="chip on">${esc(x)}<button data-rm-ex="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
   $('bankEdit').innerHTML = st.banks.map(x => `<span class="chip on">${esc(x)}<button data-rm-bank="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
   $('plansInline').innerHTML = plansHtml(); $('plansInline').hidden = !!st.pro;
-  $('subBox').hidden = !st.pro; if (st.pro) $('subBox').innerHTML = subHtml();
+  $('subBox').hidden = !st.pro; if (st.pro) $('subBox').innerHTML = subHtml() + '<button class="btn" id="giftOpen">🎁 Подарить PRO другу</button>';
   renderTestPanel();
   const w = WORKS.find(x => x[0] === st.work);
   $('workNow').textContent = w ? `${w[1]}. ${w[2]}.` : 'Не выбрано';
@@ -2247,7 +2366,7 @@ document.addEventListener('click', e => {
   if (b.dataset.info) return showInfo(b.dataset.info === 'mode' && S.draft.mode === 'tri' ? 'tri' : b.dataset.info, b);
   const d = S.draft, st = S.settings, ds = b.dataset;
   if (ds.tab) return show(ds.tab);
-  if (ds.mode) { d.mode = ds.mode; persist(); return render(); }
+  if (ds.mode) { cpSwap(d, ds.mode); d.mode = ds.mode; persist(); return render(); }
   if (ds.changeWork !== undefined) return showWork();
   if (ds.work) {
     st.work = ds.work;
@@ -2305,6 +2424,7 @@ document.addEventListener('click', e => {
   if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return payRefresh(); }
   if (b.id === 'xrGo') return xrOpen(b.dataset.link, b.dataset.web);
   if (b.id === 'payBtn') return payProcess();
+  if (b.id === 'giftOpen') return giftSheet();
   if (ds.tour) return showTour(+ds.tour);
   if (b.id === 'tourBtn') return showTour(0);
   if (ds.guide != null) return showGuide();
@@ -2498,6 +2618,13 @@ function rateSheet() {
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="font-family:var(--f-display);font-size:34px">${nf2.format(r)} ₽</b>
       <span style="color:${xrRate.ch >= 0 ? '#3CD38A' : '#FF6B6B'};font-weight:600;white-space:nowrap">${xrRate.ch >= 0 ? '▲' : '▼'} ${nf2.format(Math.abs(xrRate.ch))}% за сутки</span></div>
     <span class="muted small">Источник: биржа <b style="color:var(--fg)">xRocket</b> (@xRocket в Telegram). Обновлено ${xrAgo(Date.now() - xrRate.at)}.<br>Это средний курс USDT на бирже — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
+    <div class="kpi"><span class="label">График за сутки${S.settings.pro ? '' : ' · PRO'}</span><div class="xr-ch" id="xrCh"><span class="muted small">Загружаем…</span></div></div>
+    <div class="kpi" id="xrAl"><span class="label">🔔 Уведомить в Telegram${S.settings.pro ? '' : ' · PRO'}</span>
+      <span class="muted small">Бот напишет, когда курс USDT станет выше или ниже вашей цены (проверка раз в 10 минут)</span>
+      <div class="xr-al-f"><div class="seg sm"><button data-xral-dir="above" class="${xrAlDir === 'above' ? 'on' : ''}">Выше</button><button data-xral-dir="below" class="${xrAlDir === 'below' ? 'on' : ''}">Ниже</button></div>
+        <div class="inp"><input id="xrAlP" type="text" inputmode="decimal" placeholder="${nf2.format(Math.round(r * (xrAlDir === 'above' ? 1.01 : .99) * 100) / 100)}" aria-label="Курс для уведомления"><span class="unit">₽</span></div>
+        <button class="btn primary" id="xrAlAdd">Добавить</button></div>
+      <div id="xrAlList"></div></div>
     <div class="kpi"><span class="label">Ваша сделка к бирже</span>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px;font-size:13px">${cell('Покупка', bP, bP != null && bP <= 0)}${cell('Продажа', sP, sP != null && sP >= 0)}${cell('Спред', spr, spr != null && spr >= 0)}</div>
       ${buy || sell ? '' : '<span class="muted small">Введите курсы покупки и продажи — покажем, насколько они выше или ниже биржи</span>'}</div>
@@ -2505,10 +2632,62 @@ function rateSheet() {
       ${XR_FIATS.map(([c, f, sym]) => `<span id="xr${c}">${f} … ${sym}</span>`).join('')}</div></div>
     <div class="row2"><button class="btn" data-xr-fill="buy" style="font-size:14px">В «Купил»</button><button class="btn" data-xr-fill="sell" style="font-size:14px">В «Продал»</button></div>
     <button class="btn primary" data-close>Готово</button>`);
+  xrChart(); xrAlLoad();
   XR_FIATS.forEach(([c, f, sym]) => xrFetch(c).then(x => { if ($('xr' + c)) $('xr' + c).textContent = `${f} ${nf2.format(x.rate)} ${sym}`; }, () => { if ($('xr' + c)) $('xr' + c).textContent = `${f} — ${sym}`; }));
+}
+// График за сутки и уведомления о курсе (16-rate.sql). Точки курса раз в 10 минут записывает бот
+let xrAlDir = 'above';
+const xrSvgPath = (pts, W, H, lo, hi) => pts.map((v, i) => `${(i / (pts.length - 1) * W).toFixed(1)},${(H - (v - lo) / (hi - lo || 1) * H).toFixed(1)}`);
+function xrChartSvg(pts, col) {
+  const W = 300, H = 104, lo = Math.min(...pts), hi = Math.max(...pts), pad = (hi - lo) * .12 || .05, L = lo - pad, Hh = hi + pad;
+  const xy = xrSvgPath(pts, W, H, L, Hh), last = xy[xy.length - 1].split(',');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="xrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <path d="M${xy.join(' L')} L${W},${H} L0,${H}Z" fill="url(#xrG)"/><polyline points="${xy.join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="${col}"/></svg>`;
+}
+async function xrChart() {
+  const el = $('xrCh'); if (!el) return;
+  if (!S.settings.pro) {
+    const demo = Array.from({ length: 40 }, (_, i) => 80 + Math.sin(i / 4) * .6 + i * .03);
+    el.classList.add('lock');
+    return el.innerHTML = xrChartSvg(demo, '#3CD38A') + `<div class="lk"><span>Как менялся курс за последние 24 часа</span><button class="btn primary" data-open-plans="rate" style="padding:9px 14px;font-size:14px">Открыть в PRO</button></div>`;
+  }
+  let rows = [];
+  try { const { data } = await sb.from('rate_history').select('ts, usdt').gte('ts', new Date(Date.now() - 864e5).toISOString()).order('ts'); rows = data || []; } catch (e) {}
+  if (!$('xrCh')) return;
+  if (rows.length < 3) return el.innerHTML = '<span class="muted small">График собирается: бот записывает курс раз в 10 минут. Загляните через час</span>';
+  const pts = rows.map(x => +x.usdt), up = pts[pts.length - 1] >= pts[0], col = up ? '#3CD38A' : '#FF6B6B';
+  const t = x => new Date(x).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  el.innerHTML = xrChartSvg(pts, col) + `<div class="ax"><span>${t(rows[0].ts)}</span><span>мин ${nf2.format(Math.min(...pts))} · макс ${nf2.format(Math.max(...pts))}</span><span>${t(rows[rows.length - 1].ts)}</span></div>`;
+}
+async function xrAlLoad() {
+  const el = $('xrAlList'); if (!el) return;
+  if (!S.settings.pro || !me() || !sb) return el.innerHTML = '';
+  let rows = [];
+  try { const { data } = await sb.from('rate_alerts').select('id, dir, price').is('fired_at', null).order('price'); rows = data || []; } catch (e) {}
+  if (!$('xrAlList')) return;
+  el.innerHTML = rows.map(a => `<div class="xr-al"><span>${a.dir === 'above' ? '▲ Выше' : '▼ Ниже'} <b>${nf2.format(+a.price)} ₽</b></span><button class="icon-btn" data-xral-del="${a.id}" aria-label="Удалить уведомление">×</button></div>`).join('');
+}
+async function xrAlAdd() {
+  if (!S.settings.pro) return openPlans('rate');
+  if (!me() || !sb) return toast('Войдите в аккаунт, чтобы получать уведомления');
+  if (!/@telegram\.invalid$/.test(U.email || '')) return toast('Уведомления приходят в бот @P2ProAppBot — войдите через Telegram');
+  const price = +String($('xrAlP').value).replace(/\s/g, '').replace(',', '.');
+  if (!(price > 0 && price < 10000)) return toast('Введите курс, например 85,50');
+  if (($('xrAlList')?.children.length || 0) >= 5) return toast('Не больше 5 уведомлений — удалите лишнее');
+  const btn = $('xrAlAdd'); btn.disabled = true;
+  const { error } = await sb.from('rate_alerts').insert({ user_id: U.id, dir: xrAlDir, price }).then(r => r, e => ({ error: e }));
+  btn.disabled = false;
+  if (error) return toast('Не получилось сохранить. Проверьте интернет');
+  $('xrAlP').value = ''; toast(`Напишем в Telegram, когда курс будет ${xrAlDir === 'above' ? 'выше' : 'ниже'} ${nf2.format(price)} ₽`); xrAlLoad();
 }
 document.addEventListener('click', e => {
   if (e.target.closest('#rateLine')) return rateSheet();
+  const dirB = e.target.closest('[data-xral-dir]');
+  if (dirB) { xrAlDir = dirB.dataset.xralDir; document.querySelectorAll('[data-xral-dir]').forEach(x => x.classList.toggle('on', x === dirB)); if (xrRate && $('xrAlP')) $('xrAlP').placeholder = nf2.format(Math.round(xrRate.rate * (xrAlDir === 'above' ? 1.01 : .99) * 100) / 100); return; }
+  if (e.target.closest('#xrAlAdd')) return xrAlAdd();
+  const del = e.target.closest('[data-xral-del]');
+  if (del) { sb?.from('rate_alerts').delete().eq('id', +del.dataset.xralDel).then(() => xrAlLoad(), () => toast('Нет связи')); return; }
   const f = e.target.closest('[data-xr-fill]');
   if (f && xrRate) { const inp = $(f.dataset.xrFill); if (inp) { inp.value = xrRate.rate.toFixed(2); inp.dispatchEvent(new Event('input', { bubbles: true })); } closeSheet(); toast('Курс подставлен'); }
   if (e.target.closest('#rateToggle')) { S.settings.rateOff = !S.settings.rateOff; persist(false); e.target.closest('#rateToggle').setAttribute('aria-checked', !S.settings.rateOff); toast(S.settings.rateOff ? 'Курс в калькуляторе скрыт' : 'Курс в калькуляторе включён'); }
@@ -2660,6 +2839,7 @@ function wipeLocal() {
   const keep = { theme: S.settings.theme, incog: S.settings.incog, a2hsSeen: S.settings.a2hsSeen };
   S.trades = []; S.cps = []; S.settings = { ...JSON.parse(JSON.stringify(DEFAULT.settings)), ...keep }; S.draft = JSON.parse(JSON.stringify(DEFAULT.draft));
   persist(false);
+  lsSet(KEY + '.pin', null);   // PIN относится к аккаунту, который вышел
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastPull > 20000) syncNow(true); else if (document.visibilityState === 'hidden') syncNow(); });
 addEventListener('online', () => syncNow(true));
@@ -2698,12 +2878,199 @@ const AI = {
   tg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="#2AABEE" aria-hidden="true"><path d="M21.5 4.3 18.4 19c-.2 1-.8 1.3-1.7.8l-4.6-3.4-2.2 2.1c-.3.3-.5.5-1 .5l.3-4.7 8.6-7.8c.4-.3-.1-.5-.6-.2L6.6 13 2 11.6c-1-.3-1-1 .2-1.5L20.2 3c.8-.3 1.6.2 1.3 1.3z"/></svg>'
 };
 
+/* ================= PIN-КОД ================= */
+// PIN хранится только на этом устройстве (хэш с солью) и на сервер не уходит. Спрашиваем при открытии
+// и когда приложение было свёрнуто дольше 2 минут. Забыли PIN — выход из аккаунта, сделки в облаке целы.
+// Анимация: ячейки съезжаются в одну, она становится зелёной и рисует галочку
+const PIN_KEY = KEY + '.pin', PIN_LEN = 4, PIN_IDLE = 120000;
+const pinGet = () => { const p = lsGet(PIN_KEY); return p && p.h && p.s ? p : null; };
+async function pinHash(pin, salt) {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+const pinTap = k => { const h = window.Telegram?.WebApp?.HapticFeedback; if (h) k === 'tap' ? h.impactOccurred('light') : h.notificationOccurred(k); else navigator.vibrate?.(k === 'error' ? [30, 40, 30] : k === 'tap' ? 8 : [12, 60, 18]); };
+const bioMgr = () => window.Telegram?.WebApp?.BiometricManager;
+// Face ID / отпечаток есть только в Telegram (BiometricManager). Ждём инициализацию не дольше 1,5 с
+function bioReady() {
+  return new Promise(res => {
+    const b = bioMgr(); if (!b || !inTelegram()) return res(null);
+    if (b.isInited) return res(b.isBiometricAvailable ? b : null);
+    const t = setTimeout(() => res(null), 1500);
+    try { b.init(() => { clearTimeout(t); res(b.isBiometricAvailable ? b : null); }); } catch (e) { clearTimeout(t); res(null); }
+  });
+}
+const PIN_TXT = {
+  unlock: ['Введите PIN-код', 'Чтобы открыть P2Pro'],
+  set: ['Придумайте PIN-код', '4 цифры — их нужно будет вводить при открытии P2Pro'],
+  set2: ['Повторите PIN-код', 'Чтобы точно не ошибиться'],
+  verify: ['Введите текущий PIN-код', 'Чтобы изменить настройки защиты'],
+};
+let pinSt = null, pinHiddenAt = 0;
+// mode: unlock — вход; set — задать новый (дважды); verify — проверить текущий. done(true/false)
+function pinOpen(mode, done = () => {}) {
+  $('pinLock')?.remove();
+  const el = document.createElement('div');
+  el.className = 'pin' + (mode === 'unlock' ? '' : ' modal'); el.id = 'pinLock';
+  el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'PIN-код');
+  const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button type="button" data-pin="${n}" aria-label="${n}">${n}</button>`).join('');
+  el.innerHTML = `<div class="glow"></div><div class="grid"></div>
+    <div class="pin-card" id="pinCard"><div class="pin-h" id="pinH"><h2></h2><p></p></div>
+      <div class="pin-cells" id="pinCells" aria-hidden="true">${'<i><b></b></i>'.repeat(PIN_LEN)}
+        <div class="pin-ok"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div></div>
+      <div class="pin-err" id="pinErr" role="alert"></div></div>
+    <div class="pin-pad" id="pinPad">${keys}<button type="button" class="ghost" data-pin="bio" id="pinBio" aria-label="Face ID или отпечаток" hidden>
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 15.5c1.4 1.2 3.6 1.2 5 0"/></svg></button>
+      <button type="button" class="nil" aria-hidden="true" tabindex="-1" id="pinNil"></button>
+      <button type="button" data-pin="0" aria-label="0">0</button>
+      <button type="button" class="ghost" data-pin="del" aria-label="Стереть"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5H9l-6 7 6 7h12z"/><path d="m17 9-6 6M11 9l6 6"/></svg></button></div>
+    <button type="button" class="pin-link" id="pinFoot">${mode === 'unlock' ? 'Забыли PIN?' : 'Отмена'}</button>`;
+  document.body.appendChild(el);
+  pinSt = { mode, step: mode, val: '', first: '', busy: false, tries: 0, until: 0, done };
+  pinTitle(mode, false); pinCells();
+  if (mode === 'unlock') {
+    document.activeElement?.blur?.();
+    const p = pinGet();
+    if (p?.bio) bioReady().then(b => { if (!b || !$('pinBio')) return; $('pinBio').hidden = false; $('pinNil').remove(); pinBio(true); });
+  }
+}
+function pinTitle(step, anim = true) {
+  const h = $('pinH'); if (!h) return;
+  const [t, sub] = PIN_TXT[step] || step; h.querySelector('h2').textContent = t; h.querySelector('p').textContent = sub;
+  if (anim) { h.classList.remove('swap'); void h.offsetWidth; h.classList.add('swap'); }
+}
+function pinCells() {
+  const v = pinSt.val.length;
+  $('pinCells').querySelectorAll(':scope > i').forEach((c, i) => { c.classList.toggle('fill', i < v); c.classList.toggle('act', i === v && !pinSt.busy); });
+}
+function pinKey(k) {
+  const st = pinSt; if (!st || st.busy) return;
+  if (st.until > Date.now()) return;
+  if (k === 'bio') return pinBio(false);
+  if (k === 'del') { st.val = st.val.slice(0, -1); return pinCells(); }
+  if (st.val.length >= PIN_LEN) return;
+  st.val += k; pinTap('tap'); $('pinErr').textContent = ''; pinCells();
+  if (st.val.length === PIN_LEN) { st.busy = true; pinCells(); setTimeout(pinCheck, 160); }
+}
+async function pinCheck() {
+  const st = pinSt; if (!st) return;
+  if (st.step === 'set') { st.first = st.val; st.val = ''; st.step = 'set2'; st.busy = false; pinTitle('set2'); return pinCells(); }
+  if (st.step === 'set2') {
+    if (st.val !== st.first) { st.first = ''; st.step = 'set'; pinTitle('set'); return pinFail('PIN-коды не совпали — придумайте заново'); }
+    const salt = crypto.getRandomValues(new Uint32Array(2)).join('-');
+    lsSet(PIN_KEY, { h: await pinHash(st.val, salt), s: salt, bio: false });
+    return pinOk(['PIN-код установлен', 'Теперь P2Pro будет спрашивать его при открытии']);
+  }
+  const p = pinGet();
+  if (p && await pinHash(st.val, p.s) === p.h) return pinOk(st.step === 'unlock' ? ['Добро пожаловать', 'Открываем P2Pro…'] : ['Готово', '']);
+  st.tries++;
+  if (st.tries >= 5) { st.until = Date.now() + 30000; st.tries = 0; pinFail('Слишком много попыток. Подождите 30 секунд'); return pinWaitTick(); }
+  pinFail(`Неверный PIN-код. Осталось попыток: ${5 - st.tries}`);
+}
+function pinWaitTick() {
+  const st = pinSt; if (!st || !$('pinErr')) return;
+  const left = Math.ceil((st.until - Date.now()) / 1000);
+  if (left <= 0) { $('pinErr').textContent = ''; return; }
+  $('pinErr').textContent = `Слишком много попыток. Подождите ${left} с`; setTimeout(pinWaitTick, 500);
+}
+function pinFail(msg) {
+  const st = pinSt, box = $('pinCells'); pinTap('error');
+  box.classList.remove('bad'); void box.offsetWidth; box.classList.add('bad'); $('pinErr').textContent = msg;
+  setTimeout(() => { if (pinSt !== st) return; box.classList.remove('bad'); st.val = ''; st.busy = false; pinCells(); }, 520);
+}
+// Успех: ячейки съезжаются в стопку с поворотом → одна зелёная плитка с галочкой → карточка светится зелёным
+function pinOk(title) {
+  const st = pinSt, box = $('pinCells'), cells = [...box.querySelectorAll(':scope > i')], rot = [-15, -5, 6, 16];
+  const br = box.getBoundingClientRect(), cx = br.left + br.width / 2;
+  pinTap('success'); box.classList.add('merge');
+  cells.forEach((c, i) => { const r = c.getBoundingClientRect(); c.style.zIndex = i; c.style.transform = `translateX(${cx - (r.left + r.width / 2)}px) rotate(${rot[i % 4]}deg)`; });
+  setTimeout(() => { box.classList.add('gone', 'done'); $('pinCard')?.classList.add('ok'); pinTitle(title); }, 430);
+  setTimeout(() => pinClose(true, st), st.mode === 'unlock' ? 1300 : 1500);
+}
+function pinClose(ok, st = pinSt) {
+  const el = $('pinLock'); if (!el || pinSt !== st) return;
+  pinSt = null; el.classList.add('out'); setTimeout(() => el.remove(), 450);
+  st.done(ok);
+}
+// Face ID / отпечаток через Telegram. auto — пробуем сами при открытии (без ошибок, если человек отменил)
+function pinBio(auto) {
+  const b = bioMgr(), st = pinSt; if (!b || !st || st.busy) return;
+  const go = () => b.authenticate({ reason: 'Вход в P2Pro' }, ok => {
+    if (pinSt !== st) return;
+    if (ok) { st.busy = true; st.val = '1'.repeat(PIN_LEN); pinCells(); return pinOk(['Добро пожаловать', 'Открываем P2Pro…']); }
+    if (!auto) $('pinErr').textContent = 'Не получилось — введите PIN-код';
+  });
+  if (b.isAccessGranted) return go();
+  if (auto) return;
+  b.requestAccess({ reason: 'Чтобы открывать P2Pro по Face ID или отпечатку' }, g => g ? go() : ($('pinErr').textContent = 'Доступ к биометрии не дали — введите PIN-код'));
+}
+// «Забыли PIN?»: прямо на экране замка спрашиваем подтверждение
+function pinForgot() {
+  const st = pinSt; if (!st) return;
+  if (st.mode !== 'unlock') return pinClose(false);
+  $('pinPad').hidden = true; $('pinFoot').hidden = true;
+  $('pinCells').hidden = true; $('pinErr').textContent = '';
+  pinTitle(['Забыли PIN-код?', '']);
+  const acc = !!me();
+  $('pinCard').insertAdjacentHTML('beforeend', `<div class="pin-ask" id="pinAsk">${acc
+    ? 'Выйдем из аккаунта и уберём PIN-код. Войдите снова через Telegram — сделки и настройки сохранены в облаке.'
+    : 'Вы без аккаунта, данные только на этом телефоне. Сбросить PIN можно только вместе с ними.'}
+    <div class="row2"><button type="button" id="pinAskNo">Назад</button><button type="button" class="neg" id="pinAskYes">${acc ? 'Выйти' : 'Сбросить всё'}</button></div></div>`);
+}
+async function pinReset() {
+  const acc = !!me();
+  lsSet(PIN_KEY, null); pinSt = null; $('pinLock')?.remove();
+  if (acc) return logout();
+  wipeLocal(); location.reload();
+}
+function renderPinRow() {
+  const p = pinGet();
+  $('pinToggle')?.setAttribute('aria-checked', !!p);
+  if ($('pinChange')) $('pinChange').hidden = !p;
+  if (!$('bioRow')) return;
+  $('bioToggle').setAttribute('aria-checked', !!p?.bio);
+  if (!p) return $('bioRow').hidden = true;
+  bioReady().then(b => { if ($('bioRow')) $('bioRow').hidden = !b; });
+}
+document.addEventListener('click', e => {
+  const k = e.target.closest('[data-pin]');
+  if (k && $('pinLock')?.contains(k)) return pinKey(k.dataset.pin);
+  if (e.target.closest('#pinFoot')) return pinForgot();
+  if (e.target.closest('#pinAskNo')) { pinSt && pinOpen('unlock', pinSt.done); return; }
+  if (e.target.closest('#pinAskYes')) return pinReset();
+  if (e.target.closest('#pinToggle')) {
+    if (!pinGet()) return pinOpen('set', ok => { renderPinRow(); if (ok) toast('PIN-код включён'); });
+    return pinOpen('verify', ok => { if (ok) { lsSet(PIN_KEY, null); toast('PIN-код выключен'); } renderPinRow(); });
+  }
+  if (e.target.closest('#pinChange')) return pinOpen('verify', ok => ok && setTimeout(() => pinOpen('set', ok2 => { renderPinRow(); if (ok2) toast('PIN-код изменён'); }), 450));
+  if (e.target.closest('#bioToggle')) {
+    const p = pinGet(); if (!p) return;
+    if (p.bio) { lsSet(PIN_KEY, { ...p, bio: false }); return renderPinRow(); }
+    bioReady().then(b => {
+      if (!b) return toast('Этот телефон не поддерживает вход по биометрии в Telegram');
+      const on = () => { lsSet(PIN_KEY, { ...pinGet(), bio: true }); renderPinRow(); toast('Вход по Face ID / отпечатку включён'); };
+      if (b.isAccessGranted) return on();
+      b.requestAccess({ reason: 'Чтобы открывать P2Pro по Face ID или отпечатку' }, g => g ? on() : toast('Доступ к биометрии не дали — включите его в настройках Telegram'));
+    });
+  }
+});
+// С клавиатуры (компьютер): цифры и Backspace
+addEventListener('keydown', e => {
+  if (!pinSt || !$('pinLock') || $('pinAsk')) return;
+  if (/^[0-9]$/.test(e.key)) { e.preventDefault(); pinKey(e.key); }
+  else if (e.key === 'Backspace') { e.preventDefault(); pinKey('del'); }
+});
+// Свернули дольше чем на 2 минуты — при возврате снова спрашиваем PIN
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { pinHiddenAt = Date.now(); return; }
+  if (pinGet() && pinHiddenAt && Date.now() - pinHiddenAt > PIN_IDLE && !$('pinLock') && !$('auth')) pinOpen('unlock');
+});
+
 // Заставка: плитка, название и полоска загрузки
 function runSplash(done) {
-  const el = $('splash'); if (!el) return done();
+  const el = $('splash'); if (!el) { if (pinGet()) pinOpen('unlock'); return done(); }
   const T = me() ? 1200 : 1900, msgs = ['Загружаем сделки…', 'Считаем прибыль…', 'Готово'];
   msgs.forEach((m, i) => setTimeout(() => { $('spBar').style.width = [35, 72, 100][i] + '%'; $('spMsg').textContent = m; }, 300 + i * (T - 500) / 3));
-  setTimeout(() => { el.classList.add('out'); done(); setTimeout(() => el.remove(), 500); }, T);
+  setTimeout(() => { if (pinGet()) pinOpen('unlock'); el.classList.add('out'); done(); setTimeout(() => el.remove(), 500); }, T);   // PIN — сразу после заставки, поверх всего
 }
 
 // Главный способ входа — через Telegram: в мини-аппе одной кнопкой, на сайте — подтверждением в боте. Почта — для старых аккаунтов
@@ -3158,7 +3525,7 @@ function showPromo() {
 }
 document.addEventListener('click', e => { if (e.target.closest('#promoBtn')) showPromo(); });
 function showSub() {
-  sheet(`<h3>Моя подписка</h3><div class="sub-box app" style="gap:12px">${subHtml()}</div>${tpOn() ? '<button class="btn" data-plan="free" style="font-size:13px">Выключить PRO сейчас (тест)</button>' : '<button class="btn" data-close>Закрыть</button>'}`);
+  sheet(`<h3>Моя подписка</h3><div class="sub-box app" style="gap:12px">${subHtml()}</div><button class="btn" id="giftOpen">🎁 Подарить PRO другу</button>${tpOn() ? '<button class="btn" data-plan="free" style="font-size:13px">Выключить PRO сейчас (тест)</button>' : '<button class="btn" data-close>Закрыть</button>'}`);
 }
 function refreshSub() {
   renderProfile(); render();
@@ -3505,7 +3872,7 @@ syncIncog();
 (() => {
   const el = document.createElement('div'); el.className = 'ptr'; el.textContent = 'P2'; el.setAttribute('aria-hidden', 'true'); document.body.appendChild(el);
   let y0 = null, d = 0, busy = false;
-  const blocked = t => $('auth') || $('splash') || $('scrim') || t.closest('.pop, input, textarea, select, canvas');
+  const blocked = t => $('auth') || $('splash') || $('scrim') || $('pinLock') || t.closest('.pop, input, textarea, select, canvas');
   addEventListener('touchstart', e => { y0 = null; if (busy || scrollY > 0 || blocked(e.target)) return; y0 = e.touches[0].clientY; d = 0; }, { passive: true });
   addEventListener('touchcancel', () => { y0 = null; d = 0; el.style.transition = 'transform .3s ease, opacity .3s ease'; el.style.transform = 'translateY(-70px) scale(.6)'; el.style.opacity = 0; });
   addEventListener('touchmove', e => {

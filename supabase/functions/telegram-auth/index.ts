@@ -184,8 +184,27 @@ const tgSend = (chat: number, text: string, markup?: unknown) => fetch(`https://
   method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) }) }).catch(() => null);
 
+// Подарок PRO другу: друг ищется по нику Telegram среди тех, кто уже входил в P2Pro
+type Gift = { id: string; name: string; nick: string };
+async function giftTarget(nick: unknown, buyer: string): Promise<Gift | { error: string }> {
+  const n = String(nick ?? '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
+  if (!/^[A-Za-z0-9_]{4,32}$/.test(n)) return { error: 'gift_bad' };
+  const { data } = await admin.from('tg_users').select('user_id, username').ilike('username', n.replace(/_/g, '\\_')).limit(1);
+  const row = data?.[0]; if (!row) return { error: 'gift_nf' };
+  if (row.user_id === buyer) return { error: 'gift_self' };
+  const { data: u } = await admin.auth.admin.getUserById(row.user_id);
+  if (!u?.user || (u.user.banned_until && Date.parse(u.user.banned_until) > Date.now())) return { error: 'gift_nf' };
+  return { id: row.user_id, nick: row.username, name: String(u.user.user_metadata?.name ?? row.username).slice(0, 40) };
+}
+async function giftFind(body: { gift_find?: string; access_token?: string }) {
+  const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
+  if (ue || !ud?.user) return json({ error: 'auth' }, 401);
+  const g = await giftTarget(body.gift_find, ud.user.id);
+  return 'error' in g ? json(g, 404) : json({ ok: true, name: g.name, nick: g.nick });
+}
+
 // Счёт на PRO в xRocket. Цена в рублях (персональная из админки или обычная), платят в USDT по курсу
-async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
+async function xrInvoice(body: { xr_invoice?: string; access_token?: string; gift?: string }) {
   if (!XR_TOKEN) return json({ error: 'xr_off' }, 503);
   const period = body.xr_invoice === 'y' ? 'y' : 'm';
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
@@ -193,8 +212,10 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
   if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
   const { data: cp } = await admin.from('custom_prices').select('rm, ry').eq('user_id', ud.user.id).maybeSingle();
   const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
+  let gift: Gift | null = null;
+  if (body.gift) { const g = await giftTarget(body.gift, ud.user.id); if ('error' in g) return json(g, 404); gift = g; }
   const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
-  const { error: ie } = await admin.from('crypto_invoices').insert({ id, user_id: ud.user.id, period, price_rub: price });
+  const { error: ie } = await admin.from('crypto_invoices').insert({ id, user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
   if (ie) { console.error('crypto_invoices', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
   const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
   // xRocket пока не умеет счёт в рублях с оплатой в крипте (валюта цены = валюта оплаты).
@@ -206,7 +227,7 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
   if (+usdt < 0.1) return json({ error: 'min', detail: `${price} ₽ = ${usdt} USDT — слишком маленькая сумма для оплаты криптой` }, 400);
   const req = {
     priceAmount: usdt, priceCurrency: 'USDT', payCurrencies: ['USDT'], numPayments: 1, clientInvoiceId: id,
-    description: `P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} · ${price} ₽`, expiresIn: 60 * 60e3,
+    description: `${gift ? `Подарок для @${gift.nick}: ` : ''}P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} · ${price} ₽`, expiresIn: 60 * 60e3,
     callback: { callbackUrl: `${SB_URL}/functions/v1/telegram-auth` }, url: { successUrl: SITE + '?paid=crypto', cancelUrl: SITE },
     customer: { id: ud.user.id, ...(t?.tg_id ? { telegramId: String(t.tg_id) } : {}) }, data: { u: ud.user.id, p: period, rub: price },
   };
@@ -238,14 +259,21 @@ async function xrWebhook(req: Request, raw: string) {
   if (!chk.ok || live?.status !== 'paid') { console.error('xr check', chk.status, live?.status); return new Response('not paid', { status: 409 }); }
   const { data: g, error } = await admin.rpc('crypto_grant_pro', { p_invoice: inv.clientInvoiceId, p_amount: String(live.priceAmount ?? inv.priceAmount ?? ''), p_currency: String(live.priceCurrency ?? inv.priceCurrency ?? '') });
   if (error) { console.error('crypto grant', error); return new Response('retry', { status: 500 }); }   // xRocket пришлёт ещё раз
-  const res = g as { fresh: boolean; user_id?: string; period?: string; price_rub?: number; pro_until?: string };
+  const res = g as { fresh: boolean; user_id?: string; gift_from?: string | null; period?: string; price_rub?: number; pro_until?: string };
   if (res.fresh && res.user_id) {
     const until = res.pro_until ? new Date(res.pro_until).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' }).replace(' г.', '') : '';
-    const { data: t } = await admin.from('tg_users').select('tg_id, username').eq('user_id', res.user_id).maybeSingle();
-    if (t?.tg_id) await tgSend(t.tg_id, `✅ <b>Оплата прошла!</b>\n\nP2Pro PRO ${res.period === 'y' ? 'на год' : 'на месяц'} — действует до <b>${until}</b>. Спасибо!`);
-    const { data: u } = await admin.auth.admin.getUserById(res.user_id);
-    const who = t?.username ? '@' + t.username : String(u?.user?.email ?? res.user_id).replace(/[<>&]/g, '');
-    await tgSend(ADMIN_ID, `💎 <b>Оплата криптой ${res.price_rub} ₽</b>\nPRO · ${res.period === 'y' ? 'год' : 'месяц'}\n${who}\nСчёт: <code>${inv.clientInvoiceId}</code> · ${live.priceAmount ?? ''} ${live.priceCurrency ?? ''}`);
+    const per = res.period === 'y' ? 'на год' : 'на месяц';
+    const whoOf = async (uid: string) => {
+      const { data: t } = await admin.from('tg_users').select('tg_id, username').eq('user_id', uid).maybeSingle();
+      const { data: u } = await admin.auth.admin.getUserById(uid);
+      return { tg: t?.tg_id as number | undefined, name: t?.username ? '@' + t.username : String(u?.user?.user_metadata?.name ?? u?.user?.email ?? uid).replace(/[<>&]/g, '') };
+    };
+    const to = await whoOf(res.user_id), from = res.gift_from ? await whoOf(res.gift_from) : null;
+    if (from) {
+      if (to.tg) await tgSend(to.tg, `🎁 <b>Вам подарили P2Pro PRO!</b>\n\n${from.name} подарил вам PRO ${per} — действует до <b>${until}</b>.\n\nБезлимитная история, контрагенты, Excel, график и уведомления о курсе уже включены.`);
+      if (from.tg) await tgSend(from.tg, `🎁 <b>Подарок отправлен!</b>\n\n${to.name} получил P2Pro PRO ${per} — до <b>${until}</b>. Мы сообщили ему в боте. Спасибо!`);
+    } else if (to.tg) await tgSend(to.tg, `✅ <b>Оплата прошла!</b>\n\nP2Pro PRO ${per} — действует до <b>${until}</b>. Спасибо!`);
+    await tgSend(ADMIN_ID, `💎 <b>Оплата криптой ${res.price_rub} ₽</b>${from ? ' · 🎁 подарок' : ''}\nPRO · ${res.period === 'y' ? 'год' : 'месяц'}\n${from ? `${from.name} → ${to.name}` : to.name}\nСчёт: <code>${inv.clientInvoiceId}</code> · ${live.priceAmount ?? ''} ${live.priceCurrency ?? ''}`);
   }
   return new Response('ok');
 }
@@ -259,6 +287,7 @@ Deno.serve(async (req) => {
   // deno-lint-ignore no-explicit-any
   let body: any = null;
   try { body = JSON.parse(raw); } catch (_) { /* не JSON */ }
+  if (typeof body?.gift_find === 'string') return giftFind(body).catch(() => json({ error: 'server' }, 500));
   if (typeof body?.xr_invoice === 'string') {
     return xrInvoice(body).catch((e) => { console.error('xr invoice crash', e); return json({ error: 'crash', detail: String(e?.message ?? e).slice(0, 200) }, 500); });
   }
@@ -282,11 +311,13 @@ Deno.serve(async (req) => {
     // Персональная цена (задаёт владелец в админке бота), иначе обычная
     const { data: cp, error: ce } = await admin.from('custom_prices').select('m, y').eq('user_id', ud.user.id).maybeSingle();
     const amount = !ce && cp ? cp[period] : STARS[period];
+    let gift: Gift | null = null;   // подарок другу: PRO получит он, платит покупатель
+    if (body.gift) { const g = await giftTarget(body.gift, ud.user.id); if ('error' in g) return json(g, 404); gift = g; }
     const r = await fetch(`https://api.telegram.org/bot${TOKEN}/createInvoiceLink`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        title: period === 'y' ? 'P2Pro PRO на год' : 'P2Pro PRO на месяц',
-        description: 'История без ограничений, контрагенты и чёрный список, Excel и карточки без водяного знака',
-        payload: JSON.stringify({ u: ud.user.id, p: period }), currency: 'XTR', prices: [{ label: 'P2Pro PRO', amount }],
+        title: (gift ? 'Подарок: ' : '') + (period === 'y' ? 'P2Pro PRO на год' : 'P2Pro PRO на месяц'),
+        description: (gift ? `PRO получит @${gift.nick}. ` : '') + 'История без ограничений, контрагенты и чёрный список, Excel и карточки без водяного знака',
+        payload: JSON.stringify({ u: ud.user.id, p: period, ...(gift ? { g: gift.id } : {}) }), currency: 'XTR', prices: [{ label: 'P2Pro PRO', amount }],
       }) }).then((x) => x.json()).catch(() => null);
     if (!r?.ok) { console.error('invoice', r); return json({ error: 'server' }, 500); }
     return json({ link: r.result });
