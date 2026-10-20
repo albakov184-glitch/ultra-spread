@@ -107,6 +107,15 @@ async function subscribed(id: number): Promise<boolean | null> {
   } catch (_) { return null; }
 }
 
+// Заблокирован ли аккаунт этого человека (блокирует владелец в админке бота). Тогда ни входа, ни приложения
+async function blockedTg(id: number) {
+  const { data } = await admin.from('tg_users').select('user_id').eq('tg_id', id).maybeSingle();
+  if (!data) return false;
+  const { data: u } = await admin.auth.admin.getUserById(data.user_id);
+  const until = u?.user?.banned_until;
+  return !!until && Date.parse(until) > Date.now();
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
@@ -116,6 +125,7 @@ Deno.serve(async (req) => {
   const tg = initData ? await checkInit(initData) : null;
   if (tg === 'old') return json({ error: 'old' }, 401);
   if (!tg) return json({ error: 'bad' }, 401);
+  if (await blockedTg(tg.id).catch(() => false)) return json({ error: 'blocked' }, 403);
   if (await subscribed(tg.id) === false) return json({ error: 'sub' }, 403);
   // Мини-апп при каждом открытии спрашивает только «подписан ли», без входа
   if (body?.check) return json({ ok: true });
