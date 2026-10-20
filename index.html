@@ -3839,7 +3839,8 @@ document.addEventListener('click', e => { if (e.target.closest('#monthCardBtn'))
 /* ================= УСТАНОВКА НА ЭКРАН «ДОМОЙ» ================= */
 let installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
-const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// Установлено: иконка «На экран Домой» или приложение для iPhone (оболочка Capacitor, папка ios-app)
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true || !!window.Capacitor?.isNativePlatform?.();
 if (inTelegram() && sb) tgSubscribed().then(ok => { if (!ok) subGate(); });   // обязательная подписка на канал
 function maybeA2HS() {
   if (isStandalone() || inTelegram() || S.settings.a2hsSeen || $('a2hs') || !S.trades.length) return;

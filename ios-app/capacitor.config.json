@@ -1,0 +1,15 @@
+{
+  "appId": "app.p2pro.ios",
+  "appName": "P2Pro",
+  "webDir": "www",
+  "backgroundColor": "#0C0F14",
+  "server": {
+    "url": "https://albakov184-glitch.github.io/ultra-spread/",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0C0F14",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}

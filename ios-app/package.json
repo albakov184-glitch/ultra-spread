@@ -1,0 +1,11 @@
+{
+  "name": "p2pro-ios",
+  "private": true,
+  "version": "1.0.0",
+  "description": "P2Pro для iPhone: нативная оболочка (Capacitor) вокруг сайта приложения",
+  "dependencies": {
+    "@capacitor/cli": "6.2.0",
+    "@capacitor/core": "6.2.0",
+    "@capacitor/ios": "6.2.0"
+  }
+}
