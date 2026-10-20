@@ -768,6 +768,7 @@ function parseWhen(t: string): number | null {
   const y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : msk.getUTCFullYear(), mo = m[2] ? +m[2] - 1 : msk.getUTCMonth(), d = m[1] ? +m[1] : msk.getUTCDate();
   if (h > 23 || mi > 59 || mo < 0 || mo > 11 || d < 1 || d > 31) return null;
   let at = Date.UTC(y, mo, d, h, mi) - 3 * 3600e3;
+  if (new Date(at + 3 * 3600e3).getUTCDate() !== d) return null;   // 31.02 и подобные — нет такой даты
   if (!m[1] && at <= now) at += DAY;
   return at > now && at - now < 60 * DAY ? at : null;
 }
@@ -872,7 +873,7 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
       if (k === 'rct') rp.on = !rp.on;
       else { const h = Number(a); rp.times = rp.times.includes(h) ? rp.times.filter((x) => x !== h) : [...rp.times, h]; }
       // Уже прошедшие сегодня часы не публикуем задним числом
-      for (const h of rp.times) if (h <= hour && !rp.done[h]) rp.done[h] = day;
+      for (const h of rp.times) if (h <= hour && rp.done[h] !== day) rp.done[h] = day;
       await stSet('ratepost', rp); toastText = k === 'rct' ? (rp.on ? 'Автопубликация включена' : 'Автопубликация выключена') : 'Сохранено';
       await view(await rcMenu());
     }
@@ -1031,7 +1032,9 @@ async function tick() {
   // 6. Отложенные рассылки и посты
   const sched = await stGet<Sched[]>('sched', []), dueS = sched.filter((s) => s.at <= now);
   if (dueS.length) {
-    await stSet('sched', sched.filter((s) => s.at > now));   // сначала убираем из списка: следующий запуск не отправит второй раз
+    // Сначала убираем из списка (перечитав его — владелец мог только что что-то добавить): следующий запуск не отправит второй раз
+    const sent = new Set(dueS.map((s) => s.id));
+    await stSet('sched', (await stGet<Sched[]>('sched', [])).filter((s) => !sent.has(s.id)));
     for (const s of dueS) {
       if (s.kind === 'post') {
         const r = await tg('copyMessage', { chat_id: CHANNEL, from_chat_id: s.chat, message_id: s.mid, reply_markup: kb([[{ text: '🚀 Открыть P2Pro', url: BOT_LINK }]]) });

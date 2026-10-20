@@ -189,8 +189,9 @@ type Gift = { id: string; name: string; nick: string };
 async function giftTarget(nick: unknown, buyer: string): Promise<Gift | { error: string }> {
   const n = String(nick ?? '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
   if (!/^[A-Za-z0-9_]{4,32}$/.test(n)) return { error: 'gift_bad' };
-  const { data } = await admin.from('tg_users').select('user_id, username').ilike('username', n.replace(/_/g, '\\_')).limit(1);
+  const { data } = await admin.from('tg_users').select('user_id, username').ilike('username', n.replace(/_/g, '\\_')).limit(2);
   const row = data?.[0]; if (!row) return { error: 'gift_nf' };
+  if ((data?.length ?? 0) > 1) return { error: 'gift_many' };   // ник сменил владельца, а старая запись ещё не обновилась — не угадываем
   if (row.user_id === buyer) return { error: 'gift_self' };
   const { data: u } = await admin.auth.admin.getUserById(row.user_id);
   if (!u?.user || (u.user.banned_until && Date.parse(u.user.banned_until) > Date.now())) return { error: 'gift_nf' };
@@ -200,7 +201,10 @@ async function giftFind(body: { gift_find?: string; access_token?: string }) {
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
   if (ue || !ud?.user) return json({ error: 'auth' }, 401);
   const g = await giftTarget(body.gift_find, ud.user.id);
-  return 'error' in g ? json(g, 404) : json({ ok: true, name: g.name, nick: g.nick });
+  // Имя — только первые буквы: чтобы подтвердить «тот ли это человек», но не раскрывать, кто пользуется P2Pro
+  if ('error' in g) return json(g, 404);
+  const masked = [...g.name].slice(0, 2).join('') + (g.name.length > 2 ? '…' : '');
+  return json({ ok: true, name: masked, nick: g.nick });
 }
 
 // Счёт на PRO в xRocket. Цена в рублях (персональная из админки или обычная), платят в USDT по курсу

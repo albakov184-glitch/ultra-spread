@@ -1980,7 +1980,10 @@ const rubPlans = () => {
 const PW_WHY = { rate: 'График курса и уведомления о курсе — в PRO', excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
 // В Telegram два способа: звёзды и крипта (цены в рублях, как на сайте)
 const payStars = () => inTelegram() && payMethod === 'stars';
-const payLabel = () => payStars() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${nf0.format(myRub[payPeriod])} ₽`;
+const payLabel = () => {
+  const sum = payStars() ? `${nf0.format(myStars[payPeriod])} ⭐` : `${nf0.format(myRub[payPeriod])} ₽`;
+  return payGift && $('gfNick') ? `Подарить @${payGift} · ${sum}` : $('gfNick') ? `Найти друга · ${sum}` : `Оплатить ${sum}`;
+};
 const payHint = () => payStars() ? `${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить`
   : `${payIcon('crypto', 16)}Оплата в USDT через xRocket: сумма в рублях переводится по курсу`;
 // Перерисовать цены и кнопку после смены способа оплаты или загрузки персональной цены
@@ -2012,10 +2015,10 @@ async function giftCheck() {
   let res = {};
   try { const token = (await sb.auth.getSession()).data?.session?.access_token; res = await (await tgAuthCall({ gift_find: nick, access_token: token })).json().catch(() => ({})); } catch (e) {}
   if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
-  const ERR = { gift_bad: 'Ник Telegram — латиница, цифры и _, от 4 символов', gift_nf: 'Не нашли такого человека в P2Pro. Попросите друга один раз открыть @P2ProAppBot и нажать «Открыть P2Pro»', gift_self: 'Это ваш ник — себе PRO можно купить в обычном окне', auth: 'Войдите заново и попробуйте ещё раз' };
-  if (!res.ok) { if ($('gfWho')) { $('gfWho').textContent = ERR[res.error] || 'Не получилось проверить ник. Проверьте интернет'; $('gfWho').style.color = '#FF6B6B'; } return false; }
+  const ERR = { gift_many: 'По этому нику нашлось несколько аккаунтов. Попросите друга открыть @P2ProAppBot ещё раз — и повторите', gift_bad: 'Ник Telegram — латиница, цифры и _, от 4 символов', gift_nf: 'Не нашли такого человека в P2Pro. Попросите друга один раз открыть @P2ProAppBot и нажать «Открыть P2Pro»', gift_self: 'Это ваш ник — себе PRO можно купить в обычном окне', auth: 'Войдите заново и попробуйте ещё раз' };
+  if (!res.ok) { payGift = ''; if ($('gfWho')) { $('gfWho').textContent = ERR[res.error] || 'Не получилось проверить ник. Проверьте интернет'; $('gfWho').style.color = '#FF6B6B'; } return false; }
   payGift = res.nick;
-  if ($('gfWho')) { $('gfWho').innerHTML = `Получатель: <b style="color:var(--fg)">${esc(res.name)}</b> · @${esc(res.nick)}`; $('gfWho').style.color = ''; }
+  if ($('gfWho')) { $('gfWho').innerHTML = `Получатель: <b style="color:var(--fg)">${esc(res.name)}</b> · @${esc(res.nick)} — проверьте и нажмите ещё раз, чтобы оплатить`; $('gfWho').style.color = ''; }
   return true;
 }
 const giftDone = () => { sheet(`<div class="pw-hero"><div class="pw-badge">🎁</div><h3>Подарок отправлен!</h3>
@@ -2123,7 +2126,8 @@ function xrOpen(tgLink, web) {
 }
 // Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
 async function payProcess() {
-  if ($('gfNick') && !await giftCheck()) return;
+  // Подарок: первое нажатие только находит друга и показывает его, оплата — вторым нажатием
+  if ($('gfNick') && (!payGift || payGift.toLowerCase() !== $('gfNick').value.trim().replace(/^@/, '').toLowerCase())) { await giftCheck(); if ($('payBtn')) $('payBtn').textContent = payLabel(); return; }
   if (!$('gfNick')) payGift = '';
   if (payMethod === 'crypto') return cryptoPay();
   if (inTelegram()) return starsPay();
@@ -3053,6 +3057,7 @@ document.addEventListener('click', e => {
     });
   }
 });
+document.addEventListener('input', e => { if (e.target.id === 'gfNick' && payGift) { payGift = ''; payRefresh(); if ($('gfWho')) { $('gfWho').textContent = 'Нажмите «Найти друга», чтобы проверить ник'; $('gfWho').style.color = ''; } } });
 // С клавиатуры (компьютер): цифры и Backspace
 addEventListener('keydown', e => {
   if (!pinSt || !$('pinLock') || $('pinAsk')) return;
