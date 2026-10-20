@@ -1971,6 +1971,10 @@ async function cryptoPay() {
   } catch (e) {}
   if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
   if (res.error === 'blocked') return blockedScreen();
+  // Причина от сервера — в окне, а не во всплывашке: её можно спокойно прочитать и прислать в поддержку
+  if (!res.link && res.error) return sheet(`<div class="pw-hero"><h3>Не получилось выставить счёт</h3>
+    <p>Попробуйте ещё раз чуть позже. Если не получится — пришлите этот экран в поддержку @MVSR_P2P.</p>
+    <p class="muted small" style="word-break:break-word">Код: ${esc(res.error)}${res.detail ? ' · ' + esc(res.detail) : ''}</p></div><button class="btn primary" data-close>Понятно</button>`);
   if (!res.link) return toast('Не получилось выставить счёт. Проверьте интернет и попробуйте ещё раз');
   const before = S.settings.proUntil || 0, price = `${nf0.format(myRub[payPeriod])} ₽ · ${payPeriod === 'y' ? 'год' : 'месяц'}`;
   // Ссылку открывает сам человек кнопкой: так её не заблокирует браузер (всплывающие окна после ожидания запрещены)

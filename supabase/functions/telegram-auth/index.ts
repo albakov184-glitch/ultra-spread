@@ -192,7 +192,7 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
   const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
   const { error: ie } = await admin.from('crypto_invoices').insert({ id, user_id: ud.user.id, period, price_rub: price });
-  if (ie) { console.error('crypto_invoices', ie); return json({ error: 'server' }, 500); }
+  if (ie) { console.error('crypto_invoices', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
   const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
   const req: Record<string, unknown> = {
     priceAmount: String(price), priceCurrency: 'rub', payCurrencies: ['USDT', 'GRAM'], numPayments: 1, clientInvoiceId: id,
@@ -214,7 +214,12 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
     if (rate > 0) r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify({ ...req, payCurrencies: ['USDT'], priceCurrency: 'USDT', priceAmount: (Math.ceil(price / rate * 100) / 100).toFixed(2) }) });
   }
   const inv = r.data?.data ?? r.data;
-  if (!r.ok || !inv?.links) { console.error('xr invoice', r.status, r.data); return json({ error: 'server' }, 502); }
+  if (!r.ok || !inv?.links) {
+    console.error('xr invoice', r.status, r.data);
+    // Причину отказа xRocket показываем в приложении — по ней понятно, что поправить (секретов в ней нет)
+    const why = [r.status, r.data?.title, r.data?.detail ?? r.data?.message].filter(Boolean).join(' · ').slice(0, 200);
+    return json({ error: 'xr', detail: why || 'нет ответа' }, 502);
+  }
   await admin.from('crypto_invoices').update({ xr_id: String(inv.id ?? '') }).eq('id', id);
   return json({ id, link: inv.links.webLink || inv.links.telegramMiniAppLink || inv.links.telegramBotLink, tg: inv.links.telegramBotLink });
 }
