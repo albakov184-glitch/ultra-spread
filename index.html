@@ -1967,8 +1967,9 @@ async function cryptoPay() {
   let res = {};
   try {
     const token = (await sb.auth.getSession()).data?.session?.access_token;
-    res = await (await tgAuthCall({ xr_invoice: payPeriod, access_token: token })).json().catch(() => ({}));
-  } catch (e) {}
+    const r = await tgAuthCall({ xr_invoice: payPeriod, access_token: token });
+    res = await r.json().catch(() => ({ error: 'http ' + r.status }));
+  } catch (e) { res = { error: e?.name === 'TimeoutError' ? 'timeout' : 'network', detail: e?.name === 'TimeoutError' ? 'сервер не ответил за 45 секунд' : String(e?.message || e).slice(0, 100) }; }
   if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
   if (res.error === 'blocked') return blockedScreen();
   // Причина от сервера — в окне, а не во всплывашке: её можно спокойно прочитать и прислать в поддержку
@@ -2869,14 +2870,15 @@ async function submitAuthInner(btn) {
 // Адрес функции входа в Supabase (код — supabase/functions/telegram-auth)
 // Адрес функции входа в Supabase. При пересоздании функции Supabase может выдать другой адрес — пробуем по очереди
 const TG_AUTH_FNS = ['telegram-auth', 'telegram-auth-'];
-async function tgAuthCall(body) {
+async function tgAuthCall(body, ms = 45000) {
   let err;
   for (const fn of TG_AUTH_FNS) {
     try {
-      const r = await fetch(SB_URL + '/functions/v1/' + fn, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify(body) });
+      // Сервер не ответил — не крутим кнопку вечно
+      const r = await fetch(SB_URL + '/functions/v1/' + fn, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout?.(ms) });
       if (r.status === 404 && r.headers.get('sb-error-code') === 'NOT_FOUND') { err = new Error('not found'); continue; }
       return r;
-    } catch (e) { err = e; }
+    } catch (e) { if (e?.name === 'TimeoutError') throw e; err = e; }
   }
   throw err;
 }

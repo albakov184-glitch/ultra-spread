@@ -174,9 +174,12 @@ async function webLogin(id: string) {
 }
 
 /* ================= xRocket Pay: оплата криптой на сайте (15-xrocket.sql) ================= */
-const xr = (path: string, init: RequestInit = {}) => fetch(XR_API + path, { ...init, signal: AbortSignal.timeout(15000),
+// Ответ xRocket. Не ответил за 20 секунд или нет связи — не зависаем, а возвращаем ошибку с причиной
+// deno-lint-ignore no-explicit-any
+const xr = (path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: any }> => fetch(XR_API + path, { ...init, signal: AbortSignal.timeout(20000),
   headers: { 'content-type': 'application/json', authorization: `Bearer ${XR_TOKEN}`, ...(init.headers ?? {}) } })
-  .then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => null) }));
+  .then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => null) }))
+  .catch((e) => ({ ok: false, status: 0, data: { title: e?.name === 'TimeoutError' ? 'xRocket не ответил за 20 секунд' : 'нет связи с xRocket', detail: String(e?.message ?? e).slice(0, 100) } }));
 const tgSend = (chat: number, text: string, markup?: unknown) => fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
   method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) }) }).catch(() => null);
@@ -200,6 +203,7 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
     .then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0);
   if (!(rate > 0)) return json({ error: 'rate', detail: 'не удалось получить курс USDT' }, 502);
   const usdt = (Math.ceil(price / rate * 100) / 100).toFixed(2);
+  if (+usdt < 0.1) return json({ error: 'min', detail: `${price} ₽ = ${usdt} USDT — слишком маленькая сумма для оплаты криптой` }, 400);
   const req = {
     priceAmount: usdt, priceCurrency: 'USDT', payCurrencies: ['USDT'], numPayments: 1, clientInvoiceId: id,
     description: `P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} · ${price} ₽`, expiresIn: 60 * 60e3,
@@ -255,7 +259,9 @@ Deno.serve(async (req) => {
   // deno-lint-ignore no-explicit-any
   let body: any = null;
   try { body = JSON.parse(raw); } catch (_) { /* не JSON */ }
-  if (typeof body?.xr_invoice === 'string') return xrInvoice(body);
+  if (typeof body?.xr_invoice === 'string') {
+    return xrInvoice(body).catch((e) => { console.error('xr invoice crash', e); return json({ error: 'crash', detail: String(e?.message ?? e).slice(0, 200) }, 500); });
+  }
   if (typeof body?.web_login === 'string') return webLogin(body.web_login);
   const initData = typeof body?.initData === 'string' ? body.initData.slice(0, 8192) : '';
   const tg = initData ? await checkInit(initData) : null;
