@@ -213,11 +213,20 @@ async function cardView(u: AUser, back = 0) {   // back — страница с�
   const s = await subOf(u.id), tgId = await tgIdOf(u.id), nick = await tgNick(u.id), price = await priceOf(u.id);
   if (nick) u = { ...u, user_metadata: { ...u.user_metadata, tg_username: nick } };   // проверенный ник вместо того, что в профиле
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('user_id', u.id).eq('deleted', false);
+  // Подробности: когда последний раз что-то записывал, последние оплаты и подарки, промокоды, итоги дня
+  const { data: last } = await admin.from('trades').select('updated_at').eq('user_id', u.id).order('updated_at', { ascending: false }).limit(1);
+  const { data: promos } = await admin.from('promo_uses').select('code, used_at').eq('user_id', u.id);
+  const { data: tgRow } = await admin.from('tg_users').select('daily_off').eq('user_id', u.id).maybeSingle();
+  const PAY_NAME: Record<string, string> = { stars: 'звёзды', gift: 'подарок', promo: 'промокод', card: 'карта', sbp: 'СБП', usdt: 'USDT' };
+  const pays = (s?.payments ?? []).slice(0, 5).map((p) => `• ${date(p.ts)} · ${p.method === 'stars' ? `${p.amount} ⭐` : +p.amount ? `${(+p.amount).toLocaleString('ru-RU')} ₽` : `${p.days ?? ''} дн.`} · ${PAY_NAME[p.method ?? ''] ?? esc(p.method ?? '')}${(p as { refund?: boolean }).refund ? ' (возврат)' : ''}`);
   const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.pay_method === 'stars' ? ' (звёзды)' : s?.auto_renew ? ' · автопродление' : '';
   const text = `<b>👤 Пользователь</b>\n\n${who(u)}\n` + (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
-    `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}\n\n` +
+    `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}${last?.[0] ? ` · последняя запись ${date(last[0].updated_at)}` : ''}\n` +
+    (tgRow ? `Итоги дня: ${tgRow.daily_off ? 'отключены' : 'приходят'}\n` : '') + '\n' +
     (isPro(s) ? `⭐ PRO до <b>${date(s!.pro_until)}</b>${how}` : 'Тариф: Free') +
     `\n💲 Цена: ${price.m} ⭐ / ${price.y} ⭐ в год${price.custom ? ` <b>(персональная, −${pct(price.m, STARS.m)}%)</b>` : ' (обычная)'}` +
+    (pays.length ? `\n\n💳 <b>Оплаты и подарки</b>\n${pays.join('\n')}` : '') +
+    (promos?.length ? `\n🎟 Промокоды: ${promos.map((p: { code: string }) => esc(p.code)).join(', ')}` : '') +
     (isBanned(u) ? '\n\n🚫 <b>Аккаунт заблокирован</b>' : '');
   const id = u.id;
   const rows: Btn[][] = [
@@ -459,6 +468,146 @@ async function loginAnswer(cq: { id: string; data?: string; from: { id: number; 
   await tg('answerCallbackQuery', { callback_query_id: cq.id, text: done ? (yes ? 'Вход подтверждён' : 'Отменено') : 'Ссылка устарела' });
 }
 
+/* ---------- Итоги дня (14-daily.sql) ---------- */
+// В 23:59 МСК расписание будит бота ({cron:'daily'}): он находит всех, у кого сегодня были сделки, и для каждого
+// вызывает сам себя ({daily_user}) — каждая карточка рисуется в отдельном запуске, чтобы хватило ресурсов.
+// Команда /itogi присылает итоги прямо сейчас. Карточка — PNG из SVG (resvg), шрифты лежат на сайте в /fonts
+const CUR: Record<string, string> = { RUB: '₽', USD: '$' };
+const money = (v: number, cur: string, dec = 2) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toLocaleString('ru-RU', { minimumFractionDigits: dec, maximumFractionDigits: dec })} ${CUR[cur] ?? cur}`;
+const plural = (n: number, a: string, b: string, c: string) => { const m = n % 100, k = n % 10; return m > 10 && m < 20 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
+type DayTrade = { ts: string; data: { profit?: number; sum?: number; cur?: string; ex?: string; bank?: string } };
+
+async function daySummary(userId: string, day: string) {
+  const start = Date.parse(day + 'T00:00:00+03:00');
+  const { data } = await admin.from('trades').select('ts, data').eq('user_id', userId).eq('deleted', false)
+    .gte('ts', new Date(start).toISOString()).lt('ts', new Date(start + DAY).toISOString());
+  const list = ((data ?? []) as DayTrade[]).filter((t) => t.data && isFinite(+t.data.profit!));
+  if (!list.length) return null;
+  // Основная валюта — в которой больше всего сделок; остальные покажем строкой ниже
+  const byCur = new Map<string, DayTrade[]>();
+  for (const t of list) { const c = t.data.cur || 'RUB'; byCur.set(c, [...(byCur.get(c) ?? []), t]); }
+  const [cur, main] = [...byCur.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+  const profit = main.reduce((a, t) => a + (+t.data.profit! || 0), 0), turnover = main.reduce((a, t) => a + (+t.data.sum! || 0), 0);
+  const best = Math.max(...main.map((t) => +t.data.profit! || 0));
+  const count = (k: (t: DayTrade) => string) => { const m = new Map<string, number>(); for (const t of list) { const v = k(t); if (v) m.set(v, (m.get(v) ?? 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+  const exes = count((t) => t.data.ex ?? '').map((e) => e[0]);
+  const pair = count((t) => [t.data.ex, t.data.bank].filter(Boolean).join(' · '))[0];
+  const others = [...byCur.entries()].filter(([c]) => c !== cur).map(([c, l]) => money(l.reduce((a, t) => a + (+t.data.profit! || 0), 0), c));
+  const { data: prof } = await admin.from('profiles').select('settings').eq('id', userId).maybeSingle();
+  const goal = cur === 'RUB' ? +(prof?.settings?.goal ?? 0) || 0 : 0;
+  return { n: list.length, cur, profit, turnover, best, exes, pair, others, goal };
+}
+
+let rsv: Promise<{ Resvg: new (svg: string, o: unknown) => { render(): { asPng(): Uint8Array } }; fonts: Uint8Array[] }> | null = null;
+function renderer() {
+  return rsv ??= (async () => {
+    const m = await import('npm:@resvg/resvg-wasm@2.6.2');
+    await m.initWasm(fetch('https://unpkg.com/@resvg/resvg-wasm@2.6.2/index_bg.wasm'));
+    const fonts = await Promise.all(['Unbounded-800', 'Onest-400', 'Onest-600', 'JetBrainsMono-600'].map((f) =>
+      fetch(`${APP}fonts/${f}.ttf`).then((r) => { if (!r.ok) throw new Error('font ' + f); return r.arrayBuffer(); }).then((b) => new Uint8Array(b))));
+    return { Resvg: m.Resvg, fonts };
+  })().catch((e) => { rsv = null; throw e; });
+}
+
+function dayCardSvg(d: { pro: boolean; date: string; title: string; big: string; pos: boolean; sub: string; count: string; turnover: string; best: string; goalLabel: string; goal: string; pair: string }) {
+  const W = 1080, H = 1350, x = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+  const col = d.pos ? '#3CD38A' : '#FF6B6B', bw = (W - 220) / 2;
+  const box = (bx: number, by: number, w: number, label: string, value: string) => `<rect x="${bx}" y="${by}" width="${w}" height="150" rx="26" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".08"/>
+    <text x="${bx + 34}" y="${by + 54}" font-family="Onest" font-size="28" fill="#8691A2">${x(label)}</text>
+    <text x="${bx + 34}" y="${by + 112}" font-family="JetBrains Mono" font-weight="600" font-size="40" fill="#E8ECF2">${x(value)}</text>`;
+  let grid = '', wm = '';
+  for (let i = 1; i < 12; i++) grid += `<line x1="${i * 90}" y1="0" x2="${i * 90}" y2="${H}" stroke="#fff" stroke-opacity=".025"/>`;
+  for (let i = 1; i < 15; i++) grid += `<line x1="0" y1="${i * 90}" x2="${W}" y2="${i * 90}" stroke="#fff" stroke-opacity=".025"/>`;
+  if (!d.pro) for (let k = -4; k <= 4; k++) wm += `<text x="0" y="${k * 260}" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="110" fill="#fff" fill-opacity=".065">P2Pro · FREE</text>`;
+  const bigSize = Math.min(136, Math.floor(880 / (d.big.length * 0.74)));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs><radialGradient id="g1" cx="22%" cy="16%" r="60%"><stop offset="0" stop-color="#F2B54B" stop-opacity=".22"/><stop offset="1" stop-color="#F2B54B" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="90%" cy="85%" r="55%"><stop offset="0" stop-color="${col}" stop-opacity=".14"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs>
+  <rect width="${W}" height="${H}" fill="#0C0F14"/><rect width="${W}" height="${H}" fill="url(#g1)"/><rect width="${W}" height="${H}" fill="url(#g2)"/>${grid}
+  <rect x="100" y="100" width="120" height="120" rx="32" fill="#F2B54B"/>
+  <text x="160" y="172" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="46" fill="#1B1405">P2</text>
+  <text x="160" y="200" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="15" letter-spacing="5" fill="#1B1405">PRO</text>
+  <text x="250" y="160" font-family="Unbounded" font-weight="800" font-size="48" fill="#E8ECF2">P2Pro</text>
+  <text x="250" y="202" font-family="Onest" font-size="28" fill="#8691A2">Учёт P2P-сделок</text>
+  <text x="${W - 100}" y="168" text-anchor="end" font-family="Onest" font-size="28" fill="#8691A2">${x(d.date)}</text>
+  <text x="100" y="360" font-family="Onest" font-weight="600" font-size="30" letter-spacing="9" fill="#F2B54B">ИТОГИ ДНЯ</text>
+  <text x="100" y="430" font-family="Unbounded" font-weight="800" font-size="46" fill="#E8ECF2">${x(d.title)}</text>
+  <text x="96" y="580" font-family="Unbounded" font-weight="800" font-size="${bigSize}" fill="${col}">${x(d.big)}</text>
+  <text x="100" y="644" font-family="Onest" font-size="32" fill="#8691A2">${x(d.sub)}</text>
+  ${box(100, 700, bw, 'Сделок', d.count)}${box(120 + bw, 700, bw, 'Оборот', d.turnover)}
+  ${box(100, 870, bw, 'Лучшая сделка', d.best)}${box(120 + bw, 870, bw, d.goalLabel, d.goal)}
+  ${box(100, 1040, W - 200, 'Чаще всего', d.pair)}
+  <line x1="100" y1="${H - 140}" x2="${W - 100}" y2="${H - 140}" stroke="#fff" stroke-opacity=".1"/>
+  <text x="100" y="${H - 84}" font-family="Onest" font-size="30" fill="#8691A2">Посчитано в P2Pro</text>
+  <text x="${W - 100}" y="${H - 84}" text-anchor="end" font-family="Onest" font-weight="600" font-size="30" fill="#F2B54B">@P2ProAppBot</text>
+  <g transform="translate(${W / 2} ${H / 2}) rotate(-26)">${wm}</g></svg>`;
+}
+
+const dayButtons = (off: boolean) => kb([[{ text: '🚀 Открыть P2Pro', web_app: { url: APP } }],
+  [off ? { text: '🔔 Присылать итоги каждый день', callback_data: 'don' } : { text: '🔕 Не присылать итоги', callback_data: 'doff' }]]);
+
+// Итоги дня одному человеку. manual — по команде /itogi: присылаем, даже если итоги отключены, и отвечаем, когда сделок нет
+async function dailySend(userId: string, day: string, manual = false) {
+  const { data: t } = await admin.from('tg_users').select('tg_id, daily_off').eq('user_id', userId).maybeSingle();
+  if (!t?.tg_id || (t.daily_off && !manual)) return;
+  const d = await daySummary(userId, day);
+  const dateLong = new Date(Date.parse(day + 'T12:00:00+03:00')).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
+  if (!d) {
+    if (manual) await tg('sendMessage', { chat_id: t.tg_id, text: `📊 Сегодня (${dateLong}) сделок пока нет.\n\nЗапишите сделку в P2Pro — итоги дня придут в 23:59.`, reply_markup: dayButtons(!!t.daily_off) });
+    return;
+  }
+  const pro = isPro(await subOf(userId)), avg = d.profit / d.n;
+  const pct = d.turnover ? d.profit / d.turnover * 100 : 0, goalPct = d.goal ? Math.round(d.profit / d.goal * 100) : 0;
+  const title = `${d.n} ${plural(d.n, 'сделка', 'сделки', 'сделок')}${d.exes.length ? ' · ' + d.exes.slice(0, 2).join(', ') : ''}`.slice(0, 34);
+  const text = `📊 <b>Итоги дня · ${dateLong}</b>\n\n` +
+    `💰 Прибыль: <b>${money(d.profit, d.cur)}</b>${d.others.length ? ` (и ${d.others.join(', ')})` : ''}\n` +
+    `🔁 Сделок: ${d.n} · оборот ${Math.round(d.turnover).toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}\n` +
+    `🏆 Лучшая сделка: ${money(d.best, d.cur)}\n` +
+    (d.goal ? `🎯 Цель ${d.goal.toLocaleString('ru-RU')} ₽: ${goalPct >= 100 ? `выполнена на ${goalPct}% ✅` : `${goalPct}%`}\n` : '') +
+    (d.pair ? `🔥 Чаще всего: ${esc(d.pair[0])} (${d.pair[1]})\n` : '') +
+    (pro ? '' : `\n<i>Карточка без водяного знака — в PRO.</i>`);
+  let png: Uint8Array | null = null;
+  try {
+    const r = await renderer();
+    const svg = dayCardSvg({ pro, date: dateLong, title, big: money(d.profit, d.cur), pos: d.profit >= 0,
+      sub: `${pct >= 0 ? '+' : ''}${pct.toFixed(2).replace('.', ',')}% к обороту · средняя ${money(avg, d.cur)}`,
+      count: String(d.n), turnover: `${Math.round(d.turnover).toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}`, best: money(d.best, d.cur, 0),
+      goalLabel: d.goal ? `Цель ${d.goal.toLocaleString('ru-RU')} ₽` : 'Средняя сделка', goal: d.goal ? `${goalPct}%${goalPct >= 100 ? ' ✓' : ''}` : money(avg, d.cur, 0),
+      pair: d.pair ? `${d.pair[0]} · ${d.pair[1]} ${plural(d.pair[1], 'раз', 'раза', 'раз')}`.slice(0, 40) : '—' });
+    png = new r.Resvg(svg, { font: { fontBuffers: r.fonts, defaultFontFamily: 'Onest', loadSystemFonts: false }, fitTo: { mode: 'width', value: 1080 } }).render().asPng();
+  } catch (e) { console.error('day card', e); }
+  if (png) {
+    const fd = new FormData();
+    fd.append('chat_id', String(t.tg_id)); fd.append('caption', text); fd.append('parse_mode', 'HTML');
+    fd.append('reply_markup', JSON.stringify(dayButtons(!!t.daily_off)));
+    fd.append('photo', new Blob([png], { type: 'image/png' }), `P2Pro-${day}.png`);
+    const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+    if (r?.ok) return;
+  }
+  await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: dayButtons(!!t.daily_off) });   // картинка не вышла — хотя бы текст
+}
+
+async function dailyFanout() {
+  const day = mskDay(Date.now()), start = Date.parse(day + 'T00:00:00+03:00');
+  const { data: rows } = await admin.from('trades').select('user_id').eq('deleted', false)
+    .gte('ts', new Date(start).toISOString()).lt('ts', new Date(start + DAY).toISOString());
+  const withTrades = new Set((rows ?? []).map((r: { user_id: string }) => r.user_id));
+  const { data: tgs } = await admin.from('tg_users').select('user_id, daily_off');
+  const banned = new Set((await allUsers()).filter(isBanned).map((u) => u.id));
+  const ids = (tgs ?? []).filter((t: { user_id: string; daily_off?: boolean }) => withTrades.has(t.user_id) && !t.daily_off && !banned.has(t.user_id)).map((t: { user_id: string }) => t.user_id);
+  for (let i = 0; i < ids.length; i += 5) {
+    await Promise.all(ids.slice(i, i + 5).map((uid: string) => fetch(`${SB_URL}/functions/v1/telegram-bot`, { method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-telegram-bot-api-secret-token': SECRET }, body: JSON.stringify({ daily_user: uid, day }) }).catch(() => {})));
+  }
+}
+
+async function dailyToggle(cq: { id: string; data?: string; from: { id: number }; message?: { chat: { id: number }; message_id: number } }) {
+  const off = cq.data === 'doff';
+  await admin.from('tg_users').update({ daily_off: off }).eq('tg_id', cq.from.id);
+  if (cq.message) await tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: dayButtons(off) });
+  await tg('answerCallbackQuery', { callback_query_id: cq.id, text: off ? 'Итоги дня больше не придут. Получить вручную: /itogi' : 'Итоги будут приходить каждый день в 23:59' });
+}
+
 /* ---------- Ответы ---------- */
 // Новое сообщение или замена текущего (когда нажали кнопку)
 async function show(chatId: number, msgId: number | null, text: string, markup: unknown) {
@@ -569,6 +718,7 @@ async function adminMessage(msg: Msg): Promise<boolean> {
         { command: 'user', description: 'Карточка: /user @ник' }, { command: 'give', description: 'Выдать PRO: /give @ник 30' },
         { command: 'revoke', description: 'Забрать PRO: /revoke @ник' }, { command: 'promo', description: 'Промокод: /promo КОД ДНИ' },
         { command: 'price', description: 'Цена: /price @ник 250 1900' }, { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
+      await tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть P2Pro' }, { command: 'itogi', description: 'Итоги дня прямо сейчас' }] });
       await stSet('await', null);
       await show(chatId, null, ADMIN_HELP, MENU());
     } else if (c === '/cancel') { await stSet('await', null); await stTake('draft'); await show(chatId, null, 'Отменено.', MENU()); }
@@ -652,7 +802,9 @@ Deno.serve(async (req) => {
   // Принимаем запросы только от Telegram и от расписания Supabase: оба присылают секрет, который мы задали
   if (!SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== SECRET) return new Response('forbidden', { status: 403 });
   const update = await req.json().catch(() => null);
+  if (update?.cron === 'daily') { if (TOKEN && SERVICE) background(dailyFanout()); return new Response('ok'); }
   if (update?.cron) { if (TOKEN && SERVICE) await tick().catch((e) => console.error('tick', e)); return new Response('ok'); }
+  if (typeof update?.daily_user === 'string') { if (TOKEN && SERVICE) await dailySend(update.daily_user, String(update.day ?? mskDay(Date.now()))).catch((e) => console.error('daily', e)); return new Response('ok'); }
   const isAdmin = (id?: number) => id === ADMIN_ID && !!SERVICE && !!TOKEN;
   // Оплата звёздами: проверка перед списанием и успешный платёж
   if (update?.pre_checkout_query) { await preCheckout(update.pre_checkout_query).catch((e) => console.error('precheckout', e)); return new Response('ok'); }
@@ -660,6 +812,7 @@ Deno.serve(async (req) => {
   // Нажатие кнопки в админ-панели
   const cq = update?.callback_query;
   if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
+  if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
   if (cq) {
     if (isAdmin(cq.from?.id)) await adminCallback(cq).catch(() => {});
     else await tg('answerCallbackQuery', { callback_query_id: cq.id });
@@ -671,6 +824,13 @@ Deno.serve(async (req) => {
     const text: string = msg.text ?? '';
     try {
       if (text.startsWith('/start login_') && SERVICE) { await loginPrompt(msg); return new Response('ok'); }
+      // Итоги дня прямо сейчас — для любого, кто входил в P2Pro через Telegram
+      if (/^\/itogi(@\w+)?$/i.test(text.trim()) && SERVICE) {
+        const { data: t } = await admin.from('tg_users').select('user_id').eq('tg_id', msg.from?.id ?? 0).maybeSingle();
+        if (t) await dailySend(t.user_id, mskDay(Date.now()), true);
+        else await send(msg.chat.id, 'Сначала войдите в P2Pro через Telegram — кнопка «Открыть P2Pro» ниже.');
+        return new Response('ok');
+      }
       if (isAdmin(msg.from?.id) && await adminMessage(msg)) return new Response('ok');
       if (text.startsWith('/start')) await send(msg.chat.id, WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))));
       else await send(msg.chat.id, HELP);
