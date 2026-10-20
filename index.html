@@ -1885,7 +1885,7 @@ function openPlans(why) {
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>`}
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
   // Персональная цена могла поменяться — перечитываем и перерисовываем цены
-  if (inTelegram()) loadMyStars().then(() => { if ($('starPlans')) { $('starPlans').innerHTML = starsPlans(); $('payBtn').textContent = payLabel(); } });
+  if (inTelegram()) loadMyStars().then(() => { if ($('starPlans')) { $('starPlans').innerHTML = starsPlans(); if (!$('payBtn').disabled) $('payBtn').textContent = payLabel(); } });
 }
 const showCheckout = () => openPlans();
 
@@ -1908,7 +1908,8 @@ async function starsPay() {
   const before = S.settings.proUntil || 0;
   tg.openInvoice(link, async status => {
     if (status === 'cancelled') return;
-    if (status !== 'paid') return toast('Оплата не прошла — звёзды не списаны');
+    // pending — Telegram ещё проводит платёж: ждём так же, как после «оплачено»
+    if (status !== 'paid' && status !== 'pending') return toast('Оплата не прошла — звёзды не списаны');
     sheet(`<div class="pay-proc" role="status" aria-live="polite"><div class="pp-ring" id="ppRing"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" id="ppArc" cx="60" cy="60" r="52" style="stroke-dashoffset:110"/></svg>
       <div class="pp-icon" id="ppIcon">${payIcon('stars', 44)}</div></div><h3 id="ppTitle">Подключаем PRO</h3><span class="muted small">Оплата прошла, ждём подтверждение</span></div>`);
     payBusy = true;
@@ -2643,7 +2644,7 @@ function authClick(e) {
   if (a === 'agree') { auAgree = !auAgree; b.setAttribute('aria-checked', auAgree); return $('auErr').textContent = ''; }
   if (a === 'resend') return resendMail(b);
   if (a === 'tg') return tgLogin(b);
-  if (a === 'wcancel') { webLoginRun++; $('auIn').innerHTML = authHtml(auMode); return; }
+  if (a === 'wcancel') { webLoginRun++; if ($('auIn')) $('auIn').innerHTML = authHtml(auMode); return; }
 }
 async function resendMail(b) {
   auMail = $('auMail')?.value.trim().toLowerCase() || auMail;
@@ -2750,7 +2751,7 @@ function webLogin() {
     <div class="au-wait" id="auWait"><span class="au-spin"></span>Ждём подтверждение…</div><div class="au-err" id="auErr" role="alert"></div>
     <a class="au-btn au-tg" href="${url}" target="_blank" rel="noopener">${AI.tg} Открыть Telegram</a>
     <button type="button" class="au-alt" data-au="wcancel">Отмена</button>`;
-  const back = msg => { if (run !== webLoginRun) return; webLoginRun++; $('auIn').innerHTML = authHtml(auMode); if (msg) auErr(msg); };
+  const back = msg => { if (run !== webLoginRun) return; webLoginRun++; if (!$('auIn')) return; $('auIn').innerHTML = authHtml(auMode); if (msg) auErr(msg); };
   (async () => {
     let wake = () => {};
     const onVis = () => document.visibilityState === 'visible' && wake();   // вернулись из Telegram — проверяем сразу
@@ -2758,7 +2759,7 @@ function webLogin() {
     try {
       for (const until = Date.now() + 5 * 60e3; Date.now() < until;) {
         await new Promise(r => { wake = r; setTimeout(r, 2000); });
-        if (run !== webLoginRun) return;
+        if (run !== webLoginRun || !$('auIn')) return;   // уже вошли другим способом или окно входа закрыто
         let j = {};
         try { j = await (await tgAuthCall({ web_login: id })).json().catch(() => ({})); } catch (e) { continue; }   // нет сети — пробуем дальше
         if (run !== webLoginRun) return;
@@ -2766,12 +2767,14 @@ function webLogin() {
           const { data, error } = await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
           if (error || !data.user) return back(authErrText(error));
           webLoginRun++; auRemember = true;
+          document.querySelector('[data-au=wcancel]')?.remove();
           return loginDone(data.user, $('auWait'));
         }
         if (j.error === 'blocked') { webLoginRun++; return blockedScreen(); }
         if (j.error === 'sub') { $('auErr').innerHTML = 'Чтобы войти, подпишитесь на канал <a href="https://t.me/P2ProChannel" target="_blank" rel="noopener" style="color:#F2B54B">@P2ProChannel</a> — вход продолжится сам'; continue; }
         if (j.status === 'no') return back('Вход отменён в Telegram');
-        if (j.status === 'expired' || j.error) return back('Ссылка для входа устарела — нажмите «Войти через Telegram» ещё раз');
+        if (j.status === 'expired' || j.error === 'bad') return back('Ссылка для входа устарела — нажмите «Войти через Telegram» ещё раз');
+        // другие ошибки сервера — временные: просто спрашиваем снова
       }
       back('Время вышло — нажмите «Войти через Telegram» ещё раз');
     } finally { document.removeEventListener('visibilitychange', onVis); }
@@ -3109,6 +3112,7 @@ function subGate(onOk) {
     const b = $('sgCheck'); if (b.disabled) return;
     b.disabled = true; b.textContent = 'Проверяем…'; $('sgErr').textContent = '';
     const ok = await tgSubscribed();
+    if ($('blockGate')) return;   // аккаунт заблокирован — экран блокировки уже показан
     if (!ok) { b.disabled = false; b.textContent = 'Я подписался — проверить'; return $('sgErr').textContent = 'Подписка пока не видна. Подпишитесь на канал и нажмите ещё раз'; }
     el.remove(); if (!$('auth')) document.documentElement.style.overflow = '';
     toast('Спасибо за подписку!'); el.onOk?.();
@@ -3287,27 +3291,34 @@ async function showCard(kind, id) {
     <div class="sw-row"><span>Скрыть суммы, оставить проценты</span><button class="toggle" role="switch" id="cardHideBtn" aria-checked="${cardHide}" aria-label="Скрыть суммы"></button></div>
     ${S.settings.pro ? '' : '<button class="pw-why" data-open-plans="card" style="width:100%">На Free на карточке водяной знак · <b style="color:var(--accent)">убрать в PRO</b></button>'}
     <div class="row2"><button class="btn" id="cardSave">Сохранить</button><button class="btn primary" id="cardShare">Поделиться</button></div>`);
-  let cv;
-  const draw = async () => { const c = await drawCard(kind === 'month' ? monthCardData() : dealCardData(t)); cv = c; if ($('cardImg')) $('cardImg').src = c.toDataURL('image/png'); };
+  let cv, file = null;
+  const name = kind === 'month' ? 'P2Pro-month.png' : 'P2Pro-deal.png';
+  // Файл готовим заранее: на iPhone «Поделиться» работает только сразу по нажатию, без ожидания внутри
+  const draw = async () => {
+    const c = await drawCard(kind === 'month' ? monthCardData() : dealCardData(t)); cv = c; file = null;
+    if ($('cardImg')) $('cardImg').src = c.toDataURL('image/png');
+    c.toBlob(b => { if (cv === c && b) file = new File([b], name, { type: 'image/png' }); }, 'image/png');
+  };
   await draw();
   if (!$('cardHideBtn')) return;   // лист успели закрыть, пока рисовалась картинка
-  const name = kind === 'month' ? 'P2Pro-month.png' : 'P2Pro-deal.png', blob = () => new Promise(res => cv.toBlob(res, 'image/png'));
+  const getFile = async () => file || new File([await new Promise(res => cv.toBlob(res, 'image/png'))], name, { type: 'image/png' });
+  const holdSheet = () => sheet(`<h3>Сохранить картинку</h3><span class="muted">Нажмите на картинку и удерживайте → «Сохранить изображение»</span>
+    <img class="share-prev" src="${cv.toDataURL('image/png')}" alt="Карточка"><button class="btn primary" data-close>Готово</button>`);
+  const shareFile = f => navigator.share({ files: [f] }).catch(e => { if (e?.name !== 'AbortError') holdSheet(); });   // отмена — не ошибка
   const save = async () => {
     // В Telegram скачивание открывает картинку на весь экран без кнопки «назад»: сохраняем через меню «Поделиться»
     // (там есть «Сохранить изображение»), а если его нет — показываем картинку, её можно сохранить долгим нажатием
     if (inTelegram()) {
-      const f = new File([await blob()], name, { type: 'image/png' });
-      if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f] }); } catch (e) {} return; }
-      return sheet(`<h3>Сохранить картинку</h3><span class="muted">Нажмите на картинку и удерживайте → «Сохранить изображение»</span>
-        <img class="share-prev" src="${cv.toDataURL('image/png')}" alt="Карточка"><button class="btn primary" data-close>Готово</button>`);
+      const f = file || await getFile();
+      return navigator.canShare?.({ files: [f] }) ? shareFile(f) : holdSheet();
     }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(await blob()); a.download = name; document.body.appendChild(a); a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await getFile()); a.download = name; document.body.appendChild(a); a.click();
     setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000); toast('Картинка сохранена'); };
   $('cardHideBtn').onclick = async e => { cardHide = !cardHide; e.currentTarget.setAttribute('aria-checked', cardHide); await draw(); };
   $('cardSave').onclick = save;
   $('cardShare').onclick = async () => {
-    const f = new File([await blob()], name, { type: 'image/png' });
-    if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f] }); } catch (e) {} } else save();
+    const f = file || await getFile();
+    navigator.canShare?.({ files: [f] }) ? shareFile(f) : save();
   };
 }
 document.addEventListener('click', e => { if (e.target.closest('#monthCardBtn')) showCard('month'); });

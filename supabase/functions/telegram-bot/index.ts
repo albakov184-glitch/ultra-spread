@@ -295,11 +295,15 @@ async function broadcast(fromChat: number, msgId: number, aud: Aud) {
   const ids = await recipients(aud);
   const markup = aud === 'exp' || aud === 'free' ? openBtn('⭐ Продлить PRO') : openBtn();
   let ok = 0;
-  for (const id of ids) {
-    const r = await tg('copyMessage', { chat_id: id, from_chat_id: fromChat, message_id: msgId, reply_markup: markup });
+  const one = async (id: number) => {
+    let r = await tg('copyMessage', { chat_id: id, from_chat_id: fromChat, message_id: msgId, reply_markup: markup });
+    if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); r = await tg('copyMessage', { chat_id: id, from_chat_id: fromChat, message_id: msgId, reply_markup: markup }); }
     if (r?.ok) ok++;
-    else if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); const r2 = await tg('copyMessage', { chat_id: id, from_chat_id: fromChat, message_id: msgId, reply_markup: markup }); if (r2?.ok) ok++; }
-    await sleep(40);   // Telegram пускает ~30 сообщений в секунду
+  };
+  // Пачками по 25 раз в секунду: Telegram пускает ~30 сообщений в секунду, а функция живёт ограниченное время
+  for (let i = 0; i < ids.length; i += 25) {
+    await Promise.all(ids.slice(i, i + 25).map(one));
+    if (i + 25 < ids.length) await sleep(1000);
   }
   await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `📣 <b>Рассылка ${AUD[aud]} завершена</b>\nДоставлено: ${ok} из ${ids.length}${ids.length - ok ? `\nНе доставлено ${ids.length - ok} — эти люди остановили бота.` : ''}` });
 }
@@ -401,10 +405,13 @@ async function refund(charge: string) {
   const { data: row } = await admin.from('star_payments').select('tg_id, refunded').eq('charge_id', charge).maybeSingle();
   if (!row) return 'Платёж не найден.';
   if (row.refunded) return 'По этому платежу уже сделан возврат.';
+  if (!row.tg_id) return 'У платежа нет Telegram id — вернуть звёзды автоматически нельзя.';
   const r = await tg('refundStarPayment', { user_id: row.tg_id, telegram_payment_charge_id: charge });
-  if (!r?.ok) return 'Telegram не принял возврат: ' + esc(r?.description ?? 'нет ответа');
+  // Уже возвращено в Telegram (например, прошлая попытка не дописала базу) — просто доделываем запись
+  if (!r?.ok && !/ALREADY_REFUNDED/i.test(r?.description ?? '')) return 'Telegram не принял возврат: ' + esc(r?.description ?? 'нет ответа');
   const { data, error } = await admin.rpc('stars_refund', { p_charge: charge });
-  if (error) return 'Звёзды вернули, но срок PRO не уменьшился: ' + esc(error.message);
+  if (error) return 'Звёзды вернули, но срок PRO не уменьшился: ' + esc(error.message) + '\nПовторите /refund — запись доделается.';
+  if (!(data as { ok: boolean }).ok) return 'По этому платежу уже сделан возврат.';
   await tg('sendMessage', { chat_id: row.tg_id, parse_mode: 'HTML', reply_markup: kb([[{ text: '💬 Поддержка', url: SUPPORT }]]),
     text: `↩️ <b>Возврат ${(data as { stars: number }).stars} ⭐</b>\n\nЗвёзды вернулись на ваш баланс Telegram, оплаченные дни PRO отменены.` });
   return `↩️ Возврат ${(data as { stars: number }).stars} ⭐ сделан, дни PRO сняты.`;
@@ -469,6 +476,8 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
   let toastText = '';
   const view = async (v: { text: string; markup: unknown }) => show(chatId, msgId, v.text, v.markup);
   try {
+    // Любая другая кнопка отменяет ожидание текста рассылки/поста: иначе следующий поиск по @нику стал бы рассылкой
+    if (!['ba', 'cp', 'go', 'no', 'nop'].includes(k)) await stSet('await', null);
     if (k === 'm') { await stSet('await', null); await show(chatId, msgId, ADMIN_HELP, MENU()); }
     else if (k === 'st') await show(chatId, msgId, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (k === 'l') await view(await listView(Number(a) || 0));
@@ -596,17 +605,18 @@ async function adminMessage(msg: Msg): Promise<boolean> {
 
 /* ================= ПО РАСПИСАНИЮ (09-cron.sql, каждые 10 минут) ================= */
 async function tick() {
-  const now = Date.now(), nowIso = new Date(now).toISOString();
+  const now = Date.now();
   // 1. Новые пользователи и оплаты — уведомления владельцу. При первом запуске только запоминаем время
   const seen = await stGet<{ at: string } | null>('seen', null);
+  const nowIso = new Date().toISOString();   // всё, что появится после этой отметки, покажем в следующий раз
   if (seen?.at) {
     const since = Date.parse(seen.at);
-    const fresh = (await allUsers()).filter((u) => Date.parse(u.created_at) > since).reverse();
+    const fresh = (await allUsers()).filter((u) => Date.parse(u.created_at) > since && Date.parse(u.created_at) <= Date.parse(nowIso)).reverse();
     if (fresh.length) await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
       text: (fresh.length === 1 ? '🆕 <b>Новый пользователь</b>\n' : `🆕 <b>Новых пользователей: ${fresh.length}</b>\n`) + fresh.slice(0, 10).map(who).join('\n') + (fresh.length > 10 ? '\n…' : '') });
     const { data: subs } = await admin.from('subscriptions').select('user_id, payments').gt('updated_at', seen.at);
     for (const s of (subs ?? []) as NonNullable<Sub>[]) for (const p of s.payments ?? []) {
-      if (!realPay(p) || Date.parse(p.ts) <= since) continue;   // о звёздах бот сообщает сразу при оплате
+      if (!realPay(p) || Date.parse(p.ts) <= since || Date.parse(p.ts) > Date.parse(nowIso)) continue;   // о звёздах бот сообщает сразу при оплате
       const u = await userById(s.user_id);
       await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
         text: `💰 <b>Оплата ${(+p.amount).toLocaleString('ru-RU')} ₽</b>\nPRO · ${p.period === 'y' ? 'год' : 'месяц'}${(p as { auto?: boolean }).auto ? ' · автопродление' : ''}\n${u ? who(u) : s.user_id}` });

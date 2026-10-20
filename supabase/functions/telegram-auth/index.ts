@@ -110,9 +110,11 @@ async function subscribed(id: number): Promise<boolean | null> {
 
 // Заблокирован ли аккаунт этого человека (блокирует владелец в админке бота). Тогда ни входа, ни приложения
 async function blockedTg(id: number) {
-  const { data } = await admin.from('tg_users').select('user_id').eq('tg_id', id).maybeSingle();
+  const { data, error } = await admin.from('tg_users').select('user_id').eq('tg_id', id).maybeSingle();
+  if (error) throw error;
   if (!data) return false;
-  const { data: u } = await admin.auth.admin.getUserById(data.user_id);
+  const { data: u, error: ue } = await admin.auth.admin.getUserById(data.user_id);
+  if (ue) throw ue;
   const until = u?.user?.banned_until;
   return !!until && Date.parse(until) > Date.now();
 }
@@ -150,12 +152,18 @@ async function webLogin(id: string) {
   if (row.status !== 'ok' || Date.now() - Date.parse(row.created_at) > LOGIN_TTL) return json({ status: 'expired' });
   const tg = row.tg as TgUser;
   if (!tg?.id) return json({ status: 'expired' });
-  if (await blockedTg(tg.id).catch(() => false)) return json({ error: 'blocked' }, 403);
+  // Не смогли проверить блокировку — не пускаем (сайт спросит снова через 2 секунды)
+  const blocked = await blockedTg(tg.id).catch(() => null);
+  if (blocked === null) return json({ status: 'wait' });
+  if (blocked) return json({ error: 'blocked' }, 403);
   if (await subscribed(tg.id) === false) return json({ error: 'sub' }, 403);   // запрос остаётся: после подписки сайт спросит снова
   // Забираем подтверждение одним запросом: второй раз по тому же номеру войти нельзя
   const { data: claimed } = await admin.from('login_requests').update({ status: 'used' }).eq('id', id).eq('status', 'ok').select('id');
   if (!claimed?.length) return json({ status: 'expired' });
-  return signIn(tg);
+  const res = await signIn(tg);
+  // Сбой при выдаче сессии — возвращаем подтверждение, чтобы сайт мог войти со следующей попытки
+  if (res.status >= 500) await admin.from('login_requests').update({ status: 'ok' }).eq('id', id).eq('status', 'used').then(() => {}, () => {});
+  return res;
 }
 
 Deno.serve(async (req) => {
@@ -168,7 +176,9 @@ Deno.serve(async (req) => {
   const tg = initData ? await checkInit(initData) : null;
   if (tg === 'old') return json({ error: 'old' }, 401);
   if (!tg) return json({ error: 'bad' }, 401);
-  if (await blockedTg(tg.id).catch(() => false)) return json({ error: 'blocked' }, 403);
+  const blocked = await blockedTg(tg.id).catch(() => null);
+  if (blocked === null) return json({ error: 'server' }, 503);   // проверить не вышло — не пускаем
+  if (blocked) return json({ error: 'blocked' }, 403);
   if (await subscribed(tg.id) === false) return json({ error: 'sub' }, 403);
   // Мини-апп при каждом открытии спрашивает только «подписан ли», без входа
   if (body?.check) return json({ ok: true });
@@ -177,6 +187,7 @@ Deno.serve(async (req) => {
     const period = body.invoice === 'y' ? 'y' : 'm';
     const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
     if (ue || !ud?.user) return json({ error: 'auth' }, 401);
+    if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
     // Персональная цена (задаёт владелец в админке бота), иначе обычная
     const { data: cp, error: ce } = await admin.from('custom_prices').select('m, y').eq('user_id', ud.user.id).maybeSingle();
     const amount = !ce && cp ? cp[period] : STARS[period];
