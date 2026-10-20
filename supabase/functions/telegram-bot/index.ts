@@ -64,6 +64,7 @@ const kb = (rows: Btn[][]) => ({ inline_keyboard: rows });
 const isPro = (s: Sub) => !!s?.pro_until && Date.parse(s.pro_until) > Date.now();
 const isBanned = (u: AUser) => !!u.banned_until && Date.parse(u.banned_until) > Date.now();
 const FREE_METHODS = ['gift', 'promo'];
+const STARS: Record<string, number> = { m: 350, y: 2650 };   // цены PRO в звёздах. Такие же — в telegram-auth и в приложении
 const openBtn = (text = '🚀 Открыть P2Pro') => kb([[{ text, web_app: { url: APP } }]]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Долгую работу (рассылку) доделываем после ответа Telegram, иначе он решит, что бот завис, и пришлёт запрос снова
@@ -93,7 +94,7 @@ const MENU = () => kb([
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
-  `Команды: /stats, /user @ник, /give @ник 30, /revoke @ник, /promo КОД ДНИ [ЛИМИТ] [СРОК_ДНЕЙ], /cancel`;
+  `Команды: /stats, /user @ник, /give @ник 30, /revoke @ник, /promo КОД ДНИ [ЛИМИТ] [СРОК_ДНЕЙ], /refund НОМЕР_ПЛАТЕЖА, /cancel`;
 
 // Все аккаунты (Supabase отдаёт страницами по 1000), новые сверху
 async function allUsers(): Promise<AUser[]> {
@@ -152,7 +153,9 @@ async function allSubs(): Promise<NonNullable<Sub>[]> {
   return (data ?? []) as NonNullable<Sub>[];
 }
 const mskDay = (t: number) => new Date(t + 3 * 3600e3).toISOString().slice(0, 10);
-const realPay = (p: Pay) => +p.amount > 0 && !FREE_METHODS.includes(p.method ?? '');
+// Оплата в рублях (карта, СБП). Звёзды считаем отдельно, подарки и промокоды — не деньги
+const realPay = (p: Pay) => +p.amount > 0 && !FREE_METHODS.includes(p.method ?? '') && p.method !== 'stars';
+const starPay = (p: Pay) => p.method === 'stars' && +p.amount > 0;
 
 /* ---------- Статистика ---------- */
 async function statsText() {
@@ -163,8 +166,12 @@ async function statsText() {
   const pro = subs.filter(isPro), gifts = pro.filter((s) => FREE_METHODS.includes(s.pay_method ?? '')).length;
   // Выручка за текущий месяц по Москве
   const month = mskDay(now).slice(0, 7);
-  let rev = 0, pays = 0;
-  for (const s of subs) for (const p of s.payments ?? []) if (realPay(p) && mskDay(Date.parse(p.ts)).startsWith(month)) { rev += +p.amount; pays++; }
+  let rev = 0, pays = 0, stars = 0, starN = 0;
+  for (const s of subs) for (const p of s.payments ?? []) {
+    if (!mskDay(Date.parse(p.ts)).startsWith(month)) continue;
+    if (realPay(p)) { rev += +p.amount; pays++; }
+    if (p.method === 'stars') { stars += +p.amount; if (+p.amount > 0) starN++; }   // возвраты записаны с минусом
+  }
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('deleted', false);
   // График новых пользователей за 14 дней
   const days: [string, number][] = [];
@@ -177,7 +184,7 @@ async function statsText() {
     `🆕 Новых за сутки: ${since(1)} · за неделю: ${since(7)} · за месяц: ${since(30)}\n` +
     `🔑 Входили за неделю: ${active}\n\n` +
     `⭐ PRO сейчас: <b>${pro.length}</b> (подарки и промокоды: ${gifts})\n` +
-    `💰 Выручка за месяц: <b>${rev.toLocaleString('ru-RU')} ₽</b> · оплат: ${pays}\n📒 Сделок в базе: ${trades ?? 0}\n\n` +
+    `💰 Выручка за месяц: <b>${rev.toLocaleString('ru-RU')} ₽</b> · оплат: ${pays}\n⭐ Звёздами за месяц: <b>${stars.toLocaleString('ru-RU')} ⭐</b> · оплат: ${starN}\n📒 Сделок в базе: ${trades ?? 0}\n\n` +
     `<b>Новые пользователи за 14 дней</b>\n<pre>${chart}</pre>`;
 }
 
@@ -200,7 +207,7 @@ async function cardView(u: AUser, back = 0) {   // back — страница с�
   const s = await subOf(u.id), tgId = await tgIdOf(u.id), nick = await tgNick(u.id);
   if (nick) u = { ...u, user_metadata: { ...u.user_metadata, tg_username: nick } };   // проверенный ник вместо того, что в профиле
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('user_id', u.id).eq('deleted', false);
-  const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.auto_renew ? ' · автопродление' : '';
+  const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.pay_method === 'stars' ? ' (звёзды)' : s?.auto_renew ? ' · автопродление' : '';
   const text = `<b>👤 Пользователь</b>\n\n${who(u)}\n` + (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
     `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}\n\n` +
     (isPro(s) ? `⭐ PRO до <b>${date(s!.pro_until)}</b>${how}` : 'Тариф: Free') +
@@ -347,6 +354,53 @@ async function promoCreate(args: string[]) {
   return `✅ Промокод <code>${code}</code> создан: ${days} дн. PRO${max ? `, ${max} активаций` : ''}${ttl ? `, действует до ${date(Date.now() + ttl * DAY)}` : ''}.`;
 }
 
+/* ---------- Оплата звёздами ---------- */
+// Счёт создаёт функция telegram-auth (по запросу мини-аппа). Telegram перед списанием спрашивает нас — проверяем счёт
+async function preCheckout(q: { id: string; currency: string; total_amount: number; invoice_payload: string }) {
+  let ok = false, why = 'Счёт устарел — откройте оплату в P2Pro заново';
+  try {
+    const p = JSON.parse(q.invoice_payload);
+    const u = p?.u ? await userById(String(p.u)) : null;
+    if (q.currency === 'XTR' && STARS[p?.p] === q.total_amount && u) { ok = !isBanned(u); if (!ok) why = 'Аккаунт заблокирован — напишите в поддержку'; }
+  } catch (_) { /* битый payload */ }
+  await tg('answerPreCheckoutQuery', ok ? { pre_checkout_query_id: q.id, ok: true } : { pre_checkout_query_id: q.id, ok: false, error_message: why });
+}
+// Оплата прошла: выдаём PRO (один платёж — одна выдача) и сообщаем покупателю и владельцу
+async function paid(msg: Msg & { successful_payment: { currency: string; total_amount: number; invoice_payload: string; telegram_payment_charge_id: string } }) {
+  const sp = msg.successful_payment;
+  let p: { u?: string; p?: string } = {};
+  try { p = JSON.parse(sp.invoice_payload); } catch (_) { /* не наш счёт */ }
+  const period = p.p === 'y' ? 'y' : 'm';
+  const { data, error } = await admin.rpc('stars_grant_pro', { p_user: p.u, p_period: period, p_charge: sp.telegram_payment_charge_id, p_stars: sp.total_amount, p_tg: msg.from?.id ?? null });
+  if (error) {
+    console.error('stars grant', error);
+    await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `⚠️ <b>Оплата звёздами не применилась</b>\n${sp.total_amount} ⭐ от ${msg.from?.id}\nПлатёж: <code>${esc(sp.telegram_payment_charge_id)}</code>\nОшибка: ${esc(error.message)}` });
+    await send(msg.chat.id, 'Оплата получена, но PRO не включился автоматически. Мы уже разбираемся — напишите в поддержку, если PRO не появится в течение часа.', false);
+    return;
+  }
+  if (!(data as { fresh: boolean }).fresh) return;   // Telegram прислал тот же платёж повторно
+  const until = (data as { pro_until: string }).pro_until;
+  await tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML', reply_markup: openBtn(),
+    text: `✅ <b>Оплата прошла!</b>\n\nP2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} — действует до <b>${date(until)}</b>. Спасибо!` });
+  const u = p.u ? await userById(p.u) : null;
+  await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
+    text: `💰 <b>Оплата ${sp.total_amount} ⭐</b>\nPRO · ${period === 'y' ? 'год' : 'месяц'}\n${u ? who(u) : esc(String(p.u))}\nПлатёж: <code>${esc(sp.telegram_payment_charge_id)}</code>` });
+}
+// Возврат звёзд: /refund НОМЕР_ПЛАТЕЖА (номер приходит в уведомлении об оплате)
+async function refund(charge: string) {
+  if (!charge) return 'Напишите так: <code>/refund НОМЕР_ПЛАТЕЖА</code> — номер есть в уведомлении об оплате.';
+  const { data: row } = await admin.from('star_payments').select('tg_id, refunded').eq('charge_id', charge).maybeSingle();
+  if (!row) return 'Платёж не найден.';
+  if (row.refunded) return 'По этому платежу уже сделан возврат.';
+  const r = await tg('refundStarPayment', { user_id: row.tg_id, telegram_payment_charge_id: charge });
+  if (!r?.ok) return 'Telegram не принял возврат: ' + esc(r?.description ?? 'нет ответа');
+  const { data, error } = await admin.rpc('stars_refund', { p_charge: charge });
+  if (error) return 'Звёзды вернули, но срок PRO не уменьшился: ' + esc(error.message);
+  await tg('sendMessage', { chat_id: row.tg_id, parse_mode: 'HTML', reply_markup: kb([[{ text: '💬 Поддержка', url: SUPPORT }]]),
+    text: `↩️ <b>Возврат ${(data as { stars: number }).stars} ⭐</b>\n\nЗвёзды вернулись на ваш баланс Telegram, оплаченные дни PRO отменены.` });
+  return `↩️ Возврат ${(data as { stars: number }).stars} ⭐ сделан, дни PRO сняты.`;
+}
+
 /* ---------- Ответы ---------- */
 // Новое сообщение или замена текущего (когда нажали кнопку)
 async function show(chatId: number, msgId: number | null, text: string, markup: unknown) {
@@ -450,12 +504,13 @@ async function adminMessage(msg: Msg): Promise<boolean> {
         { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' },
         { command: 'user', description: 'Карточка: /user @ник' }, { command: 'give', description: 'Выдать PRO: /give @ник 30' },
         { command: 'revoke', description: 'Забрать PRO: /revoke @ник' }, { command: 'promo', description: 'Промокод: /promo КОД ДНИ' },
-        { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
+        { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
       await stSet('await', null);
       await show(chatId, null, ADMIN_HELP, MENU());
     } else if (c === '/cancel') { await stSet('await', null); await stTake('draft'); await show(chatId, null, 'Отменено.', MENU()); }
     else if (c === '/stats') await show(chatId, null, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (c === '/promo') await show(chatId, null, await promoCreate(args), kb([[{ text: '🎟 Промокоды', callback_data: 'pl' }]]));
+    else if (c === '/refund') await show(chatId, null, await refund(a), null);
     else if (c === '/user' || !c.startsWith('/')) {
       const q = c === '/user' ? a : text;
       const u = q ? await findUser(q) : null;
@@ -490,7 +545,7 @@ async function tick() {
       text: (fresh.length === 1 ? '🆕 <b>Новый пользователь</b>\n' : `🆕 <b>Новых пользователей: ${fresh.length}</b>\n`) + fresh.slice(0, 10).map(who).join('\n') + (fresh.length > 10 ? '\n…' : '') });
     const { data: subs } = await admin.from('subscriptions').select('user_id, payments').gt('updated_at', seen.at);
     for (const s of (subs ?? []) as NonNullable<Sub>[]) for (const p of s.payments ?? []) {
-      if (!realPay(p) || Date.parse(p.ts) <= since) continue;
+      if (!realPay(p) || Date.parse(p.ts) <= since) continue;   // о звёздах бот сообщает сразу при оплате
       const u = await userById(s.user_id);
       await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
         text: `💰 <b>Оплата ${(+p.amount).toLocaleString('ru-RU')} ₽</b>\nPRO · ${p.period === 'y' ? 'год' : 'месяц'}${(p as { auto?: boolean }).auto ? ' · автопродление' : ''}\n${u ? who(u) : s.user_id}` });
@@ -526,6 +581,9 @@ Deno.serve(async (req) => {
   const update = await req.json().catch(() => null);
   if (update?.cron) { if (TOKEN && SERVICE) await tick().catch((e) => console.error('tick', e)); return new Response('ok'); }
   const isAdmin = (id?: number) => id === ADMIN_ID && !!SERVICE && !!TOKEN;
+  // Оплата звёздами: проверка перед списанием и успешный платёж
+  if (update?.pre_checkout_query) { await preCheckout(update.pre_checkout_query).catch((e) => console.error('precheckout', e)); return new Response('ok'); }
+  if (update?.message?.successful_payment) { await paid(update.message).catch((e) => console.error('paid', e)); return new Response('ok'); }
   // Нажатие кнопки в админ-панели
   const cq = update?.callback_query;
   if (cq) {

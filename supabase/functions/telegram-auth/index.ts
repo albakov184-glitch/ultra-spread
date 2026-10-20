@@ -11,6 +11,7 @@ const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ANON = Deno.env.get('SUPABASE_ANON_KEY') || SERVICE;
 const CHANNEL = '@P2ProChannel';   // обязательная подписка. Бот должен быть админом канала, иначе Telegram не скажет, кто подписан
 const MAX_AGE = 24 * 3600;   // initData старше суток не принимаем — пусть перезапустит мини-апп
+const STARS = { m: 350, y: 2650 };   // цены PRO в звёздах. Такие же — в боте (telegram-bot) и в приложении (index.html)
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
@@ -129,6 +130,20 @@ Deno.serve(async (req) => {
   if (await subscribed(tg.id) === false) return json({ error: 'sub' }, 403);
   // Мини-апп при каждом открытии спрашивает только «подписан ли», без входа
   if (body?.check) return json({ ok: true });
+  // Счёт на оплату PRO звёздами. PRO получит аккаунт, в который вошли в приложении (его токен), а не просто этот Telegram
+  if (body?.invoice) {
+    const period = body.invoice === 'y' ? 'y' : 'm';
+    const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
+    if (ue || !ud?.user) return json({ error: 'auth' }, 401);
+    const r = await fetch(`https://api.telegram.org/bot${TOKEN}/createInvoiceLink`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: period === 'y' ? 'P2Pro PRO на год' : 'P2Pro PRO на месяц',
+        description: 'История без ограничений, контрагенты и чёрный список, Excel и карточки без водяного знака',
+        payload: JSON.stringify({ u: ud.user.id, p: period }), currency: 'XTR', prices: [{ label: 'P2Pro PRO', amount: STARS[period] }],
+      }) }).then((x) => x.json()).catch(() => null);
+    if (!r?.ok) { console.error('invoice', r); return json({ error: 'server' }, 500); }
+    return json({ link: r.result });
+  }
   try {
     const user = await userFor(tg);
     // Ник для поиска в админке бота: таблицу пишет только сервер, в отличие от данных профиля

@@ -1837,7 +1837,7 @@ function plansHtml() {
   const pro = S.settings.pro;
   return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор и круги</li><li>История — до ${FREE_LIMIT} сделок в месяц</li><li>Аналитика, подбор курса, связки</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
-    <div class="plan pro"><h4>PRO</h4><span class="price">490 ₽<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
+    <div class="plan pro"><h4>PRO</h4><span class="price">${inTelegram() ? '350 ⭐' : '490 ₽'}<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
     ${pro ? '<span class="muted small">Текущий тариф</span>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
 }
 // Значки способов оплаты: узнаваемые логотипы в цвете
@@ -1848,10 +1848,11 @@ function payIcon(k, z = 18) {
   if (k === 'sbp') return `<img src="icons/sbp.png" width="${z}" height="${z}" alt="" style="display:block">`;
   return sv('<rect x="2" y="5" width="20" height="14" rx="3" fill="#F2B54B"/><rect x="2" y="8.2" width="20" height="2.6" fill="#1B1405" opacity=".75"/><rect x="5" y="14" width="6" height="1.8" rx=".9" fill="#1B1405" opacity=".55"/>');
 }
-// Окно PRO. Оплата демо: реквизиты не нужны, деньги не списываются
+// Окно PRO. В Telegram — оплата звёздами (настоящая), на сайте пока демо: деньги не списываются
 let payMethod = 'card', payPeriod = 'm';
+const STARS = { m: 350, y: 2650 };   // цены в звёздах. Такие же — в функциях telegram-auth и telegram-bot
 const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
-const payLabel = () => `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
+const payLabel = () => inTelegram() ? `Оплатить ${nf0.format(STARS[payPeriod])} ⭐` : `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
 function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
   payPeriod = why === 'renew' ? 'y' : 'm';
@@ -1860,17 +1861,54 @@ function openPlans(why) {
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
     <ul class="pw-list">${F.map(([i, t, c], k) => `<li class="${c || ''}" style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>
-    <div class="pw-plans">
+    ${inTelegram() ? `<div class="pw-plans">
+      <button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>350 ⭐</b><span>в месяц</span></button>
+      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−37%</em><span>Год</span><b>2 650 ⭐</b><span>≈ 221 ⭐ в месяц</span></button></div>
+    <span class="muted small" style="display:flex;align-items:center;gap:6px">${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить</span>` : `<div class="pw-plans">
       <button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>490 ₽</b><span>в месяц</span></button>
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−32%</em><span>Год</span><b>3 990 ₽</b><span>≈ 333 ₽ в месяц</span></button></div>
     <span class="label">Способ оплаты</span>
-    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
+    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>`}
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
 }
 const showCheckout = () => openPlans();
 
+// Оплата звёздами в Telegram: счёт выставляет сервер (telegram-auth), окно оплаты — сам Telegram,
+// PRO включает бот, когда Telegram сообщит ему об оплате. Приложение ждёт новый срок с сервера
+async function starsPay() {
+  const tg = window.Telegram?.WebApp;
+  if (!tg?.openInvoice) return toast('Обновите Telegram — эта версия не умеет платить звёздами');
+  if (!sb || !me()) return toast('Войдите в аккаунт, чтобы оплатить');
+  const btn = $('payBtn'); if (!btn || btn.disabled) return;
+  btn.disabled = true; btn.textContent = 'Открываем оплату…';
+  let link = '';
+  try {
+    const token = (await sb.auth.getSession()).data?.session?.access_token;
+    const r = await tgAuthCall({ initData: tg.initData || TG_INIT, invoice: payPeriod, access_token: token });
+    link = (await r.json().catch(() => ({}))).link || '';
+  } catch (e) {}
+  if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
+  if (!link) return toast('Не получилось открыть оплату. Проверьте интернет и попробуйте ещё раз');
+  const before = S.settings.proUntil || 0;
+  tg.openInvoice(link, async status => {
+    if (status === 'cancelled') return;
+    if (status !== 'paid') return toast('Оплата не прошла — звёзды не списаны');
+    sheet(`<div class="pay-proc" role="status" aria-live="polite"><div class="pp-ring" id="ppRing"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" id="ppArc" cx="60" cy="60" r="52" style="stroke-dashoffset:110"/></svg>
+      <div class="pp-icon" id="ppIcon">${payIcon('stars', 44)}</div></div><h3 id="ppTitle">Подключаем PRO</h3><span class="muted small">Оплата прошла, ждём подтверждение</span></div>`);
+    payBusy = true;
+    try { for (let i = 0; i < 12 && (S.settings.proUntil || 0) <= before; i++) { await wait(1500); await syncNow(true); } }
+    finally { payBusy = false; }
+    if ((S.settings.proUntil || 0) <= before) return sheet(`<div class="pw-hero"><h3>Оплата прошла ✅</h3><p>PRO включится в течение минуты — бот пришлёт сообщение. Если не появится, напишите в поддержку @MVSR_P2P.</p></div><button class="btn primary" data-close>Понятно</button>`);
+    tg.HapticFeedback?.notificationOccurred('success');
+    sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>PRO подключён 🎉</h3>
+      <p>Действует до <b>${fmtLong(S.settings.proUntil)}</b>. Теперь у вас безлимитная история, контрагенты, Excel и карточки без водяного знака.</p></div>
+      <button class="btn primary" data-close>Отлично</button>`);
+    confetti();
+  });
+}
 // Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
 async function payProcess() {
+  if (inTelegram()) return starsPay();
   const M = { card: ['Банковская карта', 'Связываемся с банком'], sbp: ['СБП', 'Ждём подтверждение СБП'],
     stars: ['Telegram Stars', 'Списываем Telegram Stars'], usdt: ['USDT', 'Проверяем перевод USDT'] }[payMethod];
   const steps = [M[1], 'Проверяем платёж', 'Подключаем PRO'], price = payPeriod === 'y' ? '3 990 ₽ · год' : '490 ₽ · месяц';
@@ -2858,15 +2896,15 @@ function subCheck() {
     : `PRO закончится через ${left} ${plural(left, 'день', 'дня', 'дней')}`), 2600); }
 }
 function subHtml() {
-  const st = S.settings, left = subDaysLeft(), gift = st.payMethod === 'gift' || st.payMethod === 'promo';
+  const st = S.settings, left = subDaysLeft(), gift = ['gift', 'promo', 'stars'].includes(st.payMethod);   // разовые сроки: без автопродления
   // Подарок от администратора: срок любой, не продлевается и не оплачивается
   const total = gift ? Math.max(left, Math.round(((st.proUntil || 0) - (st.proSince || 0)) / 864e5) || left) : PERIOD_DAYS[st.proPeriod] || 30, k = Math.min(1, left / (total || 1));
   if (gift) return `<div class="sub">
       <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
         <div><b>${left}</b><span>${plural(left, 'день', 'дня', 'дней')}</span></div></div>
-      <div class="sub-info"><div class="sub-t">PRO · ${st.payMethod === 'promo' ? 'промокод 🎟' : 'подарок 🎁'}</div>
+      <div class="sub-info"><div class="sub-t">PRO · ${st.payMethod === 'promo' ? 'промокод 🎟' : st.payMethod === 'stars' ? (st.proPeriod === 'y' ? 'год ⭐' : 'месяц ⭐') : 'подарок 🎁'}</div>
         <span class="muted small">Действует до <b style="color:var(--fg)">${fmtLong(st.proUntil)}</b></span>
-        <span class="muted small">Без списаний. Потом можно продлить или перейти на Free</span></div></div>
+        <span class="muted small">${st.payMethod === 'stars' ? 'Оплачено звёздами, без автопродления' : 'Без списаний'}. Потом можно продлить или перейти на Free</span></div></div>
     <div class="row2"><button class="btn" data-sub="hist">История</button><button class="btn primary" data-sub="renew">Продлить</button></div>`;
   return `<div class="sub">
       <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
@@ -2926,7 +2964,7 @@ document.addEventListener('click', e => {
   if (a === 'hist') {
     const P = st.payments || [];
     sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.method === 'gift' ? `подарок на ${+x.days || 0} дн.` : x.method === 'promo' ? `промокод ${esc(String(x.code || ''))} на ${+x.days || 0} дн.` : x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
-      <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}</span></div><b>${nf0.format(x.amount)} ₽</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div><button class="btn primary" data-close>Закрыть</button>`);
+      <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}${x.refund ? ' · возврат' : ''}</span></div><b>${nf0.format(x.amount)} ${x.method === 'stars' ? '⭐' : '₽'}</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div><button class="btn primary" data-close>Закрыть</button>`);
   }
 });
 
