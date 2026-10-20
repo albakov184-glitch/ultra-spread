@@ -2700,7 +2700,7 @@ async function submitAuthInner(btn) {
 // Аккаунт привязан к Telegram, почта у него служебная (…@telegram.invalid), пароля нет
 // Адрес функции входа в Supabase (код — supabase/functions/telegram-auth)
 // Адрес функции входа в Supabase. При пересоздании функции Supabase может выдать другой адрес — пробуем по очереди
-const TG_AUTH_FNS = ['telegram-auth-', 'telegram-auth'];
+const TG_AUTH_FNS = ['telegram-auth', 'telegram-auth-'];
 async function tgAuthCall(body) {
   let err;
   for (const fn of TG_AUTH_FNS) {
