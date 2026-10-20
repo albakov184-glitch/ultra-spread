@@ -1898,7 +1898,7 @@ const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', car
 const payStars = () => inTelegram() && payMethod === 'stars';
 const payLabel = () => payStars() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${nf0.format(myRub[payPeriod])} ₽`;
 const payHint = () => payStars() ? `${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить`
-  : `${payIcon('crypto', 16)}Оплата криптой через xRocket: сумма в USDT или TON по курсу`;
+  : `${payIcon('crypto', 16)}Оплата в USDT через xRocket: сумма в рублях переводится по курсу`;
 // Перерисовать цены и кнопку после смены способа оплаты или загрузки персональной цены
 function payRefresh() {
   if ($('payPlans')) $('payPlans').innerHTML = payStars() ? starsPlans() : rubPlans();
@@ -1909,7 +1909,7 @@ function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
   payPeriod = why === 'renew' ? 'y' : 'm';
   const F = [['∞', 'История без ограничений'], ['★', 'Контрагенты и чёрный список'], ['⤓', 'Выгрузка всех сделок в Excel'], ['▣', 'Карточки результата без водяного знака'], ['⚡', 'Скоро: живые курсы и уведомления', 'soon']];
-  const M = inTelegram() ? [['stars', 'Звёзды'], ['crypto', 'Крипта · USDT, TON']] : [['crypto', 'Крипта · USDT, TON'], ['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars']];
+  const M = inTelegram() ? [['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['crypto', 'Крипта · USDT'], ['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars']];
   payMethod = inTelegram() ? 'stars' : 'crypto';   // в Telegram по умолчанию звёзды, на сайте — крипта
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
@@ -1959,7 +1959,7 @@ async function starsPay() {
   });
 }
 // Оплата криптой на сайте (xRocket Pay): сервер (telegram-auth) выставляет счёт в рублях, xRocket пересчитывает
-// в USDT или TON. PRO включает сервер, когда xRocket сообщит об оплате. Приложение ждёт новый срок с сервера
+// в USDT по курсу. PRO включает сервер, когда xRocket сообщит об оплате. Приложение ждёт новый срок с сервера
 async function cryptoPay() {
   if (!sb || !me()) return toast('Войдите в аккаунт, чтобы оплатить');
   const btn = $('payBtn'); if (!btn || btn.disabled) return;
@@ -1979,8 +1979,8 @@ async function cryptoPay() {
   const before = S.settings.proUntil || 0, price = `${nf0.format(myRub[payPeriod])} ₽ · ${payPeriod === 'y' ? 'год' : 'месяц'}`;
   // Ссылку открывает сам человек кнопкой: так её не заблокирует браузер (всплывающие окна после ожидания запрещены)
   sheet(`<div class="pay-proc" id="xrWait" role="status" aria-live="polite"><div class="pp-ring"><svg class="pp-svg" viewBox="0 0 120 120"><circle class="pp-track" cx="60" cy="60" r="52"/><circle class="pp-arc" cx="60" cy="60" r="52" style="stroke-dashoffset:110"/></svg>
-      <div class="pp-icon">${payIcon('crypto', 44)}</div></div><h3>Счёт готов</h3><span class="muted small">${price} · USDT или TON</span>
-      <p class="muted small" style="text-align:center;margin:0">Откроется xRocket: выберите монету и оплатите с любого кошелька или биржи. Сумма в крипте посчитается по курсу. Счёт действует 1 час.</p></div>
+      <div class="pp-icon">${payIcon('crypto', 44)}</div></div><h3>Счёт готов</h3><span class="muted small">${price}${res.usdt ? ' = ' + esc(res.usdt) + ' USDT' : ''}</span>
+      <p class="muted small" style="text-align:center;margin:0">Откроется xRocket: оплатите USDT с баланса xRocket, любого кошелька или биржи (сети TON, TRON, BSC и др.). Сумма посчитана по курсу биржи. Счёт действует 1 час.</p></div>
     ${inTelegram() ? `<button class="btn primary" id="xrGo" data-link="${esc(res.tg || '')}" data-web="${esc(res.link)}">Перейти к оплате</button>`
       : `<a class="btn primary" href="${esc(res.link)}" target="_blank" rel="noopener">Перейти к оплате</a>`}
     <span class="muted small" style="text-align:center">После оплаты вернитесь сюда — PRO включится сам, а бот пришлёт сообщение. Ждём оплату…</span>
@@ -2010,7 +2010,7 @@ async function payProcess() {
   if (inTelegram()) return starsPay();
   // На сайте оплата картой и СБП ещё подключается (Platega). Демо-покупку не показываем: она давала PRO бесплатно
   if (PAY_SOON) return sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>Оплата картой — скоро</h3>
-    <p>Оплату картой и СБП на сайте подключаем прямо сейчас. Купить PRO уже можно криптовалютой (USDT, TON) здесь или в Telegram — звёздами: 350 ⭐ в месяц или 2 650 ⭐ в год.</p>
+    <p>Оплату картой и СБП на сайте подключаем прямо сейчас. Купить PRO уже можно криптовалютой (USDT) здесь или в Telegram — звёздами: 350 ⭐ в месяц или 2 650 ⭐ в год.</p>
     <p class="muted small">В Telegram войдите в тот же аккаунт (по почте), чтобы PRO включился именно в нём.</p></div>
     <div class="row2"><button class="btn" data-close>Закрыть</button><a class="btn primary" href="https://t.me/P2ProAppBot" target="_blank" rel="noopener">Открыть в Telegram</a></div>`);
   const M = { card: ['Банковская карта', 'Связываемся с банком'], sbp: ['СБП', 'Ждём подтверждение СБП'],

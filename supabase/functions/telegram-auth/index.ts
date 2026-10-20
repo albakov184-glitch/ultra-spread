@@ -181,7 +181,7 @@ const tgSend = (chat: number, text: string, markup?: unknown) => fetch(`https://
   method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) }) }).catch(() => null);
 
-// Счёт на PRO в xRocket. Цена в рублях (персональная из админки или обычная); xRocket сам пересчитает в USDT или TON
+// Счёт на PRO в xRocket. Цена в рублях (персональная из админки или обычная), платят в USDT по курсу
 async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
   if (!XR_TOKEN) return json({ error: 'xr_off' }, 503);
   const period = body.xr_invoice === 'y' ? 'y' : 'm';
@@ -194,25 +194,19 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
   const { error: ie } = await admin.from('crypto_invoices').insert({ id, user_id: ud.user.id, period, price_rub: price });
   if (ie) { console.error('crypto_invoices', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
   const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
-  const req: Record<string, unknown> = {
-    priceAmount: String(price), priceCurrency: 'rub', payCurrencies: ['USDT', 'GRAM'], numPayments: 1, clientInvoiceId: id,
-    description: `P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'}`, expiresIn: 60 * 60e3,
+  // xRocket пока не умеет счёт в рублях с оплатой в крипте (валюта цены = валюта оплаты).
+  // Поэтому цену в рублях переводим в USDT по курсу самой биржи xRocket и выставляем счёт в USDT
+  const rate = await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB', { signal: AbortSignal.timeout(8000) })
+    .then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0);
+  if (!(rate > 0)) return json({ error: 'rate', detail: 'не удалось получить курс USDT' }, 502);
+  const usdt = (Math.ceil(price / rate * 100) / 100).toFixed(2);
+  const req = {
+    priceAmount: usdt, priceCurrency: 'USDT', payCurrencies: ['USDT'], numPayments: 1, clientInvoiceId: id,
+    description: `P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} · ${price} ₽`, expiresIn: 60 * 60e3,
     callback: { callbackUrl: `${SB_URL}/functions/v1/telegram-auth` }, url: { successUrl: SITE + '?paid=crypto', cancelUrl: SITE },
-    customer: { id: ud.user.id, ...(t?.tg_id ? { telegramId: String(t.tg_id) } : {}) }, data: { u: ud.user.id, p: period },
+    customer: { id: ud.user.id, ...(t?.tg_id ? { telegramId: String(t.tg_id) } : {}) }, data: { u: ud.user.id, p: period, rub: price },
   };
-  // Коды монет у xRocket: USDT, GRAM (это TON). Рубль — 'rub' маленькими буквами
-  let r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify(req) });
-  if (!r.ok && r.status === 400) {   // не приняли список монет — пусть человек выберет любую
-    console.error('xr pay currencies', r.data);
-    const { payCurrencies: _, ...rest } = req;
-    r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify(rest) });
-  }
-  if (!r.ok && r.status === 400) {
-    // xRocket не принял цену в рублях — считаем сумму в USDT по их же курсу и пробуем ещё раз
-    console.error('xr rub price', r.data);
-    const rate = await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB').then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0);
-    if (rate > 0) r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify({ ...req, payCurrencies: ['USDT'], priceCurrency: 'USDT', priceAmount: (Math.ceil(price / rate * 100) / 100).toFixed(2) }) });
-  }
+  const r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify(req) });
   const inv = r.data?.data ?? r.data;
   if (!r.ok || !inv?.links) {
     console.error('xr invoice', r.status, r.data);
@@ -221,7 +215,7 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string }) {
     return json({ error: 'xr', detail: why || 'нет ответа' }, 502);
   }
   await admin.from('crypto_invoices').update({ xr_id: String(inv.id ?? '') }).eq('id', id);
-  return json({ id, link: inv.links.webLink || inv.links.telegramMiniAppLink || inv.links.telegramBotLink, tg: inv.links.telegramBotLink });
+  return json({ id, usdt, link: inv.links.webLink || inv.links.telegramMiniAppLink || inv.links.telegramBotLink, tg: inv.links.telegramBotLink });
 }
 
 // Уведомление от xRocket об оплате. Подпись: HMAC-SHA256(секрет вебхука, "{Signature-Timestamp}.{тело}") в hex

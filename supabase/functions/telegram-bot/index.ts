@@ -437,7 +437,7 @@ async function refund(charge: string) {
 async function priceView(u: AUser, back: number) {
   const p = await priceOf(u.id), id = u.id;
   return { text: `<b>💲 Цена PRO для</b> ${who(u)}\n\nСейчас (месяц / год): <b>${priceLine(p)}</b>${p.custom ? ' (персональная)' : ' (обычная)'}\n` +
-    `Обычная: ${STARS.m} ⭐ / ${STARS.y} ⭐ · ${RUB.m} ₽ / ${RUB.y.toLocaleString('ru-RU')} ₽\n\n⭐ — оплата звёздами в Telegram, ₽ — оплата криптой на сайте (xRocket посчитает сумму в USDT/TON по курсу).\n\n` +
+    `Обычная: ${STARS.m} ⭐ / ${STARS.y} ⭐ · ${RUB.m} ₽ / ${RUB.y.toLocaleString('ru-RU')} ₽\n\n⭐ — оплата звёздами в Telegram, ₽ — оплата криптой (USDT по курсу) в приложении и на сайте.\n\n` +
     `Кнопка скидки меняет обе цены. Точная цена командой:\n<code>/price ${esc(contactOf(u))} 250 1900</code> — в звёздах\n<code>/pricerub ${esc(contactOf(u))} 350 2900</code> — в рублях\n(год можно не писать — посчитается с той же скидкой).\n\nЧеловек увидит новую цену в окне оплаты и получит сообщение, если цена ниже обычной.`,
     markup: kb([
       [10, 20, 30].map((d) => ({ text: `−${d}%`, callback_data: `ps:${id}:${d}:${back}` })),
@@ -456,8 +456,8 @@ async function setPrice(u: AUser, m: number, y?: number, cur: 'stars' | 'rub' = 
   if (error) throw error;
   const f = (v: number) => v.toLocaleString('ru-RU');
   const notified = m < B.m ? await notify(u.id, `🎁 <b>Персональная цена P2Pro PRO для вас</b>\n\n<s>${f(B.m)}</s> <b>${f(m)}${sign}</b> в месяц · <s>${f(B.y)}</s> <b>${f(y)}${sign}</b> в год` +
-    (cur === 'rub' ? ' — при оплате криптовалютой на сайте.\n\nОткройте P2Pro в браузере: Профиль → «Подключить PRO».' : '.\n\nОткройте приложение: Профиль → «Подключить PRO».'),
-    cur === 'rub' ? kb([[{ text: '💎 Открыть сайт', url: APP }]]) : openBtn('⭐ Подключить PRO')) : false;
+    (cur === 'rub' ? ' — при оплате криптовалютой (USDT).\n\nОткройте приложение: Профиль → «Подключить PRO» → «Крипта».' : '.\n\nОткройте приложение: Профиль → «Подключить PRO».'),
+    openBtn(cur === 'rub' ? '💎 Подключить PRO' : '⭐ Подключить PRO')) : false;
   return { m, y, notified };
 }
 // Скидка кнопкой: сразу и в звёздах, и в рублях, одним сообщением человеку
@@ -470,7 +470,7 @@ async function setDiscount(u: AUser, d: number) {
   }
   const notified = await notify(u.id, `🎁 <b>Персональная скидка ${d}% на P2Pro PRO</b>\n\n` +
     `В Telegram (звёзды): <s>${STARS.m}</s> <b>${r.m} ⭐</b> в месяц · <s>${STARS.y}</s> <b>${r.y} ⭐</b> в год\n` +
-    `На сайте (криптовалюта): <s>${RUB.m} ₽</s> <b>${r.rm} ₽</b> · <s>${RUB.y.toLocaleString('ru-RU')} ₽</s> <b>${r.ry.toLocaleString('ru-RU')} ₽</b>\n\nОткройте приложение: Профиль → «Подключить PRO».`, openBtn('⭐ Подключить PRO'));
+    `Криптой (USDT): <s>${RUB.m} ₽</s> <b>${r.rm} ₽</b> · <s>${RUB.y.toLocaleString('ru-RU')} ₽</s> <b>${r.ry.toLocaleString('ru-RU')} ₽</b>\n\nОткройте приложение: Профиль → «Подключить PRO».`, openBtn('⭐ Подключить PRO'));
   return { ...r, notified };
 }
 
