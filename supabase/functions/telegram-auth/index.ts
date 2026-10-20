@@ -135,11 +135,14 @@ Deno.serve(async (req) => {
     const period = body.invoice === 'y' ? 'y' : 'm';
     const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
     if (ue || !ud?.user) return json({ error: 'auth' }, 401);
+    // Персональная цена (задаёт владелец в админке бота), иначе обычная
+    const { data: cp, error: ce } = await admin.from('custom_prices').select('m, y').eq('user_id', ud.user.id).maybeSingle();
+    const amount = !ce && cp ? cp[period] : STARS[period];
     const r = await fetch(`https://api.telegram.org/bot${TOKEN}/createInvoiceLink`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title: period === 'y' ? 'P2Pro PRO на год' : 'P2Pro PRO на месяц',
         description: 'История без ограничений, контрагенты и чёрный список, Excel и карточки без водяного знака',
-        payload: JSON.stringify({ u: ud.user.id, p: period }), currency: 'XTR', prices: [{ label: 'P2Pro PRO', amount: STARS[period] }],
+        payload: JSON.stringify({ u: ud.user.id, p: period }), currency: 'XTR', prices: [{ label: 'P2Pro PRO', amount }],
       }) }).then((x) => x.json()).catch(() => null);
     if (!r?.ok) { console.error('invoice', r); return json({ error: 'server' }, 500); }
     return json({ link: r.result });

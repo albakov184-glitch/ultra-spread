@@ -65,6 +65,12 @@ const isPro = (s: Sub) => !!s?.pro_until && Date.parse(s.pro_until) > Date.now()
 const isBanned = (u: AUser) => !!u.banned_until && Date.parse(u.banned_until) > Date.now();
 const FREE_METHODS = ['gift', 'promo'];
 const STARS: Record<string, number> = { m: 350, y: 2650 };   // цены PRO в звёздах. Такие же — в telegram-auth и в приложении
+// Цена для конкретного человека: персональная (11-prices.sql, задаётся в карточке) или обычная
+async function priceOf(userId: string): Promise<{ m: number; y: number; custom: boolean }> {
+  const { data, error } = await admin.from('custom_prices').select('m, y').eq('user_id', userId).maybeSingle();
+  return !error && data ? { m: data.m, y: data.y, custom: true } : { m: STARS.m, y: STARS.y, custom: false };
+}
+const pct = (v: number, base: number) => Math.round((1 - v / base) * 100);
 const openBtn = (text = '🚀 Открыть P2Pro') => kb([[{ text, web_app: { url: APP } }]]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Долгую работу (рассылку) доделываем после ответа Telegram, иначе он решит, что бот завис, и пришлёт запрос снова
@@ -94,7 +100,7 @@ const MENU = () => kb([
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
-  `Команды: /stats, /user @ник, /give @ник 30, /revoke @ник, /promo КОД ДНИ [ЛИМИТ] [СРОК_ДНЕЙ], /refund НОМЕР_ПЛАТЕЖА, /cancel`;
+  `Команды: /stats, /user @ник, /give @ник 30, /revoke @ник, /promo КОД ДНИ [ЛИМИТ] [СРОК_ДНЕЙ], /price @ник МЕСЯЦ [ГОД], /refund НОМЕР_ПЛАТЕЖА, /cancel`;
 
 // Все аккаунты (Supabase отдаёт страницами по 1000), новые сверху
 async function allUsers(): Promise<AUser[]> {
@@ -204,19 +210,21 @@ async function listView(page: number) {
 }
 
 async function cardView(u: AUser, back = 0) {   // back — страница списка, куда вернуться
-  const s = await subOf(u.id), tgId = await tgIdOf(u.id), nick = await tgNick(u.id);
+  const s = await subOf(u.id), tgId = await tgIdOf(u.id), nick = await tgNick(u.id), price = await priceOf(u.id);
   if (nick) u = { ...u, user_metadata: { ...u.user_metadata, tg_username: nick } };   // проверенный ник вместо того, что в профиле
   const { count: trades } = await admin.from('trades').select('id', { count: 'exact', head: true }).eq('user_id', u.id).eq('deleted', false);
   const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.pay_method === 'stars' ? ' (звёзды)' : s?.auto_renew ? ' · автопродление' : '';
   const text = `<b>👤 Пользователь</b>\n\n${who(u)}\n` + (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
     `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}\n\n` +
     (isPro(s) ? `⭐ PRO до <b>${date(s!.pro_until)}</b>${how}` : 'Тариф: Free') +
+    `\n💲 Цена: ${price.m} ⭐ / ${price.y} ⭐ в год${price.custom ? ` <b>(персональная, −${pct(price.m, STARS.m)}%)</b>` : ' (обычная)'}` +
     (isBanned(u) ? '\n\n🚫 <b>Аккаунт заблокирован</b>' : '');
   const id = u.id;
   const rows: Btn[][] = [
     [{ text: '🎁 +7 дн', callback_data: `g:${id}:7:${back}` }, { text: '🎁 +30 дн', callback_data: `g:${id}:30:${back}` }],
     [{ text: '🎁 +90 дн', callback_data: `g:${id}:90:${back}` }, { text: '🎁 +365 дн', callback_data: `g:${id}:365:${back}` }],
   ];
+  rows.push([{ text: '💲 Изменить цену', callback_data: `pr:${id}:${back}` }]);
   if (isPro(s)) rows.push([{ text: '⛔ Забрать PRO', callback_data: `r:${id}:${back}` }]);
   rows.push([isBanned(u) ? { text: '✅ Разблокировать', callback_data: `ub:${id}:${back}` } : { text: '🚫 Заблокировать', callback_data: `b:${id}:${back}` }]);
   rows.push([{ text: '‹ К списку', callback_data: `l:${back}` }, { text: '‹ Меню', callback_data: 'm' }]);
@@ -361,7 +369,8 @@ async function preCheckout(q: { id: string; currency: string; total_amount: numb
   try {
     const p = JSON.parse(q.invoice_payload);
     const u = p?.u ? await userById(String(p.u)) : null;
-    if (q.currency === 'XTR' && STARS[p?.p] === q.total_amount && u) { ok = !isBanned(u); if (!ok) why = 'Аккаунт заблокирован — напишите в поддержку'; }
+    const price = u ? await priceOf(u.id) : null;
+    if (q.currency === 'XTR' && u && (p?.p === 'm' || p?.p === 'y') && price![p.p as 'm' | 'y'] === q.total_amount) { ok = !isBanned(u); if (!ok) why = 'Аккаунт заблокирован — напишите в поддержку'; }
   } catch (_) { /* битый payload */ }
   await tg('answerPreCheckoutQuery', ok ? { pre_checkout_query_id: q.id, ok: true } : { pre_checkout_query_id: q.id, ok: false, error_message: why });
 }
@@ -399,6 +408,26 @@ async function refund(charge: string) {
   await tg('sendMessage', { chat_id: row.tg_id, parse_mode: 'HTML', reply_markup: kb([[{ text: '💬 Поддержка', url: SUPPORT }]]),
     text: `↩️ <b>Возврат ${(data as { stars: number }).stars} ⭐</b>\n\nЗвёзды вернулись на ваш баланс Telegram, оплаченные дни PRO отменены.` });
   return `↩️ Возврат ${(data as { stars: number }).stars} ⭐ сделан, дни PRO сняты.`;
+}
+
+/* ---------- Персональная цена ---------- */
+async function priceView(u: AUser, back: number) {
+  const p = await priceOf(u.id), id = u.id;
+  return { text: `<b>💲 Цена PRO для</b> ${who(u)}\n\nСейчас: <b>${p.m} ⭐</b> в месяц · <b>${p.y} ⭐</b> в год${p.custom ? ' (персональная)' : ' (обычная)'}\n` +
+    `Обычная: ${STARS.m} ⭐ / ${STARS.y} ⭐\n\nВыберите скидку или задайте точную цену командой:\n<code>/price ${esc(contactOf(u))} 250 1900</code> — месяц и год в звёздах (год можно не писать).\n\nЧеловек увидит новую цену в окне оплаты и получит сообщение, если цена ниже обычной.`,
+    markup: kb([
+      [10, 20, 30].map((d) => ({ text: `−${d}%`, callback_data: `ps:${id}:${d}:${back}` })),
+      [40, 50, 70].map((d) => ({ text: `−${d}%`, callback_data: `ps:${id}:${d}:${back}` })),
+      ...(p.custom ? [[{ text: '↩️ Вернуть обычную цену', callback_data: `px:${id}:${back}` }]] : []),
+      [{ text: '‹ К карточке', callback_data: `u:${id}:${back}` }]]) };
+}
+async function setPrice(u: AUser, m: number, y?: number) {
+  y = y ?? Math.max(1, Math.round(m * STARS.y / STARS.m));   // год — с той же скидкой, что и месяц
+  if (!Number.isInteger(m) || m < 1 || m > 100000 || !Number.isInteger(y) || y < 1 || y > 1000000) throw new Error('Цена — целое число звёзд от 1');
+  const { error } = await admin.from('custom_prices').upsert({ user_id: u.id, m, y, updated_at: new Date().toISOString() });
+  if (error) throw error;
+  const notified = m < STARS.m ? await notify(u.id, `🎁 <b>Персональная цена P2Pro PRO для вас</b>\n\n<s>${STARS.m}</s> <b>${m} ⭐</b> в месяц · <s>${STARS.y}</s> <b>${y} ⭐</b> в год.\n\nОткройте приложение: Профиль → «Подключить PRO».`, openBtn('⭐ Подключить PRO')) : false;
+  return { m, y, notified };
 }
 
 /* ---------- Ответы ---------- */
@@ -456,11 +485,14 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
     else if (k === 'pd') await show(chatId, msgId, `Удалить промокод <b>${esc(a)}</b>? Уже выданные дни PRO у пользователей останутся.`, kb([[{ text: '🗑 Да, удалить', callback_data: `pdd:${a}` }, { text: 'Отмена', callback_data: `pc:${a}` }]]));
     else if (k === 'pdd') { await admin.from('promo_codes').delete().eq('code', a); toastText = 'Удалено'; await view(await promoList()); }
     // пользователь
-    else if (['u', 'g', 'r', 'rr', 'b', 'bb', 'ub'].includes(k)) {
+    else if (['u', 'g', 'r', 'rr', 'b', 'bb', 'ub', 'pr', 'ps', 'px'].includes(k)) {
       const u = await userById(a);
-      const page = Number(k === 'g' ? c : b) || 0;
+      const page = Number(k === 'g' || k === 'ps' ? c : b) || 0;
       if (!u) toastText = 'Пользователь не найден';
       else if (k === 'u') await view(await cardView(u, page));
+      else if (k === 'pr') await view(await priceView(u, page));
+      else if (k === 'ps') { const r = await setPrice(u, Math.max(1, Math.round(STARS.m * (1 - Number(b) / 100))), Math.max(1, Math.round(STARS.y * (1 - Number(b) / 100)))); toastText = `Цена: ${r.m} ⭐ / ${r.y} ⭐`; const v = await cardView(u, page); await show(chatId, msgId, v.text + (r.notified ? '\n\n📨 Пользователю отправлено сообщение о новой цене.' : ''), v.markup); }
+      else if (k === 'px') { await admin.from('custom_prices').delete().eq('user_id', u.id); toastText = 'Обычная цена'; await view(await cardView(u, page)); }
       else if (k === 'r') await show(chatId, msgId, `Забрать PRO у ${who(u)}?\nПользователю придёт сообщение с кнопкой поддержки.`,
         kb([[{ text: '⛔ Да, забрать', callback_data: `rr:${u.id}:${page}` }, { text: 'Отмена', callback_data: `u:${u.id}:${page}` }]]));
       else if (k === 'rr') { const r = await revokePro(u); toastText = r.was ? 'PRO отключён' : 'PRO уже не было'; const v = await cardView(u, page); await show(chatId, msgId, v.text + (r.was ? '\n' + noteOf(u, r.notified) : ''), v.markup); }
@@ -485,6 +517,7 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
 // Сообщение от владельца: черновик рассылки/поста, команда или поиск. false — пусть отвечает обычный бот
 async function adminMessage(msg: Msg): Promise<boolean> {
   const chatId = msg.chat.id, text = (msg.text ?? '').trim();
+  const view0 = (v: { text: string; markup: unknown }) => show(chatId, null, v.text, v.markup);
   if (text.startsWith('/start')) return false;
   try {
     const aw = await stGet<{ kind: string; aud?: Aud; at: number } | null>('await', null);
@@ -504,13 +537,19 @@ async function adminMessage(msg: Msg): Promise<boolean> {
         { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' },
         { command: 'user', description: 'Карточка: /user @ник' }, { command: 'give', description: 'Выдать PRO: /give @ник 30' },
         { command: 'revoke', description: 'Забрать PRO: /revoke @ник' }, { command: 'promo', description: 'Промокод: /promo КОД ДНИ' },
-        { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
+        { command: 'price', description: 'Цена: /price @ник 250 1900' }, { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
       await stSet('await', null);
       await show(chatId, null, ADMIN_HELP, MENU());
     } else if (c === '/cancel') { await stSet('await', null); await stTake('draft'); await show(chatId, null, 'Отменено.', MENU()); }
     else if (c === '/stats') await show(chatId, null, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (c === '/promo') await show(chatId, null, await promoCreate(args), kb([[{ text: '🎟 Промокоды', callback_data: 'pl' }]]));
     else if (c === '/refund') await show(chatId, null, await refund(a), null);
+    else if (c === '/price') {
+      const u = a ? await findUser(a) : null, m = Number(b), y = args[2] ? Number(args[2]) : undefined;
+      if (!u) await show(chatId, null, a ? NOT_FOUND : 'Напишите так: <code>/price @ник 250 1900</code> — цена за месяц и за год в звёздах', null);
+      else if (!b) await view0(await priceView(u, 0));
+      else { const r = await setPrice(u, m, y); await show(chatId, null, `✅ ${who(u)}\nПерсональная цена: <b>${r.m} ⭐</b> / <b>${r.y} ⭐</b> в год.${r.notified ? '\n📨 Пользователю отправлено сообщение.' : ''}`, kb([[{ text: '👤 Карточка', callback_data: `u:${u.id}` }]])); }
+    }
     else if (c === '/user' || !c.startsWith('/')) {
       const q = c === '/user' ? a : text;
       const u = q ? await findUser(q) : null;

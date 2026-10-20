@@ -1837,7 +1837,7 @@ function plansHtml() {
   const pro = S.settings.pro;
   return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор и круги</li><li>История — до ${FREE_LIMIT} сделок в месяц</li><li>Аналитика, подбор курса, связки</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
-    <div class="plan pro"><h4>PRO</h4><span class="price">${inTelegram() ? '350 ⭐' : '490 ₽'}<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
+    <div class="plan pro"><h4>PRO</h4><span class="price">${inTelegram() ? nf0.format(myStars.m) + ' ⭐' : '490 ₽'}<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
     ${pro ? '<span class="muted small">Текущий тариф</span>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
 }
 // Значки способов оплаты: узнаваемые логотипы в цвете
@@ -1851,9 +1851,21 @@ function payIcon(k, z = 18) {
 // Окно PRO. В Telegram — оплата звёздами (настоящая), на сайте пока демо: деньги не списываются
 let payMethod = 'card', payPeriod = 'm';
 const STARS = { m: 350, y: 2650 };   // цены в звёздах. Такие же — в функциях telegram-auth и telegram-bot
-const PAY_SOON = true;   // пока Platega не подключена: на сайте вместо демо-оплаты — переход в Telegram
+const PAY_SOON = true;
+// Персональная цена в звёздах (задаёт владелец в админке бота). Подгружается при открытии окна оплаты
+let myStars = { ...STARS };
+async function loadMyStars() {
+  if (!sb || !me()) return;
+  try { const { data } = await sb.from('custom_prices').select('m, y').maybeSingle(); myStars = data ? { m: data.m, y: data.y } : { ...STARS }; } catch (e) {}
+}
+const starsPlans = () => {
+  // Персональная скидка: новая цена крупно, обычная — зачёркнутой строкой под ней
+  const was = k => myStars[k] < STARS[k] ? `<span><s>${nf0.format(STARS[k])} ⭐</s></span>` : '';
+  return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myStars.m)} ⭐</b>${was('m') || '<span>в месяц</span>'}</button>
+      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−${Math.max(0, Math.round((1 - myStars.y / (myStars.m * 12)) * 100))}%</em><span>Год</span><b>${nf0.format(myStars.y)} ⭐</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myStars.y / 12))} ⭐ в месяц</span>`}</button>`;
+};   // пока Platega не подключена: на сайте вместо демо-оплаты — переход в Telegram
 const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
-const payLabel = () => inTelegram() ? `Оплатить ${nf0.format(STARS[payPeriod])} ⭐` : `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
+const payLabel = () => inTelegram() ? `Оплатить ${nf0.format(myStars[payPeriod])} ⭐` : `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
 function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
   payPeriod = why === 'renew' ? 'y' : 'm';
@@ -1862,15 +1874,15 @@ function openPlans(why) {
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
     <ul class="pw-list">${F.map(([i, t, c], k) => `<li class="${c || ''}" style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>
-    ${inTelegram() ? `<div class="pw-plans">
-      <button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>350 ⭐</b><span>в месяц</span></button>
-      <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−37%</em><span>Год</span><b>2 650 ⭐</b><span>≈ 221 ⭐ в месяц</span></button></div>
+    ${inTelegram() ? `<div class="pw-plans" id="starPlans">${starsPlans()}</div>
     <span class="muted small" style="display:flex;align-items:center;gap:6px">${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить</span>` : `<div class="pw-plans">
       <button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>490 ₽</b><span>в месяц</span></button>
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y"><em>−32%</em><span>Год</span><b>3 990 ₽</b><span>≈ 333 ₽ в месяц</span></button></div>
     <span class="label">Способ оплаты</span>
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>`}
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
+  // Персональная цена могла поменяться — перечитываем и перерисовываем цены
+  if (inTelegram()) loadMyStars().then(() => { if ($('starPlans')) { $('starPlans').innerHTML = starsPlans(); $('payBtn').textContent = payLabel(); } });
 }
 const showCheckout = () => openPlans();
 
