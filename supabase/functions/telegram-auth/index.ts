@@ -117,11 +117,53 @@ async function blockedTg(id: number) {
   return !!until && Date.parse(until) > Date.now();
 }
 
+// Вход: находим или создаём аккаунт этого человека Telegram и выдаём приложению сессию Supabase
+async function signIn(tg: TgUser) {
+  try {
+    const user = await userFor(tg);
+    // Ник для поиска в админке бота: таблицу пишет только сервер, в отличие от данных профиля
+    await admin.from('tg_users').update({ username: tg.username ?? null }).eq('tg_id', tg.id).then(() => {}, () => {});
+    await savePhoto(tg, user).catch((e) => console.error('telegram-auth photo', e));
+    // Сессию выдаём через одноразовую ссылку входа: создаём её ключом сервера и сразу же подтверждаем. Письмо не отправляется
+    const { data: link, error: le } = await admin.auth.admin.generateLink({ type: 'magiclink', email: user.email! });
+    if (le) throw le;
+    const pub = createClient(SB_URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data, error } = await pub.auth.verifyOtp({ token_hash: link.properties.hashed_token, type: 'magiclink' });
+    if (error || !data.session) throw error ?? new Error('no session');
+    return json({ access_token: data.session.access_token, refresh_token: data.session.refresh_token });
+  } catch (e) {
+    console.error('telegram-auth', e);
+    return json({ error: 'server' }, 500);
+  }
+}
+
+// Вход на сайте через бота (12-tglogin.sql). Сайт придумывает случайный номер запроса и открывает бота
+// по ссылке t.me/P2ProAppBot?start=login_НОМЕР. Человек жмёт в боте «Войти», а сайт всё это время спрашивает здесь:
+// подтвердили ли. Номер живёт 5 минут и срабатывает один раз
+const LOGIN_TTL = 5 * 60e3;
+async function webLogin(id: string) {
+  if (!/^[a-f0-9]{32}$/.test(id)) return json({ error: 'bad' }, 400);
+  const { data: row, error } = await admin.from('login_requests').select('*').eq('id', id).maybeSingle();
+  if (error) { console.error('login_requests', error); return json({ error: 'server' }, 500); }
+  if (!row || row.status === 'new') return json({ status: 'wait' });   // бот ещё не открыли или не нажали «Войти»
+  if (row.status === 'no') return json({ status: 'no' });
+  if (row.status !== 'ok' || Date.now() - Date.parse(row.created_at) > LOGIN_TTL) return json({ status: 'expired' });
+  const tg = row.tg as TgUser;
+  if (!tg?.id) return json({ status: 'expired' });
+  if (await blockedTg(tg.id).catch(() => false)) return json({ error: 'blocked' }, 403);
+  if (await subscribed(tg.id) === false) return json({ error: 'sub' }, 403);   // запрос остаётся: после подписки сайт спросит снова
+  // Забираем подтверждение одним запросом: второй раз по тому же номеру войти нельзя
+  const { data: claimed } = await admin.from('login_requests').update({ status: 'used' }).eq('id', id).eq('status', 'ok').select('id');
+  if (!claimed?.length) return json({ status: 'expired' });
+  return signIn(tg);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
   if (!TOKEN || !SB_URL || !SERVICE) return json({ error: 'server' }, 500);
   const body = await req.json().catch(() => null);
+  if (typeof body?.web_login === 'string') return webLogin(body.web_login);
   const initData = typeof body?.initData === 'string' ? body.initData.slice(0, 8192) : '';
   const tg = initData ? await checkInit(initData) : null;
   if (tg === 'old') return json({ error: 'old' }, 401);
@@ -147,20 +189,5 @@ Deno.serve(async (req) => {
     if (!r?.ok) { console.error('invoice', r); return json({ error: 'server' }, 500); }
     return json({ link: r.result });
   }
-  try {
-    const user = await userFor(tg);
-    // Ник для поиска в админке бота: таблицу пишет только сервер, в отличие от данных профиля
-    await admin.from('tg_users').update({ username: tg.username ?? null }).eq('tg_id', tg.id).then(() => {}, () => {});
-    await savePhoto(tg, user).catch((e) => console.error('telegram-auth photo', e));
-    // Сессию выдаём через одноразовую ссылку входа: создаём её ключом сервера и сразу же подтверждаем. Письмо не отправляется
-    const { data: link, error: le } = await admin.auth.admin.generateLink({ type: 'magiclink', email: user.email! });
-    if (le) throw le;
-    const pub = createClient(SB_URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data, error } = await pub.auth.verifyOtp({ token_hash: link.properties.hashed_token, type: 'magiclink' });
-    if (error || !data.session) throw error ?? new Error('no session');
-    return json({ access_token: data.session.access_token, refresh_token: data.session.refresh_token });
-  } catch (e) {
-    console.error('telegram-auth', e);
-    return json({ error: 'server' }, 500);
-  }
+  return signIn(tg);
 });

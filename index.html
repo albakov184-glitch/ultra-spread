@@ -464,6 +464,9 @@ a.au-alt { text-decoration: none; }
 .sg-card .logo { width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 6px; font-size: 24px; }
 .sg-card h2 { font-family: var(--f-display); font-size: 21px; letter-spacing: -.02em; margin: 0; }
 .sg-card p { color: #8691A2; margin: 0 0 8px; }
+.au-wait { display: flex; align-items: center; justify-content: center; gap: 10px; color: #8691A2; font-size: 14px; padding: 6px 0; }
+.au-wait .au-spin { border-color: rgba(242,181,75,.25); border-top-color: #F2B54B; }
+a.au-btn { text-decoration: none; }
 .au-tg .au-spin { border-color: rgba(255,255,255,.3); border-top-color: #fff; }
 .au-foot { text-align: center; color: #8691A2; font-size: 13.5px; margin-top: 2px; }
 .au-err { color: #FF6B6B; font-size: 12.5px; margin: -4px 2px 0; min-height: 0; }
@@ -2557,8 +2560,8 @@ function runSplash(done) {
   setTimeout(() => { el.classList.add('out'); done(); setTimeout(() => el.remove(), 500); }, T);
 }
 
-// В мини-аппе Telegram главный способ входа — одной кнопкой, без почты и пароля
-const tgTop = () => inTelegram() ? `<button type="button" class="au-btn au-tg" data-au="tg">${AI.tg} Войти через Telegram</button><div class="au-or">или по почте</div>` : '';
+// Главный способ входа — через Telegram: в мини-аппе одной кнопкой, на сайте — подтверждением в боте. Почта — для старых аккаунтов
+const tgTop = () => `<button type="button" class="au-btn au-tg" data-au="tg">${AI.tg} Войти через Telegram</button><div class="au-or">или по почте</div>`;
 let auMode = 'in', auRemember = lsGet(REM_KEY) !== false, auAgree = false, auMail = '';
 function authHtml(m) {
   const pass = (ac, ph) => `<label class="au-f" id="fPass">${AI.lock}<input id="auPass" type="password" autocomplete="${ac}" placeholder="${ph}"><button type="button" class="au-eye" data-au="eye" aria-label="Показать пароль">${AI.eye}</button></label>`;
@@ -2567,7 +2570,6 @@ function authHtml(m) {
     ${tgTop()}${mail}${pass('current-password', 'Пароль')}<div class="au-err" id="auErr" role="alert"></div>
     <div class="au-row"><button type="button" class="au-sw" role="switch" aria-checked="${auRemember}" data-au="rem"><i></i>Запомнить меня</button><button type="button" class="au-link" data-au="forgot">Забыли пароль?</button></div>
     <button class="au-btn" id="auGo" type="submit">Войти ${AI.arrow}</button>
-    ${inTelegram() ? '' : `<div class="au-or">или</div><a class="au-alt" href="https://t.me/P2ProAppBot" target="_blank" rel="noopener">${AI.tg} Открыть в Telegram</a>`}
     <div class="au-foot">Нет аккаунта? <button type="button" class="au-link" data-au="up">Создать</button></div>`;
   if (m === 'forgot') return `<div class="au-ic">${AI.key}</div><h2>Сброс пароля</h2><p class="au-sub">Пришлём на почту ссылку, по ней вы зададите новый пароль</p>
     ${mail}<div class="au-err" id="auErr" role="alert"></div>
@@ -2641,6 +2643,7 @@ function authClick(e) {
   if (a === 'agree') { auAgree = !auAgree; b.setAttribute('aria-checked', auAgree); return $('auErr').textContent = ''; }
   if (a === 'resend') return resendMail(b);
   if (a === 'tg') return tgLogin(b);
+  if (a === 'wcancel') { webLoginRun++; $('auIn').innerHTML = authHtml(auMode); return; }
 }
 async function resendMail(b) {
   auMail = $('auMail')?.value.trim().toLowerCase() || auMail;
@@ -2734,9 +2737,50 @@ async function tgAuthCall(body) {
 }
 const TG_CHANNEL = 'https://t.me/P2ProChannel';
 const TG_AUTH_ERR = { old: 'Данные входа устарели — закройте P2Pro и откройте снова из бота', bad: 'Telegram не подтвердил вход — откройте P2Pro заново из бота @P2ProAppBot' };
+// Вход на сайте: открываем бота со случайным номером запроса, человек жмёт там «Войти»,
+// а мы раз в 2 секунды спрашиваем у сервера, подтвердил ли он. Номер живёт 5 минут и срабатывает один раз
+let webLoginRun = 0;
+function webLogin() {
+  if (!sb || auBusy) return;
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+  const url = 'https://t.me/P2ProAppBot?start=login_' + id, run = ++webLoginRun;
+  window.open(url, '_blank');   // сразу, пока браузер считает это нажатием — иначе заблокирует окно
+  $('auIn').innerHTML = `<div class="au-ic">${AI.tg}</div><h2>Подтвердите в Telegram</h2>
+    <p class="au-sub">Откроется бот @P2ProAppBot. Нажмите там «✅ Войти» и вернитесь сюда — вход произойдёт сам.</p>
+    <div class="au-wait" id="auWait"><span class="au-spin"></span>Ждём подтверждение…</div><div class="au-err" id="auErr" role="alert"></div>
+    <a class="au-btn au-tg" href="${url}" target="_blank" rel="noopener">${AI.tg} Открыть Telegram</a>
+    <button type="button" class="au-alt" data-au="wcancel">Отмена</button>`;
+  const back = msg => { if (run !== webLoginRun) return; webLoginRun++; $('auIn').innerHTML = authHtml(auMode); if (msg) auErr(msg); };
+  (async () => {
+    let wake = () => {};
+    const onVis = () => document.visibilityState === 'visible' && wake();   // вернулись из Telegram — проверяем сразу
+    document.addEventListener('visibilitychange', onVis);
+    try {
+      for (const until = Date.now() + 5 * 60e3; Date.now() < until;) {
+        await new Promise(r => { wake = r; setTimeout(r, 2000); });
+        if (run !== webLoginRun) return;
+        let j = {};
+        try { j = await (await tgAuthCall({ web_login: id })).json().catch(() => ({})); } catch (e) { continue; }   // нет сети — пробуем дальше
+        if (run !== webLoginRun) return;
+        if (j.access_token) {
+          const { data, error } = await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+          if (error || !data.user) return back(authErrText(error));
+          webLoginRun++; auRemember = true;
+          return loginDone(data.user, $('auWait'));
+        }
+        if (j.error === 'blocked') { webLoginRun++; return blockedScreen(); }
+        if (j.error === 'sub') { $('auErr').innerHTML = 'Чтобы войти, подпишитесь на канал <a href="https://t.me/P2ProChannel" target="_blank" rel="noopener" style="color:#F2B54B">@P2ProChannel</a> — вход продолжится сам'; continue; }
+        if (j.status === 'no') return back('Вход отменён в Telegram');
+        if (j.status === 'expired' || j.error) return back('Ссылка для входа устарела — нажмите «Войти через Telegram» ещё раз');
+      }
+      back('Время вышло — нажмите «Войти через Telegram» ещё раз');
+    } finally { document.removeEventListener('visibilitychange', onVis); }
+  })();
+}
 async function tgLogin(btn) {
   const init = window.Telegram?.WebApp?.initData || TG_INIT;
-  if (!init || btn.disabled || auSending || auBusy) return;
+  if (!init) return webLogin();
+  if (btn.disabled || auSending || auBusy) return;
   if (!sb) return auErr('Нет связи с сервером. Проверьте интернет и обновите страницу');
   auSending = true; btn.disabled = true;
   const label = btn.innerHTML;

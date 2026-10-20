@@ -430,6 +430,28 @@ async function setPrice(u: AUser, m: number, y?: number) {
   return { m, y, notified };
 }
 
+/* ---------- Вход на сайт через бота (12-tglogin.sql) ---------- */
+// Сайт открывает бота по ссылке ?start=login_НОМЕР. Спрашиваем «Войти или отмена»; сайт сам узнает ответ у telegram-auth
+const LOGIN_TTL = 5 * 60e3;
+async function loginPrompt(msg: Msg) {
+  const id = (msg.text ?? '').trim().slice('/start login_'.length);
+  if (!/^[a-f0-9]{32}$/.test(id)) return send(msg.chat.id, 'Ссылка для входа неверная. Нажмите «Войти через Telegram» на сайте ещё раз.', false);
+  await admin.from('login_requests').upsert({ id }, { onConflict: 'id', ignoreDuplicates: true });
+  await tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML',
+    text: `🔐 <b>Вход на сайт P2Pro</b>\n\nНажмите «Войти», если вы сейчас входите на сайт P2Pro в браузере.\n\n⚠️ Если вы ничего не открывали или эту ссылку вам кто-то прислал — нажмите «Отмена»: иначе этот человек войдёт в ваш аккаунт.`,
+    reply_markup: kb([[{ text: '✅ Войти', callback_data: `lg:${id}` }, { text: '✖️ Отмена', callback_data: `ln:${id}` }]]) });
+}
+async function loginAnswer(cq: { id: string; data?: string; from: { id: number; first_name?: string; last_name?: string; username?: string }; message?: { chat: { id: number }; message_id: number } }) {
+  const [k, id = ''] = String(cq.data).split(':'), yes = k === 'lg';
+  const patch = yes ? { status: 'ok', tg: { id: cq.from.id, first_name: cq.from.first_name, last_name: cq.from.last_name, username: cq.from.username } } : { status: 'no' };
+  const { data } = await admin.from('login_requests').update(patch).eq('id', id).eq('status', 'new').gt('created_at', new Date(Date.now() - LOGIN_TTL).toISOString()).select('id');
+  const done = !!data?.length;
+  const text = !done ? 'Эта ссылка для входа уже использована или устарела. Нажмите «Войти через Telegram» на сайте ещё раз.'
+    : yes ? '✅ <b>Вход подтверждён.</b>\n\nВернитесь в браузер, где открыт сайт P2Pro, — вы уже вошли.' : '✖️ Вход отменён.';
+  if (cq.message) await tg('editMessageText', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, text, parse_mode: 'HTML' });
+  await tg('answerCallbackQuery', { callback_query_id: cq.id, text: done ? (yes ? 'Вход подтверждён' : 'Отменено') : 'Ссылка устарела' });
+}
+
 /* ---------- Ответы ---------- */
 // Новое сообщение или замена текущего (когда нажали кнопку)
 async function show(chatId: number, msgId: number | null, text: string, markup: unknown) {
@@ -591,6 +613,8 @@ async function tick() {
     }
   }
   await stSet('seen', { at: nowIso });
+  // Старые запросы входа на сайт больше не нужны
+  await admin.from('login_requests').delete().lt('created_at', new Date(now - DAY).toISOString()).then(() => {}, () => {});
 
   const hourMsk = new Date(now + 3 * 3600e3).getUTCHours();
   // 2. Раз в день после 12:00 МСК — напоминания «PRO закончится через 3 дня»
@@ -625,6 +649,7 @@ Deno.serve(async (req) => {
   if (update?.message?.successful_payment) { await paid(update.message).catch((e) => console.error('paid', e)); return new Response('ok'); }
   // Нажатие кнопки в админ-панели
   const cq = update?.callback_query;
+  if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
   if (cq) {
     if (isAdmin(cq.from?.id)) await adminCallback(cq).catch(() => {});
     else await tg('answerCallbackQuery', { callback_query_id: cq.id });
@@ -635,6 +660,7 @@ Deno.serve(async (req) => {
   if (msg?.chat?.type === 'private' && TOKEN) {
     const text: string = msg.text ?? '';
     try {
+      if (text.startsWith('/start login_') && SERVICE) { await loginPrompt(msg); return new Response('ok'); }
       if (isAdmin(msg.from?.id) && await adminMessage(msg)) return new Response('ok');
       if (text.startsWith('/start')) await send(msg.chat.id, WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))));
       else await send(msg.chat.id, HELP);
