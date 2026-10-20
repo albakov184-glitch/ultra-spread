@@ -1851,6 +1851,7 @@ function payIcon(k, z = 18) {
 // Окно PRO. В Telegram — оплата звёздами (настоящая), на сайте пока демо: деньги не списываются
 let payMethod = 'card', payPeriod = 'm';
 const STARS = { m: 350, y: 2650 };   // цены в звёздах. Такие же — в функциях telegram-auth и telegram-bot
+const PAY_SOON = true;   // пока Platega не подключена: на сайте вместо демо-оплаты — переход в Telegram
 const PW_WHY = { excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
 const payLabel = () => inTelegram() ? `Оплатить ${nf0.format(STARS[payPeriod])} ⭐` : `Оплатить ${payPeriod === 'y' ? '3 990' : '490'} ₽`;
 function openPlans(why) {
@@ -1909,6 +1910,11 @@ async function starsPay() {
 // Демо-обработка платежа: кольцо заполняется, шаги отмечаются галочками, в конце — PRO и конфетти
 async function payProcess() {
   if (inTelegram()) return starsPay();
+  // На сайте оплата картой и СБП ещё подключается (Platega). Демо-покупку не показываем: она давала PRO бесплатно
+  if (PAY_SOON) return sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>Оплата картой — скоро</h3>
+    <p>Оплату картой и СБП на сайте подключаем прямо сейчас. Купить PRO уже можно в Telegram — звёздами: 350 ⭐ в месяц или 2 650 ⭐ в год.</p>
+    <p class="muted small">В Telegram войдите в тот же аккаунт (по почте), чтобы PRO включился именно в нём.</p></div>
+    <div class="row2"><button class="btn" data-close>Закрыть</button><a class="btn primary" href="https://t.me/P2ProAppBot" target="_blank" rel="noopener">Открыть в Telegram</a></div>`);
   const M = { card: ['Банковская карта', 'Связываемся с банком'], sbp: ['СБП', 'Ждём подтверждение СБП'],
     stars: ['Telegram Stars', 'Списываем Telegram Stars'], usdt: ['USDT', 'Проверяем перевод USDT'] }[payMethod];
   const steps = [M[1], 'Проверяем платёж', 'Подключаем PRO'], price = payPeriod === 'y' ? '3 990 ₽ · год' : '490 ₽ · месяц';
