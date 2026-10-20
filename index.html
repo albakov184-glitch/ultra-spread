@@ -2661,7 +2661,19 @@ async function submitAuthInner(btn) {
 // Вход через Telegram: функция telegram-auth проверяет подпись Telegram и выдаёт сессию.
 // Аккаунт привязан к Telegram, почта у него служебная (…@telegram.invalid), пароля нет
 // Адрес функции входа в Supabase (код — supabase/functions/telegram-auth)
-const TG_AUTH_FN = 'telegram-auth-';   // так адрес получился при пересоздании в Supabase
+// Адрес функции входа в Supabase. При пересоздании функции Supabase может выдать другой адрес — пробуем по очереди
+const TG_AUTH_FNS = ['telegram-auth-', 'telegram-auth'];
+async function tgAuthCall(body) {
+  let err;
+  for (const fn of TG_AUTH_FNS) {
+    try {
+      const r = await fetch(SB_URL + '/functions/v1/' + fn, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify(body) });
+      if (r.status === 404 && r.headers.get('sb-error-code') === 'NOT_FOUND') { err = new Error('not found'); continue; }
+      return r;
+    } catch (e) { err = e; }
+  }
+  throw err;
+}
 const TG_CHANNEL = 'https://t.me/P2ProChannel';
 const TG_AUTH_ERR = { old: 'Данные входа устарели — закройте P2Pro и откройте снова из бота', bad: 'Telegram не подтвердил вход — откройте P2Pro заново из бота @P2ProAppBot' };
 async function tgLogin(btn) {
@@ -2672,7 +2684,7 @@ async function tgLogin(btn) {
   const label = btn.innerHTML;
   btn.innerHTML = '<span class="au-spin"></span>Входим через Telegram…';
   try {
-    const r = await fetch(SB_URL + '/functions/v1/' + TG_AUTH_FN, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ initData: init }) });
+    const r = await tgAuthCall({ initData: init });
     const j = await r.json().catch(() => ({}));
     if (j.error === 'blocked') return blockedScreen();
     if (j.error === 'sub') return subGate(() => $('auth')?.querySelector('[data-au=tg]')?.click());
@@ -2964,7 +2976,7 @@ if (window.Telegram?.WebApp) tgInit();
 async function tgSubscribed() {
   let res = '';
   try {
-    const r = await fetch(SB_URL + '/functions/v1/' + TG_AUTH_FN, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ initData: window.Telegram?.WebApp?.initData || TG_INIT, check: true }) });
+    const r = await tgAuthCall({ initData: window.Telegram?.WebApp?.initData || TG_INIT, check: true });
     res = (await r.json().catch(() => ({}))).error || '';
   } catch (e) {}
   if (res === 'blocked') blockedScreen();
