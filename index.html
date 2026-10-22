@@ -271,8 +271,6 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .ld-phones { position: relative; height: 640px; }
 .ld-ph { position: absolute; width: 300px; border-radius: 44px; border: 10px solid #1c2129; box-shadow: 0 0 0 1px #3a4250, 0 40px 100px rgba(0,0,0,.6); overflow: hidden; background: #0C0F14; }
 .ld-ph img { display: block; width: 100%; height: auto; }
-.ld-ph.a { left: 10px; top: 40px; transform: rotate(-6deg); }
-.ld-ph.b { right: 0; top: 0; transform: rotate(5deg); }
 .ld-sec { padding: 64px 0; }
 .ld-st { font-family: var(--f-display); font-weight: 700; font-size: 40px; letter-spacing: -1px; text-align: center; }
 .ld-ss { text-align: center; color: #9AA4B4; font-size: 18px; margin-top: 12px; line-height: 1.45; }
@@ -303,7 +301,6 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
   .ld-lead { font-size: 17px; }
   .ld-phones { height: 470px; }
   .ld-ph { width: 210px; border-radius: 32px; border-width: 7px; }
-  .ld-ph.a { left: 4px; } .ld-ph.b { right: 8px; }
   .ld-ln > button:not(.ld-in) { display: none; }
   .ld-grid, .ld-steps, .ld-price { grid-template-columns: 1fr; }
   .ld-st { font-size: 28px; }
@@ -311,6 +308,98 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
   .ld-b1, .ld-b2 { width: 100%; }
   .ld-trust { gap: 10px 18px; }
   .ld-w { padding: 0 16px; }
+}
+/* Лендинг: анимации. Без анимаций (настройка «уменьшить движение») всё видно сразу */
+@property --ld-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.ld-bg { position: absolute; inset: 0 0 auto 0; height: 1100px; overflow: hidden; pointer-events: none; }
+.ld-blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; will-change: transform; }
+.ld-blob.a { width: 620px; height: 520px; left: -160px; top: -140px; background: rgba(242,181,75,.42); animation: ldDrift 16s ease-in-out infinite alternate; }
+.ld-blob.b { width: 520px; height: 460px; right: -140px; top: 220px; background: rgba(60,211,138,.22); animation: ldDrift 19s ease-in-out -6s infinite alternate-reverse; }
+.ld-gridbg { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 64px 64px; -webkit-mask-image: radial-gradient(70% 60% at 50% 20%, #000, transparent 75%); mask-image: radial-gradient(70% 60% at 50% 20%, #000, transparent 75%); animation: ldGrid 24s linear infinite; }
+@keyframes ldDrift { to { transform: translate(140px, 90px) scale(1.15); } }
+@keyframes ldGrid { to { background-position: 0 64px, 64px 0; } }
+.ld-navw { position: sticky; top: 0; z-index: 6; transition: background .35s ease, box-shadow .35s ease, backdrop-filter .35s ease; }
+.ld-navw.sc { background: rgba(12,15,20,.72); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 1px 0 rgba(255,255,255,.07); }
+.ld-navw .ld-nav { padding-top: calc(14px + env(safe-area-inset-top, 0px)); padding-bottom: 14px; }
+.ld-a { opacity: 0; transform: translateY(18px); animation: ldUp .8s cubic-bezier(.2,.8,.2,1) forwards; animation-delay: calc(var(--i, 0) * 90ms + 120ms); }
+@keyframes ldUp { to { opacity: 1; transform: none; } }
+.ld h1 .w { display: inline-block; opacity: 0; transform: translateY(.45em) rotate(3deg); animation: ldUp .9s cubic-bezier(.2,.9,.25,1.15) forwards; animation-delay: calc(var(--i) * 110ms + 260ms); }
+.ld h1 em.w { background: linear-gradient(100deg, #F2B54B 20%, #FFE7AE 40%, #F2B54B 60%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ldUp .9s cubic-bezier(.2,.9,.25,1.15) forwards, ldShine 3.6s linear infinite; animation-delay: calc(var(--i) * 110ms + 260ms), 1.6s; }
+@keyframes ldShine { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.ld-tag i { width: 8px; height: 8px; border-radius: 50%; background: #3CD38A; animation: ldPing 2s ease-out infinite; }
+@keyframes ldPing { 0% { box-shadow: 0 0 0 0 rgba(60,211,138,.55); } 80%, 100% { box-shadow: 0 0 0 9px rgba(60,211,138,0); } }
+.ld .ld-b1, .ld .ld-b2 { position: relative; overflow: hidden; transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease, border-color .25s ease, background .25s ease; }
+.ld .ld-b1::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.6), transparent); transform: skewX(-20deg); animation: ldSweep 4.2s ease-in-out 2.2s infinite; }
+@keyframes ldSweep { 0% { left: -60%; } 28%, 100% { left: 140%; } }
+.ld .ld-b1:hover { transform: translateY(-2px); box-shadow: 0 12px 34px rgba(242,181,75,.35); }
+.ld .ld-b2:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.4); background: rgba(255,255,255,.04); }
+.ld .ld-b1:active, .ld .ld-b2:active { transform: scale(.97); }
+.ld-px { position: absolute; will-change: transform; }
+.ld-px.a { left: 10px; top: 40px; } .ld-px.b { right: 0; top: 0; }
+.ld-fl { animation: ldBob 6s ease-in-out infinite; }
+.ld-px.b .ld-fl { animation-delay: -3s; }
+@keyframes ldBob { 50% { transform: translateY(-14px); } }
+.ld-phones .ld-ph { position: relative; left: auto; right: auto; top: auto; transform: rotate(var(--r)); animation: ldPhone 1.2s cubic-bezier(.2,.9,.2,1) both; }
+.ld-ph.a { --r: -6deg; animation-delay: .35s; } .ld-ph.b { --r: 5deg; animation-delay: .55s; }
+@keyframes ldPhone { from { opacity: 0; transform: translateY(120px) rotate(0deg) scale(.92); } to { opacity: 1; transform: rotate(var(--r)); } }
+.ld-ph::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.10) 45%, transparent 60%); background-size: 250% 100%; animation: ldShine 7s linear 2s infinite; pointer-events: none; }
+.ld-chip { position: absolute; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 18px; background: rgba(22,27,35,.82); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.1); box-shadow: 0 18px 40px rgba(0,0,0,.45); font-size: 13px; color: #9AA4B4; white-space: nowrap; opacity: 0; animation: ldPop .7s cubic-bezier(.2,1.4,.4,1) forwards, ldBob 5s ease-in-out infinite; }
+.ld-chip b { display: block; color: #E8ECF2; font-family: var(--f-mono); font-size: 16px; font-weight: 600; }
+.ld-chip .g { color: #3CD38A; } .ld-chip .em { font-size: 22px; }
+.ld-chip.c1 { left: -30px; top: 330px; animation-delay: 1.3s, 2s; }
+.ld-chip.c2 { right: -20px; top: 450px; animation-delay: 1.6s, 3.2s; }
+.ld-chip.c3 { left: 120px; top: -10px; animation-delay: 1.9s, 1s; }
+@keyframes ldPop { from { opacity: 0; transform: scale(.6) translateY(16px); } to { opacity: 1; transform: none; } }
+.ld-live { width: 7px; height: 7px; border-radius: 50%; background: #3CD38A; display: inline-block; margin-right: 6px; animation: ldPing 2s ease-out infinite; }
+.ld-mq { overflow: hidden; padding: 18px 0; border-top: 1px solid rgba(255,255,255,.06); border-bottom: 1px solid rgba(255,255,255,.06); -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.ld-mq > div { display: flex; gap: 46px; width: max-content; animation: ldMq 32s linear infinite; }
+.ld-mq span { font-family: var(--f-display); font-weight: 700; font-size: 20px; color: rgba(232,236,242,.32); white-space: nowrap; }
+.ld-mq span i { font-style: normal; color: #F2B54B; margin-right: 46px; }
+@keyframes ldMq { to { transform: translateX(-50%); } }
+.rv { opacity: 0; transform: translateY(30px); transition: opacity .7s ease, transform .85s cubic-bezier(.2,.8,.2,1); transition-delay: calc(var(--i, 0) * 85ms); }
+.rv.in { opacity: 1; transform: none; }
+.ld-f { position: relative; overflow: hidden; transition: opacity .7s ease, transform .85s cubic-bezier(.2,.8,.2,1), border-color .3s ease; }
+.ld-f::before { content: ""; position: absolute; inset: 0; background: radial-gradient(280px circle at var(--x, 50%) var(--y, -30%), rgba(242,181,75,.16), transparent 60%); opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+.ld-f.in:hover { transform: translateY(-6px); border-color: rgba(242,181,75,.35); transition-delay: 0s; }
+.ld-f:hover::before { opacity: 1; }
+.ld-f i { transition: transform .5s cubic-bezier(.2,1.6,.4,1); }
+.ld-f:hover i { transform: rotate(-10deg) scale(1.15); }
+.ld-steps { position: relative; }
+.ld-steps::before { content: ""; position: absolute; top: 38px; left: 17%; right: 17%; height: 2px; background: linear-gradient(90deg, #F2B54B, rgba(242,181,75,.15)); transform: scaleX(0); transform-origin: left; transition: transform 1.4s cubic-bezier(.6,0,.2,1) .3s; }
+.ld-steps.in::before { transform: scaleX(1); }
+.ld-n { position: relative; box-shadow: 0 0 0 8px #0C0F14; }
+.ld-step.in .ld-n { animation: ldNum .8s cubic-bezier(.2,1.6,.4,1) both; animation-delay: calc(var(--i) * 250ms + 200ms); }
+@keyframes ldNum { from { transform: scale(.3); } }
+.ld-try { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center; margin-top: 40px; padding: 30px; border-radius: 28px; background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015)); border: 1px solid rgba(255,255,255,.08); }
+.ld-try label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #9AA4B4; }
+.ld-try input { width: 100%; padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.25); color: #E8ECF2; font: 600 18px var(--f-mono); outline: none; transition: border-color .2s ease, box-shadow .2s ease; }
+.ld-try input:focus { border-color: #F2B54B; box-shadow: 0 0 0 4px rgba(242,181,75,.15); }
+.ld-try-in { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ld-try-in label:last-child { grid-column: 1 / -1; }
+.ld-res { text-align: center; }
+.ld-res span { color: #9AA4B4; font-size: 15px; }
+.ld-res b { display: block; font-family: var(--f-display); font-weight: 700; font-size: 54px; letter-spacing: -2px; margin: 8px 0; color: #3CD38A; transition: color .3s ease; }
+.ld-res b.neg { color: #FF6B6B; }
+.ld-res small { color: #8691A2; font-size: 13px; }
+.ld-pl { transition: opacity .7s ease, transform .85s cubic-bezier(.2,.8,.2,1); }
+.ld-pl.pro { position: relative; isolation: isolate; }
+.ld-pl.pro::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; background: conic-gradient(from var(--ld-a), transparent 0 62%, #F2B54B 80%, #FFE7AE 86%, transparent 94%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); animation: ldSpin 5s linear infinite; pointer-events: none; z-index: -1; }
+@keyframes ldSpin { to { --ld-a: 360deg; } }
+.ld-badge { align-self: flex-start; margin-top: 10px; padding: 6px 12px; border-radius: 999px; background: rgba(60,211,138,.14); color: #3CD38A; font-size: 13px; font-weight: 600; }
+@media (max-width: 760px) {
+  .ld-px.a { left: 4px; top: 40px; } .ld-px.b { right: 8px; top: 0; }
+  .ld-chip { padding: 9px 12px; font-size: 11px; border-radius: 14px; }
+  .ld-chip b { font-size: 13px; } .ld-chip .em { font-size: 17px; }
+  .ld-chip.c1 { left: 0; top: 250px; } .ld-chip.c2 { right: 4px; top: 340px; } .ld-chip.c3 { left: 70px; top: -14px; }
+  .ld-steps::before { display: none; }
+  .ld-try { grid-template-columns: 1fr; padding: 20px; }
+  .ld-res b { font-size: 42px; }
+  .ld-mq span { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld *, .ld *::before, .ld *::after { animation: none !important; transition: none !important; }
+  .ld .ld-a, .ld h1 .w, .ld .rv, .ld .ld-chip { opacity: 1; transform: none; }
+  .ld-phones .ld-ph { transform: rotate(var(--r)); }
 }
 .pro-wrap { position: relative; }
 .cal-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -3638,22 +3727,37 @@ function showLanding(authMode) {
     ['🔒', 'Защита и облако', 'PIN-код и Face ID. Сделки в облаке — на телефоне и компьютере одни и те же.']];
   const S3 = [['Откройте бота', '@P2ProAppBot в Telegram — вход в один тап, без паролей'], ['Вбейте сделку', 'Курс покупки, продажи и сумму — комиссии посчитаются сами'], ['Смотрите прибыль', 'По дням и месяцам в календаре — и итоги каждый вечер']];
   const li = a => a.map(x => `<li>${x}</li>`).join('');
-  el.innerHTML = `<div class="ld-glow"></div>
-  <div class="ld-w"><div class="ld-nav"><div class="logo">P2</div><span class="ld-nm">P2Pro</span>
-    <div class="ld-ln"><button data-ld-go="ldFeat">Возможности</button><button data-ld-go="ldPrice">Тарифы</button><button class="ld-in" data-ld-auth="in">Войти</button></div></div>
-  <div class="ld-hero"><div><span class="ld-tag">● Бесплатно в Telegram</span>
-    <h1>Узнай <em>реальную</em> прибыль с P2P</h1>
-    <p class="ld-lead">Калькулятор и журнал P2P-сделок: считает прибыль после всех комиссий, ведёт историю, показывает живой курс USDT и присылает итоги дня.</p>
-    <div class="ld-cta"><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">${AI.tg.replace('#2AABEE', '#1B1405')} Открыть в Telegram</a><button class="ld-b2" data-ld-auth="${authMode}">Войти на сайте</button></div>
-    <div class="ld-trust"><span><b>3 сек</b> — расчёт сделки</span><span><b>Bybit · HTX · OKX · Bitget</b></span><span><b>0 ₽</b> — тариф Free</span></div></div>
-    <div class="ld-phones" aria-hidden="true"><div class="ld-ph a"><img src="img/land-calc.webp" width="600" height="1298" alt=""></div><div class="ld-ph b"><img src="img/land-cal.webp" width="600" height="1298" alt=""></div></div></div></div>
-  <div class="ld-w ld-sec" id="ldFeat"><div class="ld-st">Всё для P2P — в одном месте</div><div class="ld-ss">Больше никаких заметок, Excel и калькулятора в голове</div>
-    <div class="ld-grid">${F.map(([i, b, t]) => `<div class="ld-f"><i>${i}</i><b>${b}</b><span>${t}</span></div>`).join('')}</div></div>
-  <div class="ld-w ld-sec"><div class="ld-st">Как начать</div>
-    <div class="ld-steps">${S3.map(([b, t], k) => `<div class="ld-step"><div class="ld-n">${k + 1}</div><b>${b}</b><p>${t}</p></div>`).join('')}</div></div>
-  <div class="ld-w ld-sec" id="ldPrice"><div class="ld-st">Тарифы</div><div class="ld-ss">PRO можно попробовать 7 дней бесплатно</div>
-    <div class="ld-price"><div class="ld-pl"><h3>Free</h3><div class="ld-pr">0 ₽</div><ul>${li(['Калькулятор: сделка, круг, треугольник', 'Подбор курса и курс USDT', 'История и аналитика за 7 дней', 'Итоги дня в боте'])}</ul><a class="ld-b2" href="${BOT_URL}" target="_blank" rel="noopener">Начать бесплатно</a></div>
-    <div class="ld-pl pro"><h3>PRO</h3><div class="ld-pr">490 ₽ <small>/ месяц</small></div><span style="color:#9AA4B4">или 3 990 ₽ в год · 350 ⭐ в Telegram</span><ul>${li(['Вся история и аналитика', 'Календарь прибыли и связки', 'Контрагенты и чёрный список', 'График и уведомления о курсе', 'Excel и карточки без водяного знака'])}</ul><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">7 дней бесплатно</a></div></div></div>
+  const W = ['Узнай', '<em>реальную</em>', 'прибыль', 'с P2P'].map((w, i) => w.startsWith('<em>') ? `<em class="w" style="--i:${i}">${w.slice(4, -5)}</em>` : `<span class="w" style="--i:${i}">${w}</span>`).join(' ');
+  const MQ = ['Bybit', 'HTX', 'OKX', 'Bitget', 'Т-Банк', 'Сбер', 'Альфа', 'Озон Банк', 'Райффайзен', 'USDT'];
+  el.innerHTML = `<div class="ld-bg" aria-hidden="true"><div class="ld-blob a"></div><div class="ld-blob b"></div><div class="ld-gridbg"></div></div>
+  <div class="ld-navw" id="ldNav"><div class="ld-w ld-nav"><div class="logo">P2</div><span class="ld-nm">P2Pro</span>
+    <div class="ld-ln"><button data-ld-go="ldFeat">Возможности</button><button data-ld-go="ldTry">Посчитать</button><button data-ld-go="ldPrice">Тарифы</button><button class="ld-in" data-ld-auth="in">Войти</button></div></div></div>
+  <div class="ld-w"><div class="ld-hero"><div><span class="ld-tag ld-a" style="--i:0"><i></i>Бесплатно в Telegram</span>
+    <h1>${W}</h1>
+    <p class="ld-lead ld-a" style="--i:5">Калькулятор и журнал P2P-сделок: считает прибыль после всех комиссий, ведёт историю, показывает живой курс USDT и присылает итоги дня.</p>
+    <div class="ld-cta ld-a" style="--i:6"><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">${AI.tg.replace('#2AABEE', '#1B1405')} Открыть в Telegram</a><button class="ld-b2" data-ld-auth="${authMode}">Войти на сайте</button></div>
+    <div class="ld-trust ld-a" style="--i:7"><span><b>3 сек</b> — расчёт сделки</span><span><b>Bybit · HTX · OKX · Bitget</b></span><span><b>0 ₽</b> — тариф Free</span></div></div>
+    <div class="ld-phones" id="ldPhones" aria-hidden="true">
+      <div class="ld-px a" data-depth="18"><div class="ld-fl"><div class="ld-ph a"><img src="img/land-calc.webp" width="600" height="1298" alt=""></div></div></div>
+      <div class="ld-px b" data-depth="34"><div class="ld-fl"><div class="ld-ph b"><img src="img/land-cal.webp" width="600" height="1298" alt=""></div></div></div>
+      <div class="ld-chip c3"><span class="em">💱</span><div><span class="ld-live"></span>USDT сейчас<b id="ldRate">82,80 ₽</b></div></div>
+      <div class="ld-chip c1"><span class="em">💰</span><div>Чистая прибыль<b class="g">+1 706,12 ₽</b></div></div>
+      <div class="ld-chip c2"><span class="em">🌙</span><div>Итоги дня<b class="g">+5 514 ₽</b></div></div>
+    </div></div></div>
+  <div class="ld-mq" aria-hidden="true"><div>${[0, 1].map(() => `<span>${MQ.map(x => `${x}<i>✦</i>`).join('')}</span>`).join('')}</div></div>
+  <div class="ld-w ld-sec" id="ldFeat"><div class="ld-st rv">Всё для P2P — в одном месте</div><div class="ld-ss rv" style="--i:1">Больше никаких заметок, Excel и калькулятора в голове</div>
+    <div class="ld-grid">${F.map(([i, b, t], k) => `<div class="ld-f rv" style="--i:${k % 3}"><i>${i}</i><b>${b}</b><span>${t}</span></div>`).join('')}</div></div>
+  <div class="ld-w ld-sec" id="ldTry"><div class="ld-st rv">Посчитайте прямо сейчас</div><div class="ld-ss rv" style="--i:1">Впишите свою сделку — прибыль пересчитается сразу</div>
+    <div class="ld-try rv" style="--i:2"><div class="ld-try-in">
+      <label>Купил по, ₽<input id="ldBuy" type="text" inputmode="decimal" value="80,95"></label>
+      <label>Продал по, ₽<input id="ldSell" type="text" inputmode="decimal" value="82,60"></label>
+      <label>Сумма, ₽<input id="ldSum" type="text" inputmode="decimal" value="150 000"></label></div>
+      <div class="ld-res"><span>Чистая прибыль</span><b id="ldOut">0 ₽</b><small id="ldOutSub">с комиссией биржи 0,1%</small></div></div></div>
+  <div class="ld-w ld-sec"><div class="ld-st rv">Как начать</div>
+    <div class="ld-steps rv">${S3.map(([b, t], k) => `<div class="ld-step rv" style="--i:${k}"><div class="ld-n">${k + 1}</div><b>${b}</b><p>${t}</p></div>`).join('')}</div></div>
+  <div class="ld-w ld-sec" id="ldPrice"><div class="ld-st rv">Тарифы</div><div class="ld-ss rv" style="--i:1">PRO можно попробовать 7 дней бесплатно</div>
+    <div class="ld-price"><div class="ld-pl rv"><h3>Free</h3><div class="ld-pr">0 ₽</div><ul>${li(['Калькулятор: сделка, круг, треугольник', 'Подбор курса и курс USDT', 'История и аналитика за 7 дней', 'Итоги дня в боте'])}</ul><a class="ld-b2" href="${BOT_URL}" target="_blank" rel="noopener">Начать бесплатно</a></div>
+    <div class="ld-pl pro rv" style="--i:1"><h3>PRO</h3><div class="ld-pr">490 ₽ <small>/ месяц</small></div><span style="color:#9AA4B4">или 3 990 ₽ в год · 350 ⭐ в Telegram</span><span class="ld-badge">🎁 7 дней бесплатно</span><ul>${li(['Вся история и аналитика', 'Календарь прибыли и связки', 'Контрагенты и чёрный список', 'График и уведомления о курсе', 'Excel и карточки без водяного знака'])}</ul><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">Попробовать бесплатно</a></div></div></div>
   <div class="ld-w"><div class="ld-foot"><span>© ${new Date().getFullYear()} P2Pro · Калькулятор и журнал P2P-сделок</span>
     <nav><a href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a href="legal.html#terms" target="_blank" rel="noopener">Оферта</a><a href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка @MVSR_P2P</a></nav></div></div>`;
   document.body.appendChild(el); document.documentElement.style.overflow = 'hidden';
@@ -3662,6 +3766,33 @@ function showLanding(authMode) {
     const au = e.target.closest('[data-ld-auth]'); if (!au) return;
     showAuth(au.dataset.ldAuth); el.classList.add('out'); setTimeout(() => el.remove(), 320);
   });
+  // Блоки проявляются, когда до них докрутили
+  const io = 'IntersectionObserver' in window && !reduceMotion ? new IntersectionObserver(es => es.forEach(x => { if (x.isIntersecting) { x.target.classList.add('in'); io.unobserve(x.target); } }), { root: el, rootMargin: '0px 0px -8% 0px', threshold: .12 }) : null;
+  el.querySelectorAll('.rv').forEach(x => io ? io.observe(x) : x.classList.add('in'));
+  // Шапка темнеет при прокрутке; телефоны чуть плывут за мышью и прокруткой
+  const px = [...el.querySelectorAll('.ld-px')]; let mx = 0, my = 0, raf = 0;
+  const move = () => { raf = 0; el.querySelectorAll('.rv:not(.in)').forEach(x => { if (x.getBoundingClientRect().top < innerHeight) x.classList.add('in'); });   // быстрая прокрутка могла проскочить блок
+    if (reduceMotion) return; const sy = Math.min(el.scrollTop, 900); px.forEach(p => { const d = +p.dataset.depth; p.style.transform = `translate3d(${mx * d}px, ${my * d - sy * d / 120}px, 0)`; }); };
+  const kick = () => { if (!raf) raf = requestAnimationFrame(move); };
+  el.addEventListener('scroll', () => { $('ldNav').classList.toggle('sc', el.scrollTop > 10); kick(); }, { passive: true });
+  if (matchMedia('(pointer: fine)').matches) el.addEventListener('pointermove', e => { mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5; kick(); });
+  // Подсветка карточек возможностей под курсором
+  el.querySelectorAll('.ld-f').forEach(c => c.addEventListener('pointermove', e => { const r = c.getBoundingClientRect(); c.style.setProperty('--x', e.clientX - r.left + 'px'); c.style.setProperty('--y', e.clientY - r.top + 'px'); }));
+  // Живой курс USDT в плашке
+  xrFetch('RUB').then(r => { if ($('ldRate')) $('ldRate').textContent = nf2.format(r.rate) + ' ₽'; }).catch(() => {});
+  // Мини-калькулятор: та же формула, что в приложении; число докручивается до нового значения
+  let shown = 0, anim = 0;
+  const num = id => +String($(id).value).replace(/\s/g, '').replace(',', '.') || 0;
+  const calc = () => {
+    const r = compute({ mode: 'deal', buy: num('ldBuy'), sell: num('ldSell'), sum: num('ldSum'), feeEx: 0.1, feeExType: 'pct', feeWd: 0, feeWdType: 'fixed' });
+    const to = r ? r.profit : 0, from = shown, t0 = performance.now(); cancelAnimationFrame(anim);
+    $('ldOutSub').textContent = r ? `${pct(r.profitPct)} к сумме · с комиссией биржи 0,1%` : 'Впишите курсы и сумму';
+    const step = t => { const k = reduceMotion ? 1 : Math.min(1, (t - t0) / 650), v = from + (to - from) * (1 - Math.pow(1 - k, 3)); shown = v;
+      const o = $('ldOut'); if (!o) return; o.textContent = (v > 0.005 ? '+' : '') + nf2.format(v).replace('-', '−') + ' ₽'; o.classList.toggle('neg', v < 0); if (k < 1) anim = requestAnimationFrame(step); };
+    anim = requestAnimationFrame(step);
+  };
+  ['ldBuy', 'ldSell', 'ldSum'].forEach(id => $(id).addEventListener('input', calc));
+  if (io) { const o = new IntersectionObserver(es => { if (es[0].isIntersecting) { calc(); o.disconnect(); } }, { root: el, threshold: .4 }); o.observe($('ldOut')); } else calc();
 }
 
 /* ================= МОЯ ПОДПИСКА ================= */
