@@ -405,13 +405,13 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .ld-lv-mm b { display: block; color: #E8ECF2; font: 600 18px var(--f-mono); margin-top: 4px; }
 .ld-lv-ch { position: relative; height: 170px; margin: 22px 0 10px; }
 .ld-lv-ch svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.ld-lv-ch .ln { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.ld-lv-ch .ln { clip-path: inset(-10px 100% -10px 0); }   /* линия «прорисовывается» слева направо */
 .ld-lv-ch.in .ln { animation: ldDraw 1.8s cubic-bezier(.6,0,.2,1) forwards; }
 .ld-lv-ch .ar { opacity: 0; transition: opacity 1s ease .9s; }
 .ld-lv-ch.in .ar { opacity: 1; }
 .ld-lv-ch .dot { opacity: 0; }
 .ld-lv-ch.in .dot { animation: ldDot 2s ease-out 1.7s infinite; }
-@keyframes ldDraw { to { stroke-dashoffset: 0; } }
+@keyframes ldDraw { to { clip-path: inset(-10px -10px -10px 0); } }
 @keyframes ldDot { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(3.4); } }
 .ld-lv-ch .dot { transform-box: fill-box; transform-origin: center; }
 .ld-lv-ax { display: flex; justify-content: space-between; color: #8691A2; font-size: 12px; font-family: var(--f-mono); }
@@ -3935,7 +3935,7 @@ const FAQ = [['Нужно ли давать доступ к бирже или AP
     const W = 600, H = 170, pad = (hi - lo) * .15 || .05, xy = xrSvgPath(pts, W, H, lo - pad, hi + pad), last = xy[xy.length - 1].split(','), col = pts[pts.length - 1] >= pts[0] ? '#3CD38A' : '#FF6B6B';
     const box = $('ldLvCh'), first = !box.firstChild;
     box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="График курса USDT за сутки" role="img"><defs><linearGradient id="ldLvG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
-      <path class="ar" d="M${xy.join(' L')} L${W},${H} L0,${H}Z" fill="url(#ldLvG)"/><polyline class="ln" pathLength="1" points="${xy.join(' ')}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <path class="ar" d="M${xy.join(' L')} L${W},${H} L0,${H}Z" fill="url(#ldLvG)"/><polyline class="ln" points="${xy.join(' ')}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
       <circle class="dot" cx="${last[0]}" cy="${last[1]}" r="4" fill="${col}"/><circle cx="${last[0]}" cy="${last[1]}" r="4" fill="${col}"/></svg>`;
     const t = ms => new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     $('ldLvAx').innerHTML = `<span>${t(hist[0].t)}</span><span>сейчас</span>`;
