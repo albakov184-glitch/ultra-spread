@@ -447,6 +447,27 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
   .ld-q > div > p { padding: 0 18px; font-size: 14px; }
   .ld-lv-ft .ld-b2 { width: 100%; }
 }
+.ld-soc { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 30px; }
+.ld-sc { display: flex; align-items: center; gap: 14px; min-width: 270px; padding: 12px 22px 12px 12px; border-radius: 999px; color: #E8ECF2; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); transition: transform .3s cubic-bezier(.2,.8,.2,1), border-color .3s ease, background .3s ease, box-shadow .3s ease; }
+.ld-sc img { width: 48px; height: 48px; flex: none; border-radius: 50%; }
+.ld-sc.ig img { border-radius: 14px; }
+.ld-sc span { display: flex; flex-direction: column; line-height: 1.3; font-size: 13px; color: #9AA4B4; }
+.ld-sc b { font-size: 16px; color: #E8ECF2; font-weight: 600; }
+.ld-sc em { margin-left: auto; font-style: normal; font-size: 18px; color: #8691A2; transition: transform .3s ease, color .3s ease; }
+.ld-sc.tg { border-color: rgba(42,171,238,.35); background: linear-gradient(90deg, rgba(42,171,238,.14), rgba(42,171,238,.03)); }
+.ld-sc.ig { border-color: rgba(255,1,105,.32); background: linear-gradient(90deg, rgba(255,1,105,.13), rgba(253,180,0,.05)); }
+@media (hover: hover) {
+  .ld-sc:hover { transform: translateY(-3px); }
+  .ld-sc.tg:hover { border-color: #2AABEE; box-shadow: 0 12px 30px rgba(42,171,238,.22); }
+  .ld-sc.ig:hover { border-color: #FF0169; box-shadow: 0 12px 30px rgba(255,1,105,.22); }
+  .ld-sc:hover em { transform: translateX(4px); color: #E8ECF2; }
+}
+.ld-sc:active { transform: scale(.97); }
+.ld-fsoc { display: flex; gap: 10px; }
+.ld-fsoc img { width: 28px; height: 28px; display: block; border-radius: 50%; transition: transform .25s ease; }
+.ld-fsoc a:last-child img { border-radius: 8px; }
+.ld-fsoc a:hover img { transform: scale(1.12); }
+@media (max-width: 760px) { .ld-sc { width: 100%; min-width: 0; } }
 @media (min-width: 761px) and (max-width: 1100px) {
   .ld-hero { grid-template-columns: 1fr; gap: 30px; padding: 30px 0 60px; }
   .ld-hero > div:first-child { max-width: 640px; }
@@ -3802,7 +3823,7 @@ function bootAccount() {
 
 /* ================= ЛЕНДИНГ ================= */
 // Главная страница сайта для тех, кто ещё не вошёл (в Telegram и в приложении для iPhone не показываем)
-const BOT_URL = 'https://t.me/P2ProAppBot';
+const BOT_URL = 'https://t.me/P2ProAppBot', IG_URL = 'https://www.instagram.com/movsar.io/';
 function showLanding(authMode) {
   if ($('landing')) return;
   const el = document.createElement('div'); el.id = 'landing'; el.className = 'ld';
@@ -3857,9 +3878,13 @@ const FAQ = [['Нужно ли давать доступ к бирже или AP
     <div class="ld-pl pro rv" style="--i:1"><h3>PRO</h3><div class="ld-pr">490 ₽ <small>/ месяц</small></div><span style="color:#9AA4B4">или 3 990 ₽ в год · 350 ⭐ в Telegram</span><span class="ld-badge">🎁 7 дней бесплатно</span><ul>${li(['Вся история и аналитика', 'Календарь прибыли и связки', 'Контрагенты и чёрный список', 'График и уведомления о курсе', 'Excel и карточки без водяного знака'])}</ul><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">Попробовать бесплатно</a></div></div></div>
   <div class="ld-w ld-sec" id="ldFaq"><div class="ld-st rv">Частые вопросы</div>
     <div class="ld-faq">${FAQ.map(([q, a], k) => `<div class="ld-q rv" style="--i:${k % 4}"><button aria-expanded="false">${q}<i aria-hidden="true"></i></button><div><p>${a}</p></div></div>`).join('')}</div>
-    <div class="ld-ss rv">Не нашли ответ? Напишите в поддержку: <a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener" style="color:#F2B54B">@MVSR_P2P</a></div></div>
+    <div class="ld-ss rv" style="margin-top:34px">Не нашли ответ? Напишите нам</div>
+    <div class="ld-soc rv" style="--i:1">
+      <a class="ld-sc tg" href="https://t.me/MVSR_P2P" target="_blank" rel="noopener"><img src="img/tg.png" width="48" height="48" alt=""><span>Поддержка в Telegram<b>@MVSR_P2P</b></span><em>→</em></a>
+      <a class="ld-sc ig" href="${IG_URL}" target="_blank" rel="noopener"><img src="img/ig.png" width="48" height="48" alt=""><span>Instagram<b>@movsar.io</b></span><em>→</em></a></div></div>
   <div class="ld-w"><div class="ld-foot"><span>© ${new Date().getFullYear()} P2Pro · Калькулятор и журнал P2P-сделок</span>
-    <nav><a href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a href="legal.html#terms" target="_blank" rel="noopener">Оферта</a><a href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка @MVSR_P2P</a></nav></div></div>`;
+    <nav><a href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a href="legal.html#terms" target="_blank" rel="noopener">Оферта</a><a href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка @MVSR_P2P</a></nav>
+    <div class="ld-fsoc"><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener" aria-label="Поддержка в Telegram"><img src="img/tg.png" alt=""></a><a href="${IG_URL}" target="_blank" rel="noopener" aria-label="Instagram @movsar.io"><img src="img/ig.png" alt=""></a></div></div></div>`;
   document.body.appendChild(el); document.documentElement.style.overflow = 'hidden';
   el.addEventListener('click', e => {
     const q = e.target.closest('.ld-q > button');
