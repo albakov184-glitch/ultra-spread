@@ -63,7 +63,7 @@ type Msg = { message_id: number; chat: { id: number; type: string }; from?: { id
 const kb = (rows: Btn[][]) => ({ inline_keyboard: rows });
 const isPro = (s: Sub) => !!s?.pro_until && Date.parse(s.pro_until) > Date.now();
 const isBanned = (u: AUser) => !!u.banned_until && Date.parse(u.banned_until) > Date.now();
-const FREE_METHODS = ['gift', 'promo'];
+const FREE_METHODS = ['gift', 'promo', 'trial'];
 const STARS: Record<string, number> = { m: 350, y: 2650 };   // цены PRO в звёздах. Такие же — в telegram-auth и в приложении
 const RUB: Record<string, number> = { m: 490, y: 3990 };     // цены PRO в рублях (оплата криптой на сайте). Такие же — в telegram-auth и в приложении
 type Price = { m: number; y: number; rm: number; ry: number; custom: boolean };
@@ -198,7 +198,7 @@ async function statsText() {
     `👥 Пользователей: <b>${users.length}</b>\n   через Telegram: ${tgN} · по почте: ${users.length - tgN}${banned ? ` · заблокировано: ${banned}` : ''}\n` +
     `🆕 Новых за сутки: ${since(1)} · за неделю: ${since(7)} · за месяц: ${since(30)}\n` +
     `🔑 Входили за неделю: ${active}\n\n` +
-    `⭐ PRO сейчас: <b>${pro.length}</b> (подарки и промокоды: ${gifts})\n` +
+    `⭐ PRO сейчас: <b>${pro.length}</b> (подарки, промокоды, пробный: ${gifts})\n` +
     `💰 Выручка за месяц: <b>${rev.toLocaleString('ru-RU')} ₽</b> · оплат: ${pays}${crN ? `\n   из них криптой: ${cr.toLocaleString('ru-RU')} ₽ · оплат: ${crN}` : ''}\n⭐ Звёздами за месяц: <b>${stars.toLocaleString('ru-RU')} ⭐</b> · оплат: ${starN}\n📒 Сделок в базе: ${trades ?? 0}\n\n` +
     `<b>Новые пользователи за 14 дней</b>\n<pre>${chart}</pre>`;
 }
@@ -226,9 +226,9 @@ async function cardView(u: AUser, back = 0) {   // back — страница с�
   const { data: last } = await admin.from('trades').select('updated_at').eq('user_id', u.id).order('updated_at', { ascending: false }).limit(1);
   const { data: promos } = await admin.from('promo_uses').select('code, used_at').eq('user_id', u.id);
   const { data: tgRow } = await admin.from('tg_users').select('daily_off').eq('user_id', u.id).maybeSingle();
-  const PAY_NAME: Record<string, string> = { stars: 'звёзды', gift: 'подарок', promo: 'промокод', card: 'карта', sbp: 'СБП', usdt: 'USDT', crypto: 'крипта' };
+  const PAY_NAME: Record<string, string> = { stars: 'звёзды', gift: 'подарок', promo: 'промокод', trial: 'пробный', card: 'карта', sbp: 'СБП', usdt: 'USDT', crypto: 'крипта' };
   const pays = (s?.payments ?? []).slice(0, 5).map((p) => `• ${date(p.ts)} · ${p.method === 'stars' ? `${p.amount} ⭐` : +p.amount ? `${(+p.amount).toLocaleString('ru-RU')} ₽` : `${p.days ?? ''} дн.`} · ${PAY_NAME[p.method ?? ''] ?? esc(p.method ?? '')}${(p as { paid?: string }).paid ? ` (${esc((p as { paid?: string }).paid!)})` : ''}${(p as { refund?: boolean }).refund ? ' (возврат)' : ''}`);
-  const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.pay_method === 'stars' ? ' (звёзды)' : s?.pay_method === 'crypto' ? ' (крипта)' : s?.auto_renew ? ' · автопродление' : '';
+  const how = s?.pay_method === 'gift' ? ' (подарок)' : s?.pay_method === 'promo' ? ' (промокод)' : s?.pay_method === 'trial' ? ' (пробный)' : s?.pay_method === 'stars' ? ' (звёзды)' : s?.pay_method === 'crypto' ? ' (крипта)' : s?.auto_renew ? ' · автопродление' : '';
   const text = `<b>👤 Пользователь</b>\n\n${who(u)}\n` + (tgId ? `Telegram id: <code>${tgId}</code>\n` : '') +
     `Регистрация: ${date(u.created_at)}\nПоследний вход: ${date(u.last_sign_in_at)}\nСделок: ${trades ?? 0}${last?.[0] ? ` · последняя запись ${date(last[0].updated_at)}` : ''}\n` +
     (tgRow ? `Итоги дня: ${tgRow.daily_off ? 'отключены' : 'приходят'}\n` : '') + '\n' +
@@ -1018,6 +1018,7 @@ async function tick() {
   // 2. Раз в день после 12:00 МСК — напоминания «PRO закончится через 3 дня»
   const daily = await stGet('daily', { day: '' });
   if (daily.day !== mskDay(now) && hourMsk >= 12) { await stSet('daily', { day: mskDay(now) }); await remindExpiring(); }
+  await trialEnded().catch((e) => console.error('trial', e));
   // 3. Раз в неделю — совет в канал, если автопосты включены
   const ap = await stGet('autopost', { on: false, idx: 0, last: 0 });
   if (ap.on && hourMsk >= 12 && now - ap.last > 6.5 * DAY) await postTip();
@@ -1047,6 +1048,21 @@ async function tick() {
   if (rep.on && hourMsk >= 9 && rep.day !== today) { await stSet('report', { ...rep, day: today }); await morningReport().catch((e) => console.error('report', e)); }
 }
 
+// Пробный период закончился и PRO не купили — пишем один раз, с итогами недели
+async function trialEnded() {
+  const { data } = await admin.from('pro_trials').select('user_id, started_at, ends_at').eq('ended_sent', false).lt('ends_at', new Date().toISOString()).limit(50);
+  for (const t of (data ?? []) as { user_id: string; started_at: string; ends_at: string }[]) {
+    await admin.from('pro_trials').update({ ended_sent: true }).eq('user_id', t.user_id);
+    const s = await subOf(t.user_id);
+    if (!s || isPro(s)) continue;   // купил PRO — напоминать не о чем
+    const { data: tr } = await admin.from('trades').select('data').eq('user_id', t.user_id).eq('deleted', false).gte('ts', t.started_at).lt('ts', t.ends_at);
+    const rub = ((tr ?? []) as { data: { profit?: number; cur?: string } }[]).filter((x) => (x.data?.cur || 'RUB') === 'RUB' && isFinite(+x.data?.profit!));
+    const sum = rub.reduce((a, x) => a + (+x.data.profit! || 0), 0);
+    const stats = tr?.length ? `\n\nЗа эти 7 дней: ${tr.length} ${plural(tr.length, 'сделка', 'сделки', 'сделок')}${rub.length ? ` · прибыль ${money(sum, 'RUB')}` : ''}.` : '';
+    await notify(t.user_id, `🎁 <b>Пробный PRO закончился</b>${stats}\n\nСделки сохранены, но в бесплатной версии история и аналитика видны только за последние 7 дней. Оформите PRO — и всё снова откроется: календарь прибыли, связки, контрагенты, график курса и Excel.`, openBtn('⭐ Оформить PRO'));
+  }
+}
+
 async function remindExpiring() {
   const now = Date.now();
   const { data } = await admin.from('subscriptions').select('user_id, pro_until, auto_renew, pay_method, reminded_for')
@@ -1055,7 +1071,11 @@ async function remindExpiring() {
     if (s.reminded_for && Date.parse(s.reminded_for) === Date.parse(s.pro_until!)) continue;   // уже напоминали про этот срок
     if (s.auto_renew && !FREE_METHODS.includes(s.pay_method ?? '')) continue;                   // продлится сам
     const left = Math.max(1, Math.ceil((Date.parse(s.pro_until!) - now) / DAY));
-    await notify(s.user_id, `⏳ <b>PRO закончится через ${left} ${left === 1 ? 'день' : 'дня'}</b> — ${date(s.pro_until)}.\n\nПродлите, чтобы сохранить историю без ограничений, контрагентов и Excel.`, openBtn('⭐ Продлить PRO'));
+    if (s.pay_method === 'trial') {   // пробный: напоминаем только накануне
+      if (Date.parse(s.pro_until!) - now > 1.5 * DAY) continue;
+      const when = mskDay(Date.parse(s.pro_until!)) === mskDay(now) ? 'Сегодня' : 'Завтра';
+      await notify(s.user_id, `⏳ <b>${when} закончится пробный PRO</b> — ${date(s.pro_until)}.\n\nПотом история и аналитика будут только за последние 7 дней, а календарь прибыли, связки, контрагенты, график курса и Excel закроются. Оформите PRO, чтобы ничего не потерять.`, openBtn('⭐ Оформить PRO'));
+    } else await notify(s.user_id, `⏳ <b>PRO закончится через ${left} ${left === 1 ? 'день' : 'дня'}</b> — ${date(s.pro_until)}.\n\nПродлите, чтобы сохранить историю без ограничений, контрагентов и Excel.`, openBtn('⭐ Продлить PRO'));
     await admin.from('subscriptions').update({ reminded_for: s.pro_until }).eq('user_id', s.user_id);
   }
 }

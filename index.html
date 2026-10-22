@@ -245,7 +245,100 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .best-worst { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 /* market / pro */
+/* ---------- Лендинг: сайт без входа (не в Telegram) ---------- */
+.ld { position: fixed; inset: 0; z-index: 100; background: #0C0F14; color: #E8ECF2; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; font-family: var(--f-body, inherit); }
+.ld.out { opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+.ld a { color: inherit; text-decoration: none; }
+.ld-glow { position: absolute; inset: 0 0 auto 0; height: 900px; background: radial-gradient(40% 50% at 20% 20%, rgba(242,181,75,.22), transparent 70%), radial-gradient(35% 45% at 85% 40%, rgba(60,211,138,.12), transparent 70%); pointer-events: none; }
+.ld-w { max-width: 1160px; margin: 0 auto; padding: 0 24px; position: relative; }
+.ld-nav { display: flex; align-items: center; gap: 12px; padding: calc(20px + env(safe-area-inset-top, 0px)) 0 20px; }
+.ld-nav .logo { width: 44px; height: 44px; border-radius: 13px; font-size: 17px; }
+.ld-nm { font-family: var(--f-display); font-weight: 700; font-size: 20px; }
+.ld-ln { margin-left: auto; display: flex; align-items: center; gap: 24px; color: #9AA4B4; font-size: 15px; }
+.ld-ln button { color: inherit; font: inherit; background: none; }
+.ld-ln .ld-in { padding: 10px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,.15); color: #E8ECF2; }
+.ld-hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 40px 0 70px; }
+.ld-tag { display: inline-flex; gap: 8px; align-items: center; padding: 8px 14px; border-radius: 999px; background: rgba(60,211,138,.12); color: #3CD38A; font-size: 14px; font-weight: 600; }
+.ld h1 { font-family: var(--f-display); font-weight: 700; font-size: 58px; line-height: 1.05; letter-spacing: -2px; margin: 22px 0 20px; }
+.ld h1 em { font-style: normal; color: #F2B54B; }
+.ld-lead { font-size: 20px; line-height: 1.5; color: #B4BCC9; max-width: 540px; }
+.ld-cta { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+.ld-b1, .ld-b2 { padding: 17px 28px; border-radius: 16px; font: inherit; font-weight: 600; font-size: 17px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; }
+.ld .ld-b1 { background: #F2B54B; color: #1B1405; }
+.ld .ld-b2 { background: none; border: 1px solid rgba(255,255,255,.18); color: #E8ECF2; }
+.ld-trust { display: flex; gap: 22px; margin-top: 28px; color: #8691A2; font-size: 14px; flex-wrap: wrap; }
+.ld-trust b { color: #E8ECF2; font-family: var(--f-mono); font-weight: 600; }
+.ld-phones { position: relative; height: 640px; }
+.ld-ph { position: absolute; width: 300px; border-radius: 44px; border: 10px solid #1c2129; box-shadow: 0 0 0 1px #3a4250, 0 40px 100px rgba(0,0,0,.6); overflow: hidden; background: #0C0F14; }
+.ld-ph img { display: block; width: 100%; height: auto; }
+.ld-ph.a { left: 10px; top: 40px; transform: rotate(-6deg); }
+.ld-ph.b { right: 0; top: 0; transform: rotate(5deg); }
+.ld-sec { padding: 64px 0; }
+.ld-st { font-family: var(--f-display); font-weight: 700; font-size: 40px; letter-spacing: -1px; text-align: center; }
+.ld-ss { text-align: center; color: #9AA4B4; font-size: 18px; margin-top: 12px; line-height: 1.45; }
+.ld-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; }
+.ld-f { padding: 28px; border-radius: 24px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); border: 1px solid rgba(255,255,255,.08); }
+.ld-f i { width: 52px; height: 52px; border-radius: 15px; background: rgba(242,181,75,.14); display: grid; place-items: center; font-size: 26px; font-style: normal; }
+.ld-f b { display: block; font-size: 20px; margin: 18px 0 8px; }
+.ld-f span { color: #9AA4B4; font-size: 15px; line-height: 1.5; }
+.ld-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; }
+.ld-step { text-align: center; padding: 10px; }
+.ld-step b { font-size: 18px; }
+.ld-step p { color: #9AA4B4; font-size: 15px; margin-top: 8px; line-height: 1.45; }
+.ld-n { width: 56px; height: 56px; border-radius: 50%; background: #F2B54B; color: #1B1405; font-family: var(--f-display); font-weight: 700; font-size: 22px; display: grid; place-items: center; margin: 0 auto 16px; }
+.ld-price { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 820px; margin: 40px auto 0; }
+.ld-pl { padding: 32px; border-radius: 28px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03); display: flex; flex-direction: column; }
+.ld-pl.pro { border-color: rgba(242,181,75,.5); background: linear-gradient(180deg, rgba(242,181,75,.10), rgba(242,181,75,.02)); }
+.ld-pl h3 { font-family: var(--f-display); font-weight: 700; font-size: 24px; }
+.ld-pr { font-family: var(--f-display); font-weight: 700; font-size: 44px; margin: 14px 0 4px; }
+.ld-pr small { font-size: 16px; color: #9AA4B4; font-family: inherit; font-weight: 400; }
+.ld-pl ul { list-style: none; margin: 20px 0; padding: 0; display: flex; flex-direction: column; gap: 10px; color: #C8CFDA; flex: 1; }
+.ld-pl li::before { content: "✓  "; color: #3CD38A; font-weight: 700; }
+.ld-foot { border-top: 1px solid rgba(255,255,255,.08); padding: 30px 0 calc(30px + env(safe-area-inset-bottom, 0px)); color: #8691A2; font-size: 14px; display: flex; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; }
+.ld-foot nav { display: flex; gap: 6px 16px; flex-wrap: wrap; }
+.ld-foot a:hover, .ld-ln button:hover { color: #E8ECF2; }
+@media (max-width: 760px) {
+  .ld-hero { grid-template-columns: 1fr; padding: 16px 0 40px; }
+  .ld h1 { font-size: 38px; letter-spacing: -1px; }
+  .ld-lead { font-size: 17px; }
+  .ld-phones { height: 470px; }
+  .ld-ph { width: 210px; border-radius: 32px; border-width: 7px; }
+  .ld-ph.a { left: 4px; } .ld-ph.b { right: 8px; }
+  .ld-ln > button:not(.ld-in) { display: none; }
+  .ld-grid, .ld-steps, .ld-price { grid-template-columns: 1fr; }
+  .ld-st { font-size: 28px; }
+  .ld-sec { padding: 44px 0; }
+  .ld-b1, .ld-b2 { width: 100%; }
+  .ld-trust { gap: 10px 18px; }
+  .ld-w { padding: 0 16px; }
+}
 .pro-wrap { position: relative; }
+.cal-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cal-nav { display: flex; gap: 6px; }
+.cal-nav button { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-2); color: var(--fg); font-size: 18px; }
+.cal-nav button:disabled { opacity: .35; }
+.cal-m { font-family: var(--f-display); font-size: 20px; margin: 8px 0 2px; }
+.cal-sum { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); margin: 2px 0 10px; }
+.cal-sum b { font-family: var(--f-mono); }
+.cal-w, .cal-g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-w span { font-size: 11px; color: var(--muted); text-align: center; }
+.cal-g { margin-top: 6px; }
+.cal-d { aspect-ratio: 1 / 1.08; min-width: 0; border-radius: 10px; background: var(--surface-2); display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; padding: 5px 5px 4px; font-size: 11px; color: var(--muted); font-family: inherit; text-align: left; }
+.cal-d i { font-style: normal; font-family: var(--f-mono); font-size: 9.5px; font-weight: 600; letter-spacing: -.3px; white-space: nowrap; max-width: 100%; overflow: hidden; }
+.cal-d.p, .cal-d.n { color: var(--fg); }
+.cal-d.today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal-d.empty { background: none; }
+.cal-d:disabled { cursor: default; }
+.cal-leg { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--muted); margin-top: 10px; }
+.cal-leg s { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.cal-tot { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.cal-tot b { font-family: var(--f-display); font-size: 30px; }
+.lock-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 14px 16px; border-radius: 14px; border: 1px dashed var(--line); background: var(--surface); color: var(--muted); font: inherit; font-size: 14px; text-align: left; margin-top: 4px; }
+.lock-row b { color: var(--accent); white-space: nowrap; font-weight: 600; }
+.trial-cta { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 14px 16px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--fg); font: inherit; text-align: left; }
+.trial-cta b { font-weight: 600; font-size: 15px; }
+.trial-cta span { font-size: 13px; color: var(--muted); }
+.card-kinds { flex-wrap: wrap; }
 .locked { filter: blur(5px); pointer-events: none; user-select: none; }
 .paywall { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .paywall .card { box-shadow: var(--shadow); max-width: 340px; text-align: center; align-items: center; }
@@ -907,6 +1000,18 @@ img { max-width: 100%; }
       </div>
     </div>
 
+    <div class="card pro-wrap" id="calCard">
+      <div id="calBody" class="app" style="gap:0"></div>
+      <div class="paywall" id="calPaywall" hidden>
+        <div class="card">
+          <div class="logo" aria-hidden="true" style="font-size:12px;letter-spacing:0">PRO</div>
+          <div style="font-family:var(--f-display);font-weight:700;font-size:18px">Календарь прибыли</div>
+          <div class="muted" style="font-size:14px">Каждый день месяца цветом: где заработали больше, где ушли в минус. Нажмите на день — увидите сделки.</div>
+          <button class="btn primary block" data-open-plans="cal">Посмотреть тарифы</button>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-h"><span class="card-t">Прибыль по дням</span>
         <div class="seg sm"><button id="chBar" class="on">По дням</button><button id="chCum">Рост</button></div></div>
@@ -927,7 +1032,7 @@ img { max-width: 100%; }
       <div class="kpi"><span class="label">Худшая сделка</span><span class="v" id="sWorst">—</span><span class="s" id="sWorstD"></span></div>
     </div>
 
-    <div class="row2"><button class="btn" id="reportBtn">Отчёт текстом</button><button class="btn primary" id="monthCardBtn">Карточка месяца</button></div>
+    <div class="row2"><button class="btn" id="reportBtn">Отчёт текстом</button><button class="btn primary" id="monthCardBtn">Карточки</button></div>
   </section>
 
   <!-- ============ ИНСТРУМЕНТЫ ============ -->
@@ -971,7 +1076,8 @@ img { max-width: 100%; }
     </div>
 
     <!-- Связки -->
-    <div id="tool-combo" class="app" hidden>
+    <div id="tool-combo" class="pro-wrap" hidden>
+      <div id="cbBody" class="app">
       <div class="card">
         <div class="card-h"><span class="card-t">Курсы на биржах</span><button class="info" data-info="combo" aria-label="Как работают связки">i</button></div>
         <label class="field"><span>Сумма покупки</span>
@@ -982,6 +1088,15 @@ img { max-width: 100%; }
       <div class="card">
         <span class="card-t">Лучшие связки</span>
         <div id="cbList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      </div>
+      <div class="paywall" id="cbPaywall">
+        <div class="card">
+          <div class="logo" aria-hidden="true" style="font-size:12px;letter-spacing:0">PRO</div>
+          <div style="font-family:var(--f-display);font-weight:700;font-size:18px">Связки</div>
+          <div class="muted" style="font-size:14px">Впишите курсы на биржах — P2Pro найдёт, где купить и где продать выгоднее всего.</div>
+          <button class="btn primary block" data-open-plans="combo">Посмотреть тарифы</button>
+        </div>
       </div>
     </div>
 
@@ -1029,7 +1144,7 @@ img { max-width: 100%; }
       <span class="card-t">Подписка</span>
       <div id="subBox" class="app" style="gap:12px" hidden></div>
       <div class="plans" id="plansInline"></div>
-      <div class="kpi"><span class="label">Сделок в этом месяце</span><span class="v" id="freeUse">0</span><div class="bar" id="freeBar"><i style="width:0"></i></div></div>
+      <div class="kpi"><span class="label">Сделок в этом месяце</span><span class="v" id="freeUse">0</span><span class="muted small" id="freeNote" hidden></span></div>
       <button class="btn" id="promoBtn">🎟 Есть промокод?</button>
     </div>
     <div class="card">
@@ -1173,7 +1288,7 @@ const DEFAULT = {
   },
   cps: []
 };
-const FREE_LIMIT = 15;
+const FREE_DAYS = 7;   // в Free история и аналитика видны за последние 7 дней, сохранять можно без ограничений
 
 function load() {
   try {
@@ -1466,10 +1581,6 @@ function cpSwap(d, mode) {
 function save() {
   const { t, err } = buildTrade();
   if (err) return toast(err);
-  if (!S.settings.pro && monthCount() >= FREE_LIMIT) {
-    return sheet(`<h3>Лимит бесплатной версии</h3><p>В Free можно сохранить ${FREE_LIMIT} сделок в месяц. Вы сохранили ${monthCount()}. В PRO история без ограничений.</p>
-      <div class="plans">${plansHtml()}</div><button class="btn" data-close>Не сейчас</button>`);
-  }
   const go = () => {
     if ($('saveBtn').disabled) return;
     $('saveBtn').disabled = true;
@@ -1490,6 +1601,8 @@ function save() {
     setTimeout(maybeA2HS, 3500);
     if (added.length) setTimeout(() => toast(`В контрагенты добавлено: ${added.join(', ')}`), 2000);
     checkLimitWarn(t.bank);
+    // После второй сделки один раз предлагаем пробный PRO
+    if (S.trades.length >= 2 && trialAvail() && !S.settings.trialSeen) { S.settings.trialSeen = true; persist(false); setTimeout(() => { if (!$('scrim')) trialSheet(); }, 2400); }
   };
   if (t.profit < 0) confirmSheet('Сделка в минусе', `Убыток ${money(t.profit, t.cur)}. Всё равно сохранить?`, 'Сохранить', go);
   else go();
@@ -1522,17 +1635,21 @@ function inPeriod(t, p) {
   const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (+p - 1));
   return new Date(t.ts) >= start;
 }
+// Free видит историю и аналитику за последние 7 дней (сегодня и 6 дней до него). Остальные сделки целы — откроются в PRO
+function freeSees(t) { return S.settings.pro || inPeriod(t, String(FREE_DAYS)); }
+const lockRow = (n, why) => n ? `<button class="lock-row" data-open-plans="${why}"><span>🔒 Ещё ${n} ${plural(n, 'сделка', 'сделки', 'сделок')} старше 7 дней</span><b>Открыть в PRO</b></button>` : '';
 function renderHistory() {
   $('hFilter').innerHTML = FILTERS.map(([k, l]) => `<button class="chip ${k === hFilter ? 'on' : ''}" data-hf="${k}">${l}</button>`).join('');
   $('hPeriod').innerHTML = PERIODS.map(([k, l]) => `<button class="chip ${k === hPeriod ? 'on' : ''}" data-hp="${k}">${l}</button>`).join('')
     + (S.trades.length ? `<button class="chip" id="csvBtn" aria-label="Скачать таблицу для Excel">⤓ Excel${S.settings.pro ? '' : ' · PRO'}</button>` : '');
   const q = $('q').value.trim().toLowerCase();
-  const list = S.trades.filter(t => inPeriod(t, hPeriod))
+  const all = S.trades.filter(t => inPeriod(t, hPeriod))
     .filter(t => hFilter === 'all' || (hFilter === 'pos' && t.profit > 0) || (hFilter === 'neg' && t.profit < 0) || (hFilter === 'fav' && t.fav))
     .filter(t => !q || [t.sum, t.buy, t.sell, t.ex, t.bank, t.note, ...tradeCps(t), fmtDay(dayKey(t.ts))].join(' ').toLowerCase().includes(q));
+  const list = all.filter(freeSees), lock = lockRow(all.length - list.length, 'hist');
   hShown = list;
   if (!list.length) {
-    $('hList').innerHTML = S.trades.length ? emptyHtml('search', 'Ничего не найдено', 'Попробуйте другой фильтр или запрос')
+    $('hList').innerHTML = lock ? lock : S.trades.length ? emptyHtml('search', 'Ничего не найдено', 'Попробуйте другой фильтр или запрос')
       : emptyHtml('trades', 'Сделок пока нет', 'Посчитайте сделку и нажмите «Сохранить» — она появится здесь', FIRST_BTN);
     return;
   }
@@ -1543,7 +1660,7 @@ function renderHistory() {
     g.items.forEach(t => byCur[t.cur] = (byCur[t.cur] || 0) + t.profit);
     const tot = Object.entries(byCur).map(([c, v]) => `<span class="${cls(v)}">${money(v, c, true)}</span>`).join(' · ');
     return `<div class="day-h"><span>${fmtDay(g.k)} · ${g.items.length}</span><span class="num">${tot}</span></div>` + g.items.map(itemHtml).join('');
-  }).join('');
+  }).join('') + lock;
 }
 function itemHtml(t) {
   return `<button class="item" data-open="${esc(t.id)}">
@@ -1599,8 +1716,10 @@ function openTrade(id) {
 /* ================= АНАЛИТИКА ================= */
 let sPeriod = '30', sCur = 'RUB', chartMode = 'bar', chart = null;
 function renderStats() {
+  const pro = S.settings.pro;
+  if (!pro && sPeriod !== '7') sPeriod = '7';   // Free: аналитика за последние 7 дней
   $('sPeriod').innerHTML = [['7', '7 дней'], ['30', '30 дней'], ['90', '90 дней'], ['all', 'Всё время']]
-    .map(([k, l]) => `<button class="chip ${k === sPeriod ? 'on' : ''}" data-sp="${k}">${l}</button>`).join('');
+    .map(([k, l]) => `<button class="chip ${k === sPeriod ? 'on' : ''}" data-sp="${k}">${l}${pro || k === '7' ? '' : ' 🔒'}</button>`).join('');
   // Рубли и доллары считаются раздельно (в старой версии они складывались)
   const curs = [...new Set(S.trades.map(t => t.cur))];
   $('sCurSeg').hidden = curs.length < 2;
@@ -1610,7 +1729,8 @@ function renderStats() {
   const c = sCur, n = T.length;
   $('sEmpty').hidden = n > 0;
   document.querySelectorAll('#tab-stats > .card').forEach(c => c.hidden = !S.trades.length);
-  if (!n) $('sEmpty').innerHTML = S.trades.length ? emptyHtml('chart', 'За этот период сделок нет', 'Выберите период побольше — например, «Всё время»')
+  if (!n) $('sEmpty').innerHTML = S.trades.length ? (pro ? emptyHtml('chart', 'За этот период сделок нет', 'Выберите период побольше — например, «Всё время»')
+      : emptyHtml('chart', 'За 7 дней сделок нет', 'В Free аналитика — за последние 7 дней. Вся история — в PRO', '<button class="btn primary" data-open-plans="stats">Открыть в PRO</button>'))
     : emptyHtml('chart', 'Здесь будет ваша аналитика', 'Сохраните пару сделок — и увидите прибыль по дням, лучшие биржи и банки', FIRST_BTN);
   const sum = f => T.reduce((a, t) => a + f(t), 0);
   const profit = sum(t => t.profit), turn = sum(t => t.sum), fees = sum(t => t.comm), cost = sum(t => t.cost ?? t.sum);
@@ -1630,6 +1750,56 @@ function renderStats() {
   breakdown('byEx', T, t => t.ex, c);
   breakdown('byBank', T, t => t.bank, c);
   drawChart(T, c);
+  renderCal();
+  $('monthCardBtn').textContent = pro ? 'Карточки' : 'Карточка дня';
+}
+/* ---------- Календарь прибыли (PRO) ---------- */
+const kfmt = v => { const a = Math.abs(v), sg = v > 0 ? '+' : v < 0 ? '−' : ''; return sg + (a >= 1e6 ? (a / 1e6).toFixed(1).replace('.', ',') + 'м' : a >= 1000 ? (a / 1000).toFixed(a >= 1e5 ? 0 : 1).replace('.', ',') + 'к' : Math.round(a)); };
+const monTitle = (y, m) => { const x = new Date(y, m, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', ''); return x[0].toUpperCase() + x.slice(1); };
+// Сделки месяца в одной валюте (по умолчанию — рубли, если они есть): сумма по каждому дню и итоги
+function monthStats(y, m, cur) {
+  const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
+  cur = cur || (!T.length || T.some(t => t.cur === 'RUB') ? 'RUB' : 'USD');
+  const X = T.filter(t => t.cur === cur), n = new Date(y, m + 1, 0).getDate(), bars = Array(n).fill(0), cnt = Array(n).fill(0);
+  X.forEach(t => { const i = new Date(t.ts).getDate() - 1; bars[i] += t.profit; cnt[i]++; });
+  const sum = f => X.reduce((a, t) => a + f(t), 0), active = cnt.filter(Boolean).length;
+  return { y, m, cur, X, bars, cnt, active, p: sum(t => t.profit), turn: sum(t => t.sum), cost: sum(t => t.cost ?? t.sum),
+    plus: bars.filter((v, i) => cnt[i] && v > 0).length, best: active ? Math.max(...bars.filter((v, i) => cnt[i])) : 0 };
+}
+let calYM = null;   // какой месяц показан в календаре; null — текущий
+function renderCal() {
+  const pro = S.settings.pro, now = new Date();
+  if (!calYM) calYM = { y: now.getFullYear(), m: now.getMonth() };
+  const { y, m } = calYM, ms = monthStats(y, m, sCur), c = sCur;
+  const first = (new Date(y, m, 1).getDay() + 6) % 7, max = Math.max(1, ...ms.bars.map(Math.abs));
+  const isNow = y === now.getFullYear() && m === now.getMonth();
+  const oldest = S.trades.reduce((a, t) => Math.min(a, new Date(t.ts).getTime()), Date.now()), o = new Date(oldest);
+  const canBack = y * 12 + m > o.getFullYear() * 12 + o.getMonth();
+  let cells = '<div class="cal-d empty"></div>'.repeat(first);
+  ms.bars.forEach((v, i) => {
+    const n = ms.cnt[i], a = (.18 + .62 * Math.abs(v) / max).toFixed(2), k = dayKey(new Date(y, m, i + 1));
+    const bg = !n ? '' : v > 0 ? `background:rgba(60,211,138,${a})` : v < 0 ? `background:rgba(255,107,107,${a})` : '';
+    cells += `<button class="cal-d ${n ? (v < 0 ? 'n' : 'p') : ''} ${isNow && i + 1 === now.getDate() ? 'today' : ''}" style="${bg}" ${n ? `data-cal-day="${k}" aria-label="${fmtDay(k)}: ${money(v, c, true)}"` : 'disabled'}>${i + 1}${n ? `<i>${S.settings.incog ? '•••' : kfmt(v)}</i>` : ''}</button>`;
+  });
+  $('calBody').innerHTML = `<div class="cal-h"><span class="card-t">Календарь прибыли</span><div class="cal-nav"><button data-cal-nav="-1" aria-label="Прошлый месяц" ${canBack ? '' : 'disabled'}>‹</button><button data-cal-nav="1" aria-label="Следующий месяц" ${isNow ? 'disabled' : ''}>›</button></div></div>
+    <div class="cal-m">${monTitle(y, m)}</div>
+    <div class="cal-sum"><span>Итого <b class="${cls(ms.p)}">${money(ms.p, c, true)}</b></span><span>${ms.active} ${plural(ms.active, 'торговый день', 'торговых дня', 'торговых дней')}${ms.active ? ` · ${ms.plus} в плюсе` : ''}</span></div>
+    <div class="cal-w">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(x => `<span>${x}</span>`).join('')}</div>
+    <div class="cal-g">${cells}</div>
+    <div class="cal-leg">меньше <s style="background:rgba(60,211,138,.25)"></s><s style="background:rgba(60,211,138,.5)"></s><s style="background:rgba(60,211,138,.8)"></s> больше · <s style="background:rgba(255,107,107,.5)"></s> минус</div>
+    <button class="btn" data-cal-card style="margin-top:12px;width:100%">🗓 Карточка с календарём</button>`;
+  $('calBody').classList.toggle('locked', !pro); $('calBody').inert = !pro; $('calPaywall').hidden = pro;
+}
+// Окно дня: итог, процент цели и сделки этого дня
+function calDay(k) {
+  if (!S.settings.pro) return openPlans('cal');
+  const T = S.trades.filter(t => dayKey(t.ts) === k && t.cur === sCur), tot = T.reduce((a, t) => a + t.profit, 0);
+  const g = sCur === 'RUB' ? +S.settings.goal || 0 : 0, [y, m, d] = k.split('-').map(Number);
+  const title = new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
+  sheet(`<h3>${title[0].toUpperCase() + title.slice(1)}</h3>
+    <div class="cal-tot"><b class="${cls(tot)}">${money(tot, sCur, true)}</b><span class="muted small">${T.length} ${plural(T.length, 'сделка', 'сделки', 'сделок')}${g ? ` · цель ${nf0.format(g)} ₽: ${Math.round(tot / g * 100)}%` : ''}</span></div>
+    <div class="list">${T.map(itemHtml).join('')}</div>
+    <div class="row2"><button class="btn" data-day-card="${k}">Карточка дня</button><button class="btn primary" data-close>Готово</button></div>`);
 }
 function breakdown(id, T, key, c) {
   const m = {};
@@ -1740,7 +1910,8 @@ function renderPrice() {
     <span class="mid muted">${g === 0 ? '0 ₽' : money(tgt(g), 'RUB', true)}</span><span class="num">${rate(solve(tgt(g)))} ₽</span>`).join('');
 }
 function renderCombo() {
-  const c = S.tools.cb;
+  const c = S.tools.cb, pro = S.settings.pro;
+  $('cbBody').classList.toggle('locked', !pro); $('cbBody').inert = !pro; $('cbPaywall').hidden = pro;
   if ($('cbSum') !== document.activeElement) $('cbSum').value = c.sum;
   if (!document.activeElement?.dataset?.cb) {
     $('cbGrid').innerHTML = '<span class="label">Биржа</span><span class="label" style="text-align:right">Купить</span><span class="label" style="text-align:right">Продать</span>' +
@@ -1932,10 +2103,10 @@ const GLOSS = [
 
 function plansHtml() {
   const pro = S.settings.pro;
-  return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор и круги</li><li>История — до ${FREE_LIMIT} сделок в месяц</li><li>Аналитика, подбор курса, связки</li></ul>
+  return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор: сделка, круг, треугольник</li><li>Подбор курса и курс USDT</li><li>История и аналитика за 7 дней</li><li>Итоги дня с карточкой</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
-    <div class="plan pro"><h4>PRO</h4><span class="price">${inTelegram() ? nf0.format(myStars.m) + ' ⭐' : '490 ₽'}<span class="muted small">/мес</span></span><ul><li>История без ограничений</li><li>Контрагенты и чёрный список</li><li>Excel и карточки без водяного знака</li></ul>
-    ${pro ? '<span class="muted small">Текущий тариф</span>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
+    <div class="plan pro"><h4>PRO</h4><span class="price">${inTelegram() ? nf0.format(myStars.m) + ' ⭐' : '490 ₽'}<span class="muted small">/мес</span></span><ul><li>Вся история и аналитика</li><li>Календарь прибыли и связки</li><li>Контрагенты и чёрный список</li><li>График курса и уведомления</li><li>Excel и карточки без водяного знака</li></ul>
+    ${pro ? '<span class="muted small">Текущий тариф</span>' : trialAvail() ? '<button class="btn primary" data-trial>7 дней бесплатно</button>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
 }
 // Значки способов оплаты: узнаваемые логотипы в цвете
 function payIcon(k, z = 18) {
@@ -1977,7 +2148,7 @@ const rubPlans = () => {
   return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myRub.m)} ₽</b>${was('m') || '<span>в месяц</span>'}</button>
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y">${yearOff(myRub)}<span>Год</span><b>${nf0.format(myRub.y)} ₽</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myRub.y / 12))} ₽ в месяц</span>`}</button>`;
 };
-const PW_WHY = { rate: 'График курса и уведомления о курсе — в PRO', excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO' };
+const PW_WHY = { hist: 'Вся история сделок — в PRO. В Free видны последние 7 дней', stats: 'Аналитика за 30, 90 дней и всё время — в PRO', cal: 'Календарь прибыли — в PRO', combo: 'Связки между биржами — в PRO', rate: 'График курса и уведомления о курсе — в PRO', excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO', cards: 'Карточки месяца, календаря и за всё время — в PRO' };
 // В Telegram два способа: звёзды и крипта (цены в рублях, как на сайте)
 const payStars = () => inTelegram() && payMethod === 'stars';
 const payLabel = () => {
@@ -2026,13 +2197,14 @@ const giftDone = () => { sheet(`<div class="pw-hero"><div class="pw-badge">🎁<
 function openPlans(why) {
   payGift = '';
   if (S.settings.pro && why !== 'renew') return showSub();
-  payPeriod = why === 'renew' ? 'y' : 'm';
-  const F = [['∞', 'История без ограничений'], ['★', 'Контрагенты и чёрный список'], ['⤓', 'Выгрузка всех сделок в Excel'], ['▣', 'Карточки результата без водяного знака'], ['⚡', 'Скоро: живые курсы и уведомления', 'soon']];
+  if (why !== 'end') payPeriod = why === 'renew' ? 'y' : 'm';
+  const F = PRO_FEATS;
   const M = inTelegram() ? [['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['crypto', 'Крипта · USDT'], ['card', 'Карта'], ['sbp', 'СБП'], ['stars', 'Telegram Stars']];
   payMethod = inTelegram() ? 'stars' : 'crypto';   // в Telegram по умолчанию звёзды, на сайте — крипта
-  sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день</span></div>
+  sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день${trialAvail() ? ' · 7 дней бесплатно' : ''}</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
-    <ul class="pw-list">${F.map(([i, t, c], k) => `<li class="${c || ''}" style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>
+    <ul class="pw-list">${F.map(([i, t], k) => `<li style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>
+    ${trialAvail() ? '<button class="trial-cta" data-trial><b>🎁 Сначала 7 дней бесплатно</b><span>Без оплаты. Потом решите, оставлять ли PRO</span></button>' : ''}
     <div class="pw-plans" id="payPlans">${payStars() ? starsPlans() : rubPlans()}</div>
     <span class="label">Способ оплаты</span>
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
@@ -2229,16 +2401,17 @@ function renderProfile() {
   $('exEdit').innerHTML = st.exchanges.map(x => `<span class="chip on">${esc(x)}<button data-rm-ex="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
   $('bankEdit').innerHTML = st.banks.map(x => `<span class="chip on">${esc(x)}<button data-rm-bank="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
   $('plansInline').innerHTML = plansHtml(); $('plansInline').hidden = !!st.pro;
-  $('subBox').hidden = !st.pro; if (st.pro) $('subBox').innerHTML = subHtml() + '<button class="btn" id="giftOpen">🎁 Подарить PRO другу</button>';
+  $('subBox').hidden = !st.pro && !trialAvail();
+  $('subBox').innerHTML = st.pro ? subHtml() + '<button class="btn" id="giftOpen">🎁 Подарить PRO другу</button>'
+    : trialAvail() ? '<button class="trial-cta" data-trial><b>🎁 PRO на 7 дней — бесплатно</b><span>Вся история, календарь прибыли, связки и график курса. Без оплаты</span></button>' : '';
   renderTestPanel();
   const w = WORKS.find(x => x[0] === st.work);
   $('workNow').textContent = w ? `${w[1]}. ${w[2]}.` : 'Не выбрано';
   $('limitsCard').hidden = st.work === 'tri';
-  const used = monthCount();
-  $('freeUse').textContent = st.pro ? `${used} · без ограничений` : `${used} из ${FREE_LIMIT}`;
-  $('freeBar').hidden = st.pro;
-  $('freeBar').className = 'bar ' + (used >= FREE_LIMIT ? 'neg' : used >= FREE_LIMIT * .8 ? 'warn' : '');
-  $('freeBar').firstElementChild.style.width = Math.min(100, used / FREE_LIMIT * 100) + '%';
+  const used = monthCount(), hid = st.pro ? 0 : S.trades.filter(t => !freeSees(t)).length;
+  $('freeUse').textContent = st.pro ? `${used} · вся история открыта` : `${used} · без лимита`;
+  $('freeNote').hidden = st.pro;
+  $('freeNote').innerHTML = hid ? `🔒 Старше 7 дней: ${hid} ${plural(hid, 'сделка', 'сделки', 'сделок')} — видны в PRO` : 'Free показывает историю и аналитику за последние 7 дней. Сохранять можно сколько угодно';
   $('glossary').innerHTML = GLOSS.map(([t, d]) => `<details><summary>${t}</summary><p>${d}</p></details>`).join('');
   document.querySelectorAll('[data-theme-set]').forEach(b => b.classList.toggle('on', b.dataset.themeSet === st.theme));
 }
@@ -2310,7 +2483,7 @@ function show(tab) {
 function render() {
   if (S.settings.pro && S.settings.proUntil && Date.now() > S.settings.proUntil) subCheck();
   const pro = S.settings.pro;
-  $('planPill').textContent = pro ? `PRO · ${subDaysLeft()} дн.` : 'Free'; $('planPill').classList.toggle('pro', pro);
+  $('planPill').textContent = pro ? `PRO · ${isTrial() ? 'пробный ' : ''}${subDaysLeft()} дн.` : 'Free'; $('planPill').classList.toggle('pro', pro);
   if (current === 'calc') { renderCalcStatic(); renderResult(); renderToday(); renderRate(); xrRefresh(); }
   if (current === 'hist') renderHistory();
   if (current === 'stats') renderStats();
@@ -2417,18 +2590,24 @@ document.addEventListener('click', e => {
     if (ds.act === 'del') return confirmSheet('Удалить сделку?', `${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)} · ${money(t.profit, t.cur, true)}`, 'Удалить', () => { S.trades = S.trades.filter(x => String(x.id) !== String(t.id)); persist(); render(); toast('Сделка удалена'); }, true);
   }
   if (ds.close !== undefined) return closeSheet();
-  if (ds.sp) { sPeriod = ds.sp; return renderStats(); }
+  if (ds.sp) { if (!st.pro && ds.sp !== '7') return openPlans('stats'); sPeriod = ds.sp; return renderStats(); }
+  if (ds.calNav) { calYM = { ...calYM, m: calYM.m + +ds.calNav }; if (calYM.m < 0) calYM = { y: calYM.y - 1, m: 11 }; if (calYM.m > 11) calYM = { y: calYM.y + 1, m: 0 }; return renderCal(); }
+  if (ds.calDay) return calDay(ds.calDay);
+  if (ds.calCard !== undefined) return showCard('cal', calYM);
+  if (ds.dayCard) return showCard('day', ds.dayCard);
   if (ds.scur) { sCur = ds.scur; return renderStats(); }
   if (b.id === 'chBar' || b.id === 'chCum') { chartMode = b.id === 'chBar' ? 'bar' : 'cum'; $('chBar').classList.toggle('on', chartMode === 'bar'); $('chCum').classList.toggle('on', chartMode !== 'bar'); return renderStats(); }
   if (b.id === 'reportBtn') return monthReport();
   if (ds.openPlans !== undefined) return openPlans(ds.openPlans);
-  if (ds.period) { payPeriod = ds.period; document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('on', x.dataset.period === payPeriod)); $('payBtn').textContent = payLabel(); return; }
+  if (ds.period) { payPeriod = ds.period; document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('on', x.dataset.period === payPeriod)); if ($('payBtn')) $('payBtn').textContent = payLabel(); return; }
   if (ds.plan === 'pro') return showCheckout();
   if (ds.plan) { closeSheet(); return subDo('demo_set_sub', { p_period: st.proPeriod || 'm', p_until: null, p_auto: !!st.autoRenew }, 'Вы на тарифе Free'); }
   if (ds.pay) { payMethod = ds.pay; document.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('on', x.dataset.pay === payMethod)); return payRefresh(); }
   if (b.id === 'xrGo') return xrOpen(b.dataset.link, b.dataset.web);
   if (b.id === 'payBtn') return payProcess();
   if (b.id === 'giftOpen') return giftSheet();
+  if (ds.trial !== undefined) return trialSheet();
+  if (b.id === 'trialGo') return trialStart();
   if (ds.tour) return showTour(+ds.tour);
   if (b.id === 'tourBtn') return showTour(0);
   if (ds.guide != null) return showGuide();
@@ -2634,7 +2813,6 @@ function rateSheet() {
       ${buy || sell ? '' : '<span class="muted small">Введите курсы покупки и продажи — покажем, насколько они выше или ниже биржи</span>'}</div>
     <div class="kpi"><span class="label">Другие валюты</span><div id="xrFiats" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;font-family:var(--f-mono);font-size:14px">
       ${XR_FIATS.map(([c, f, sym]) => `<span id="xr${c}">${f} … ${sym}</span>`).join('')}</div></div>
-    <div class="row2"><button class="btn" data-xr-fill="buy" style="font-size:14px">В «Купил»</button><button class="btn" data-xr-fill="sell" style="font-size:14px">В «Продал»</button></div>
     <button class="btn primary" data-close>Готово</button>`);
   xrChart(); xrAlLoad();
   XR_FIATS.forEach(([c, f, sym]) => xrFetch(c).then(x => { if ($('xr' + c)) $('xr' + c).textContent = `${f} ${nf2.format(x.rate)} ${sym}`; }, () => { if ($('xr' + c)) $('xr' + c).textContent = `${f} — ${sym}`; }));
@@ -2692,8 +2870,6 @@ document.addEventListener('click', e => {
   if (e.target.closest('#xrAlAdd')) return xrAlAdd();
   const del = e.target.closest('[data-xral-del]');
   if (del) { sb?.from('rate_alerts').delete().eq('id', +del.dataset.xralDel).then(() => xrAlLoad(), () => toast('Нет связи')); return; }
-  const f = e.target.closest('[data-xr-fill]');
-  if (f && xrRate) { const inp = $(f.dataset.xrFill); if (inp) { inp.value = xrRate.rate.toFixed(2); inp.dispatchEvent(new Event('input', { bubbles: true })); } closeSheet(); toast('Курс подставлен'); }
   if (e.target.closest('#rateToggle')) { S.settings.rateOff = !S.settings.rateOff; persist(false); e.target.closest('#rateToggle').setAttribute('aria-checked', !S.settings.rateOff); toast(S.settings.rateOff ? 'Курс в калькуляторе скрыт' : 'Курс в калькуляторе включён'); }
 });
 setInterval(() => { if (current === 'calc' && document.visibilityState === 'visible') xrRefresh(); }, 60e3);
@@ -2807,7 +2983,7 @@ async function pullAll() {
     SH.s = fp(cloudSettings()); changed = true;
   }
   if (pr.data?.name && pr.data.name !== U.name) { U.name = pr.data.name; lsSet(USER_KEY, U); renderAcc(); }
-  subApply(sub.data);
+  subApply(sub.data); setTimeout(trialEndCheck, 900);
   SH.at = maxAt; SH.pulled = true; shSave(); persist(false);
   if (changed) render();
   subFresh = true; subCheck(); subFresh = false;
@@ -3442,15 +3618,56 @@ function bootAccount() {
     }
     if (s === 'offline' && U) { syncState = 'local'; renderAcc(); return afterAuth(); }   // нет связи, но вход был: работаем с тем, что на устройстве
     if (U) { U = null; lsSet(USER_KEY, null); renderAcc(); }
-    showAuth(SH || lsGet(REM_KEY) !== null ? 'in' : 'up');
+    const mode = SH || lsGet(REM_KEY) !== null ? 'in' : 'up';
+    if (!inTelegram() && !isStandalone() && !URL_ERR && !FROM_RECOVERY) showLanding(mode); else showAuth(mode);
     if (URL_ERR) auErr(URL_ERR);
+  });
+}
+
+/* ================= ЛЕНДИНГ ================= */
+// Главная страница сайта для тех, кто ещё не вошёл (в Telegram и в приложении для iPhone не показываем)
+const BOT_URL = 'https://t.me/P2ProAppBot';
+function showLanding(authMode) {
+  if ($('landing')) return;
+  const el = document.createElement('div'); el.id = 'landing'; el.className = 'ld';
+  const F = [['🧮', 'Чистая прибыль', 'Сделка, круг и треугольник с комиссией биржи и вывода. Курс безубытка — сразу.'],
+    ['📒', 'Журнал и аналитика', 'История сделок, прибыль по дням, лучшие биржи и банки, календарь прибыли.'],
+    ['💱', 'Живой курс USDT', 'Биржевой курс, график за сутки и уведомление, когда курс дошёл до вашей цены.'],
+    ['🌙', 'Итоги дня в 23:59', 'Бот присылает прибыль за день и красивую карточку для сторис.'],
+    ['🛡', 'Контрагенты', 'Записная книжка и чёрный список — предупредит, если ник в списке мошенников.'],
+    ['🔒', 'Защита и облако', 'PIN-код и Face ID. Сделки в облаке — на телефоне и компьютере одни и те же.']];
+  const S3 = [['Откройте бота', '@P2ProAppBot в Telegram — вход в один тап, без паролей'], ['Вбейте сделку', 'Курс покупки, продажи и сумму — комиссии посчитаются сами'], ['Смотрите прибыль', 'По дням и месяцам в календаре — и итоги каждый вечер']];
+  const li = a => a.map(x => `<li>${x}</li>`).join('');
+  el.innerHTML = `<div class="ld-glow"></div>
+  <div class="ld-w"><div class="ld-nav"><div class="logo">P2</div><span class="ld-nm">P2Pro</span>
+    <div class="ld-ln"><button data-ld-go="ldFeat">Возможности</button><button data-ld-go="ldPrice">Тарифы</button><button class="ld-in" data-ld-auth="in">Войти</button></div></div>
+  <div class="ld-hero"><div><span class="ld-tag">● Бесплатно в Telegram</span>
+    <h1>Узнай <em>реальную</em> прибыль с P2P</h1>
+    <p class="ld-lead">Калькулятор и журнал P2P-сделок: считает прибыль после всех комиссий, ведёт историю, показывает живой курс USDT и присылает итоги дня.</p>
+    <div class="ld-cta"><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">${AI.tg.replace('#2AABEE', '#1B1405')} Открыть в Telegram</a><button class="ld-b2" data-ld-auth="${authMode}">Войти на сайте</button></div>
+    <div class="ld-trust"><span><b>3 сек</b> — расчёт сделки</span><span><b>Bybit · HTX · OKX · Bitget</b></span><span><b>0 ₽</b> — тариф Free</span></div></div>
+    <div class="ld-phones" aria-hidden="true"><div class="ld-ph a"><img src="img/land-calc.webp" width="600" height="1298" alt=""></div><div class="ld-ph b"><img src="img/land-cal.webp" width="600" height="1298" alt=""></div></div></div></div>
+  <div class="ld-w ld-sec" id="ldFeat"><div class="ld-st">Всё для P2P — в одном месте</div><div class="ld-ss">Больше никаких заметок, Excel и калькулятора в голове</div>
+    <div class="ld-grid">${F.map(([i, b, t]) => `<div class="ld-f"><i>${i}</i><b>${b}</b><span>${t}</span></div>`).join('')}</div></div>
+  <div class="ld-w ld-sec"><div class="ld-st">Как начать</div>
+    <div class="ld-steps">${S3.map(([b, t], k) => `<div class="ld-step"><div class="ld-n">${k + 1}</div><b>${b}</b><p>${t}</p></div>`).join('')}</div></div>
+  <div class="ld-w ld-sec" id="ldPrice"><div class="ld-st">Тарифы</div><div class="ld-ss">PRO можно попробовать 7 дней бесплатно</div>
+    <div class="ld-price"><div class="ld-pl"><h3>Free</h3><div class="ld-pr">0 ₽</div><ul>${li(['Калькулятор: сделка, круг, треугольник', 'Подбор курса и курс USDT', 'История и аналитика за 7 дней', 'Итоги дня в боте'])}</ul><a class="ld-b2" href="${BOT_URL}" target="_blank" rel="noopener">Начать бесплатно</a></div>
+    <div class="ld-pl pro"><h3>PRO</h3><div class="ld-pr">490 ₽ <small>/ месяц</small></div><span style="color:#9AA4B4">или 3 990 ₽ в год · 350 ⭐ в Telegram</span><ul>${li(['Вся история и аналитика', 'Календарь прибыли и связки', 'Контрагенты и чёрный список', 'График и уведомления о курсе', 'Excel и карточки без водяного знака'])}</ul><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">7 дней бесплатно</a></div></div></div>
+  <div class="ld-w"><div class="ld-foot"><span>© ${new Date().getFullYear()} P2Pro · Калькулятор и журнал P2P-сделок</span>
+    <nav><a href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a href="legal.html#terms" target="_blank" rel="noopener">Оферта</a><a href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка @MVSR_P2P</a></nav></div></div>`;
+  document.body.appendChild(el); document.documentElement.style.overflow = 'hidden';
+  el.addEventListener('click', e => {
+    const go = e.target.closest('[data-ld-go]'); if (go) return $(go.dataset.ldGo)?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
+    const au = e.target.closest('[data-ld-auth]'); if (!au) return;
+    showAuth(au.dataset.ldAuth); el.classList.add('out'); setTimeout(() => el.remove(), 320);
   });
 }
 
 /* ================= МОЯ ПОДПИСКА ================= */
 // Срок PRO: месяц — 30 дней, год — 365. Автопродление в демо просто добавляет срок и пишет платёж в историю
 const PERIOD_DAYS = { m: 30, y: 365 }, PERIOD_PRICE = { m: 490, y: 3990 };
-const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', stars: 'Telegram Stars', usdt: 'USDT', crypto: 'Криптовалюта', gift: 'Подарок', promo: 'Промокод' };
+const METHOD_NAME = { card: 'Банковская карта', sbp: 'СБП', stars: 'Telegram Stars', usdt: 'USDT', crypto: 'Криптовалюта', gift: 'Подарок', promo: 'Промокод', trial: 'Пробный период' };
 const fmtLong = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '');
 const subDaysLeft = () => Math.max(0, Math.ceil(((S.settings.proUntil || 0) - Date.now()) / 864e5));
 // Срок вышел: при автопродлении в демо продлеваем сами (с настоящей оплатой это сделает платёжный сервис на сервере)
@@ -3481,16 +3698,16 @@ function subCheck() {
     : `PRO закончится через ${left} ${plural(left, 'день', 'дня', 'дней')}`), 2600); }
 }
 function subHtml() {
-  const st = S.settings, left = subDaysLeft(), gift = ['gift', 'promo', 'stars', 'crypto'].includes(st.payMethod);   // разовые сроки: без автопродления
+  const st = S.settings, left = subDaysLeft(), gift = ['gift', 'promo', 'stars', 'crypto', 'trial'].includes(st.payMethod);   // разовые сроки: без автопродления
   // Подарок от администратора: срок любой, не продлевается и не оплачивается
   const total = gift ? Math.max(left, Math.round(((st.proUntil || 0) - (st.proSince || 0)) / 864e5) || left) : PERIOD_DAYS[st.proPeriod] || 30, k = Math.min(1, left / (total || 1));
   if (gift) return `<div class="sub">
       <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
         <div><b>${left}</b><span>${plural(left, 'день', 'дня', 'дней')}</span></div></div>
-      <div class="sub-info"><div class="sub-t">PRO · ${st.payMethod === 'promo' ? 'промокод 🎟' : st.payMethod === 'stars' ? (st.proPeriod === 'y' ? 'год ⭐' : 'месяц ⭐') : st.payMethod === 'crypto' ? (st.proPeriod === 'y' ? 'год 💎' : 'месяц 💎') : 'подарок 🎁'}</div>
-        <span class="muted small">Действует до <b style="color:var(--fg)">${fmtLong(st.proUntil)}</b></span>
-        <span class="muted small">${st.payMethod === 'stars' ? 'Оплачено звёздами, без автопродления' : st.payMethod === 'crypto' ? 'Оплачено криптой, без автопродления' : 'Без списаний'}. Потом можно продлить или перейти на Free</span></div></div>
-    <div class="row2"><button class="btn" data-sub="hist">История</button><button class="btn primary" data-sub="renew">Продлить</button></div>`;
+      <div class="sub-info"><div class="sub-t">PRO · ${st.payMethod === 'trial' ? 'пробный 🎁' : st.payMethod === 'promo' ? 'промокод 🎟' : st.payMethod === 'stars' ? (st.proPeriod === 'y' ? 'год ⭐' : 'месяц ⭐') : st.payMethod === 'crypto' ? (st.proPeriod === 'y' ? 'год 💎' : 'месяц 💎') : 'подарок 🎁'}</div>
+        <span class="muted small">${st.payMethod === 'trial' ? `Осталось ${left} ${plural(left, 'день', 'дня', 'дней')} · до` : 'Действует до'} <b style="color:var(--fg)">${fmtLong(st.proUntil)}</b></span>
+        <span class="muted small">${st.payMethod === 'trial' ? 'Потом — тариф Free, без списаний. Сделки и контрагенты сохранятся' : (st.payMethod === 'stars' ? 'Оплачено звёздами, без автопродления' : st.payMethod === 'crypto' ? 'Оплачено криптой, без автопродления' : 'Без списаний') + '. Потом можно продлить или перейти на Free'}</span></div></div>
+    <div class="row2"><button class="btn" data-sub="hist">История</button><button class="btn primary" data-sub="renew">${st.payMethod === 'trial' ? 'Оставить PRO' : 'Продлить'}</button></div>`;
   return `<div class="sub">
       <div class="sub-ring ${left <= 3 ? 'low' : ''}"><svg viewBox="0 0 80 80"><circle class="t" cx="40" cy="40" r="34"/><circle class="a" cx="40" cy="40" r="34" style="stroke-dashoffset:${(214 * (1 - k)).toFixed(1)}"/></svg>
         <div><b>${left}</b><span>${plural(left, 'день', 'дня', 'дней')}</span></div></div>
@@ -3502,6 +3719,54 @@ function subHtml() {
     <div class="row2"><button class="btn" data-sub="hist">История платежей</button><button class="btn primary" data-sub="renew">${st.proPeriod === 'm' ? 'Год со скидкой' : 'Продлить'}</button></div>
     ${st.autoRenew ? '<button class="btn ghost-neg" data-sub="cancel">Отменить подписку</button>' : ''}`;
 }
+// Пробный PRO на 7 дней: один раз на человека, проверяет сервер (17-trial.sql, start_trial). Деньги не списываются
+function isTrial() { return !!S.settings.pro && S.settings.payMethod === 'trial'; }
+function trialAvail() { const st = S.settings; return !!(sb && me()) && !st.pro && !st.proUntil && !(st.payments || []).length && !st.trialUsed; }
+const PRO_FEATS = [['∞', 'Вся история и аналитика'], ['▦', 'Календарь прибыли и связки'], ['★', 'Контрагенты и чёрный список'], ['📈', 'График курса и уведомления в Telegram'], ['⤓', 'Excel и карточки без водяного знака']];
+const featList = () => `<ul class="pw-list">${PRO_FEATS.map(([i, t], k) => `<li style="animation-delay:${.1 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>`;
+function trialSheet() {
+  if (!trialAvail()) return openPlans();
+  sheet(`<div class="pw-hero"><div class="pw-badge">🎁</div><h3>PRO на 7 дней — бесплатно</h3><span class="muted small">Попробуйте всё без ограничений. Платить ничего не нужно</span></div>
+    ${featList()}
+    <button class="btn primary pw-go" id="trialGo">Включить пробный PRO</button><button class="btn" data-close>Позже</button>
+    <span class="muted small" style="text-align:center">Через 7 дней PRO выключится сам — без списаний. Один раз на аккаунт</span>`);
+}
+async function trialStart() {
+  const b = $('trialGo'); if (!b || b.disabled) return;
+  if (!sb || !me()) return toast('Войдите в аккаунт, чтобы включить пробный PRO');
+  b.disabled = true; b.textContent = 'Включаем…';
+  try {
+    const r = await cloudRpc('start_trial');
+    subApply(r); S.settings.trialUsed = true; persist(false); render(); renderTestPanel();
+    sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>Пробный PRO включён</h3><span class="muted small">Всё открыто до <b style="color:var(--fg)">${fmtLong(S.settings.proUntil)}</b></span></div>
+      ${featList()}<button class="btn primary" data-close>Отлично</button>`);
+    confetti();
+  } catch (e) {
+    const m = String(e?.message || '');
+    if (/trial_used/.test(m)) {
+      S.settings.trialUsed = true; persist(false); render();
+      return sheet(`<h3>Пробный период уже был</h3><p>Бесплатные 7 дней даются один раз. Оформите PRO — и всё снова откроется.</p>
+        <div class="row2"><button class="btn" data-close>Закрыть</button><button class="btn primary" data-plan="pro">Тарифы</button></div>`);
+    }
+    if ($('trialGo') === b) { b.disabled = false; b.textContent = 'Включить пробный PRO'; }
+    toast(/start_trial|function/i.test(m) ? 'Пробный период скоро заработает — попробуйте позже' : 'Нет связи с сервером — попробуйте ещё раз');
+  }
+}
+// Пробный закончился: один раз показываем, сколько успели за неделю, и предлагаем остаться в PRO
+function trialEndCheck() {
+  const st = S.settings;
+  if (st.pro || st.payMethod !== 'trial' || !st.proUntil || Date.now() < st.proUntil || st.trialEndSeen === st.proUntil || $('scrim') || !me()) return;
+  st.trialEndSeen = st.proUntil; persist(false);
+  const T = S.trades.filter(t => { const x = new Date(t.ts).getTime(); return x >= (st.proSince || st.proUntil - 7 * 864e5) && x <= st.proUntil; });
+  const rub = T.filter(t => t.cur === 'RUB').reduce((a, t) => a + (+t.profit || 0), 0);
+  sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>Пробный период закончился</h3>
+      <span class="muted small">${T.length ? `За 7 дней вы записали <b style="color:var(--fg)">${T.length} ${plural(T.length, 'сделку', 'сделки', 'сделок')}</b>${rub ? ` и заработали <b class="${cls(rub)}">${money(rub, 'RUB', true)}</b>` : ''}` : 'Спасибо, что попробовали PRO'}</span></div>
+    <div class="pw-why">Сейчас тариф Free: история и аналитика — за последние 7 дней, календарь, связки, контрагенты и график курса закрыты. Сделки сохранены</div>
+    <div class="pw-plans">${inTelegram() ? starsPlans() : rubPlans()}</div>
+    <button class="btn primary pw-go" data-open-plans="end">Оставить PRO</button><button class="btn" data-close>Остаться на Free</button>`);
+  loadMyStars().then(() => { const el = document.querySelector('.sheet .pw-plans'); if (el) el.innerHTML = inTelegram() ? starsPlans() : rubPlans(); });
+}
+
 // Промокод: сервер проверяет код и сразу добавляет дни PRO (08-admin.sql, redeem_promo)
 const PROMO_ERR = { promo_invalid: 'Такого промокода нет или он выключен', promo_expired: 'Срок действия промокода закончился',
   promo_used_up: 'Промокод уже активировали максимальное число раз', promo_already: 'Вы уже активировали этот промокод' };
@@ -3548,7 +3813,7 @@ document.addEventListener('click', e => {
   if (a === 'renew') return openPlans('renew');
   if (a === 'hist') {
     const P = st.payments || [];
-    sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.method === 'gift' ? `подарок на ${+x.days || 0} дн.` : x.method === 'promo' ? `промокод ${esc(String(x.code || ''))} на ${+x.days || 0} дн.` : x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
+    sheet(`<h3>История платежей</h3><div>${P.length ? P.map(x => `<div class="pay-row"><div>PRO · ${x.method === 'gift' ? `подарок на ${+x.days || 0} дн.` : x.method === 'promo' ? `промокод ${esc(String(x.code || ''))} на ${+x.days || 0} дн.` : x.method === 'trial' ? `пробный на ${+x.days || 7} дн.` : x.period === 'y' ? 'год' : 'месяц'}${x.auto ? ' · автопродление' : ''}
       <span>${fmtLong(x.ts)} · ${METHOD_NAME[x.method] || ''}${x.paid ? ' · ' + esc(x.paid) : ''}${x.refund ? ' · возврат' : ''}</span></div><b>${nf0.format(x.amount)} ${x.method === 'stars' ? '⭐' : '₽'}</b></div>`).join('') : '<span class="muted">Платежей пока нет</span>'}</div><button class="btn primary" data-close>Закрыть</button>`);
   }
 });
@@ -3730,20 +3995,62 @@ function dealCardData(t) {
     cells: [['Биржа · банк', `${t.ex} · ${t.bank}`], ['Курс', t.mode === 'tri' ? `${rate(t.sell)} / ${rate(t.buy)}` : `${rate(t.buy)} → ${rate(t.sell)}`],
       ['Сумма', cardAmt(t.sum, t.cur)], ['Комиссии', cardAmt(t.comm, t.cur)], ['USDT', cardHide ? '•••' : nf2.format(t.qty || 0)], ['Время', fmtTime(t.ts)]] };
 }
-function monthCardData() {
-  const now = new Date(), m = now.getMonth(), y = now.getFullYear();
-  const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
-  const cur = !T.length || T.some(t => t.cur === 'RUB') ? 'RUB' : 'USD', X = T.filter(t => t.cur === cur);
-  const p = X.reduce((a, t) => a + t.profit, 0), turn = X.reduce((a, t) => a + t.sum, 0), cost = X.reduce((a, t) => a + (t.cost ?? t.sum), 0);
-  const days = new Date(y, m + 1, 0).getDate(), bars = Array(days).fill(0);
-  X.forEach(t => bars[new Date(t.ts).getDate() - 1] += t.profit);
-  const best = Math.max(...bars), active = bars.filter((v, i) => X.some(t => new Date(t.ts).getDate() === i + 1)).length;
-  const month = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '');
-  return { kicker: 'Мой результат', title: month[0].toUpperCase() + month.slice(1), neg: p < 0,
-    big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : (p > 0 ? '+' : '') + cardAmt(p, cur),
-    sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${active} ${plural(active, 'торговый день', 'торговых дня', 'торговых дней')}`,
-    date: 'P2P · ' + (cur === 'RUB' ? 'рубли' : 'доллары'),
-    cells: [['Сделок', String(X.length)], ['В плюсе', `${X.filter(t => t.profit > 0).length} из ${X.length}`], ['Оборот', cardAmt(turn, cur)], ['Лучший день', best > 0 ? '+' + cardAmt(best, cur) : '—']], bars };
+const MON_DAT = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню', 'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+const plusAmt = (v, cur) => (v > 0 ? '+' : '') + cardAmt(v, cur);
+const tradeDays = n => `${n} ${plural(n, 'торговый день', 'торговых дня', 'торговых дней')}`;
+// Карточка месяца. back = 0 — текущий месяц, 1 — прошлый (со сравнением с позапрошлым)
+function monthCardData(back = 0) {
+  const now = new Date(), at = new Date(now.getFullYear(), now.getMonth() - back, 1), y = at.getFullYear(), m = at.getMonth();
+  const M = monthStats(y, m), { cur, X, p, turn, cost, active, best } = M;
+  const d = { kicker: back ? 'Прошлый месяц' : 'Мой результат', title: monTitle(y, m), neg: p < 0,
+    big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
+    sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${tradeDays(active)}`,
+    date: back ? 'Итоги месяца' : 'P2P · ' + (cur === 'RUB' ? 'рубли' : 'доллары'),
+    cells: [['Сделок', String(X.length)], ['В среднем за день', active ? plusAmt(p / active, cur) : '—'], ['Оборот', cardAmt(turn, cur)], ['Лучший день', best > 0 ? '+' + cardAmt(best, cur) : '—']], bars: M.bars };
+  if (!back) return d;
+  // Прошлый месяц: рост к позапрошлому и два столбика «было → стало»
+  const P = monthStats(m ? y : y - 1, m ? m - 1 : 11, cur);
+  if (P.X.length && P.p > 0 && X.length) {
+    const g = Math.round((p - P.p) / P.p * 100);
+    d.sub = `к ${MON_DAT[P.m]}`; d.chip = { text: `${g >= 0 ? '▲ +' : '▼ −'}${Math.abs(g)}%`, neg: g < 0 };
+  }
+  d.cells = [['Сделок', String(X.length)], ['Торговых дней', String(active)], ['Оборот', cardAmt(turn, cur)], ['В среднем за день', active ? plusAmt(p / active, cur) : '—']];
+  if (P.X.length) { d.bars = [P.p, p]; d.barLabels = [monTitle(P.y, P.m).split(' ')[0], monTitle(y, m).split(' ')[0]]; d.barsTitle = 'Было → стало'; }
+  else d.bars = M.bars;
+  return d;
+}
+// Календарь месяца: каждый день цветом
+function calCardData(ym) {
+  const now = new Date(), { y, m } = ym || { y: now.getFullYear(), m: now.getMonth() }, M = monthStats(y, m);
+  return { kicker: 'Календарь прибыли', title: monTitle(y, m), neg: M.p < 0, big: cardHide ? '•••' : plusAmt(M.p, M.cur),
+    sub: `${tradeDays(M.active)}${M.active ? ` · ${M.plus} в плюсе` : ''}${M.best > 0 ? ` · лучший +${cardAmt(M.best, M.cur)}` : ''}`,
+    date: 'Мой месяц', cal: { first: (new Date(y, m, 1).getDay() + 6) % 7, bars: M.bars, cnt: M.cnt } };
+}
+// За всё время: итог, лучший месяц и столбики по последним месяцам
+function allCardData() {
+  const cur = !S.trades.length || S.trades.some(t => t.cur === 'RUB') ? 'RUB' : 'USD', X = S.trades.filter(t => t.cur === cur);
+  const sum = f => X.reduce((a, t) => a + f(t), 0), p = sum(t => t.profit), cost = sum(t => t.cost ?? t.sum), days = new Set(X.map(t => dayKey(t.ts))).size;
+  const first = X.length ? Math.min(...X.map(t => new Date(t.ts).getTime())) : Date.now();
+  const byM = {}; X.forEach(t => { const d = new Date(t.ts), k = d.getFullYear() * 12 + d.getMonth(); byM[k] = (byM[k] || 0) + t.profit; });
+  const top = Object.entries(byM).sort((a, b) => b[1] - a[1])[0], now = new Date(), nk = now.getFullYear() * 12 + now.getMonth();
+  const f = new Date(first), n = Math.min(6, Math.max(2, nk - (f.getFullYear() * 12 + f.getMonth()) + 1)), ks = Array.from({ length: n }, (_, i) => nk - n + 1 + i);
+  const mName = k => new Date(Math.floor(k / 12), k % 12, 1).toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '');
+  return { kicker: 'За всё время', title: 'Мой P2P в цифрах', neg: p < 0, big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
+    sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${tradeDays(days)}`,
+    date: 'с ' + f.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+    cells: [['Сделок', String(X.length)], ['Оборот', cardAmt(sum(t => t.sum), cur)], ['Лучший месяц', top && top[1] > 0 ? monTitle(Math.floor(top[0] / 12), top[0] % 12).split(' ')[0] : '—'], ['В среднем за день', days ? plusAmt(p / days, cur) : '—']],
+    bars: ks.map(k => byM[k] || 0), barLabels: ks.map(k => { const x = mName(k); return x[0].toUpperCase() + x.slice(1); }), barsTitle: 'Прибыль по месяцам' };
+}
+// Итоги одного дня — из окна дня в календаре и для Free
+function dayCardData(k) {
+  const T = S.trades.filter(t => dayKey(t.ts) === k), cur = !T.length || T.some(t => t.cur === 'RUB') ? 'RUB' : 'USD', X = T.filter(t => t.cur === cur);
+  const sum = f => X.reduce((a, t) => a + f(t), 0), p = sum(t => t.profit), cost = sum(t => t.cost ?? t.sum), best = X.length ? Math.max(...X.map(t => t.profit)) : 0;
+  const g = cur === 'RUB' ? +S.settings.goal || 0 : 0, [y, m, d] = k.split('-').map(Number), dt = new Date(y, m - 1, d);
+  const title = dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
+  return { kicker: 'Итоги дня', title: title[0].toUpperCase() + title.slice(1), neg: p < 0, big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
+    sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${X.length} ${plural(X.length, 'сделка', 'сделки', 'сделок')}`, date: String(y),
+    cells: [['Сделок', String(X.length)], ['Оборот', cardAmt(sum(t => t.sum), cur)], ['Лучшая сделка', X.length ? plusAmt(best, cur) : '—'],
+      g ? [`Цель ${nf0.format(g)} ₽`, `${Math.round(p / g * 100)}%${p >= g ? ' ✓' : ''}`] : ['Средняя сделка', X.length ? plusAmt(p / X.length, cur) : '—']] };
 }
 async function drawCard(d) {
   try { await Promise.all(['700 40px Unbounded', '500 24px Onest', '600 24px Onest', '500 30px "JetBrains Mono"'].map(f => document.fonts.load(f))); } catch (e) {}
@@ -3772,21 +4079,43 @@ async function drawCard(d) {
   c.fillStyle = '#F2B54B'; c.font = '600 26px Onest'; c.fillText(d.kicker.toUpperCase().split('').join(' '), L, 292);
   c.fillStyle = '#E8ECF2'; fit(d.title, '700 #px Unbounded', 46, 28, W - 2 * L); c.fillText(d.title, L, 352);
   c.fillStyle = d.neg ? '#FF6B6B' : '#3CD38A'; fit(d.big, '700 #px Unbounded', 150, 64, W - 2 * L); c.fillText(d.big, L, 492);
-  c.fillStyle = '#8691A2'; fit(d.sub, '500 #px Onest', 30, 20, W - 2 * L); c.fillText(d.sub, L + 2, 582);
+  c.fillStyle = '#8691A2'; fit(d.sub, '500 #px Onest', 30, 20, W - 2 * L - (d.chip ? 220 : 0)); c.fillText(d.sub, L + 2, 582);
+  if (d.chip) {   // плашка роста к прошлому месяцу
+    const x = L + 2 + c.measureText(d.sub).width + 18; c.font = '500 28px "JetBrains Mono"';
+    const w = c.measureText(d.chip.text).width + 40;
+    c.fillStyle = d.chip.neg ? 'rgba(255,107,107,.15)' : 'rgba(60,211,138,.15)'; box(x, 582 - 34, w, 48, 24); c.fill();
+    c.fillStyle = d.chip.neg ? '#FF6B6B' : '#3CD38A'; c.fillText(d.chip.text, x + 20, 582);
+  }
+  // календарь месяца вместо плиток: дни цветом, внизу сумма дня
+  if (d.cal) {
+    const g = 12, cw2 = (W - 2 * L - 6 * g) / 7, rows = Math.ceil((d.cal.first + d.cal.bars.length) / 7), ch2 = Math.min(92, (1200 - 676 - (rows - 1) * g) / rows);
+    const max = Math.max(1, ...d.cal.bars.map(Math.abs));
+    c.textAlign = 'center'; c.fillStyle = '#8691A2'; c.font = '500 22px Onest';
+    ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach((w, i) => c.fillText(w, L + i * (cw2 + g) + cw2 / 2, 654));
+    c.textAlign = 'left';
+    d.cal.bars.forEach((v, i) => {
+      const k = d.cal.first + i, x = L + (k % 7) * (cw2 + g), y = 676 + Math.floor(k / 7) * (ch2 + g), n = d.cal.cnt[i], a = .2 + .6 * Math.abs(v) / max;
+      c.fillStyle = !n ? 'rgba(255,255,255,.05)' : v < 0 ? `rgba(255,107,107,${a})` : `rgba(60,211,138,${n && !v ? .2 : a})`; box(x, y, cw2, ch2, 18); c.fill();
+      c.fillStyle = n ? '#E8ECF2' : '#8691A2'; c.font = '500 22px Onest'; c.fillText(String(i + 1), x + 12, y + 30);
+      if (n && !cardHide) { c.font = '500 19px "JetBrains Mono"'; c.fillText(kfmt(v), x + 12, y + ch2 - 14); }
+    });
+  }
   // плитки с цифрами 2 в ряд
   const cw = (W - 2 * L - 24) / 2, ch = 140;
-  d.cells.forEach(([k, v], i) => {
+  (d.cells || []).forEach(([k, v], i) => {
     const x = L + (i % 2) * (cw + 24), y = 646 + Math.floor(i / 2) * (ch + 22);
     c.fillStyle = 'rgba(255,255,255,.045)'; box(x, y, cw, ch, 26); c.fill(); c.strokeStyle = 'rgba(255,255,255,.08)'; c.lineWidth = 2; c.stroke();
     c.fillStyle = '#8691A2'; c.font = '500 24px Onest'; c.fillText(k, x + 28, y + 46);
     c.fillStyle = '#E8ECF2'; fit(v, '500 #px "JetBrains Mono"', 38, 20, cw - 56); c.fillText(v, x + 28, y + 100);
   });
   // столбики прибыли по дням месяца
-  if (d.bars) {
-    const top = 1000, hh = 150, n = d.bars.length, bw = (W - 2 * L) / n, max = Math.max(1, ...d.bars.map(Math.abs));
-    c.fillStyle = '#8691A2'; c.font = '500 22px Onest'; c.fillText('Прибыль по дням', L, top - 16);
-    d.bars.forEach((v, i) => { const h = v ? Math.max(6, Math.abs(v) / max * hh) : 4;
-      c.fillStyle = v > 0 ? '#F2B54B' : v < 0 ? '#FF6B6B' : 'rgba(255,255,255,.12)'; box(L + i * bw + bw * .18, top + 20 + hh - h, bw * .64, h, 4); c.fill(); });
+  if (d.bars && !d.cal) {
+    const lab = d.barLabels, top = 1000, hh = lab ? 128 : 150, n = d.bars.length, bw = (W - 2 * L) / n, max = Math.max(1, ...d.bars.map(Math.abs));
+    c.fillStyle = '#8691A2'; c.font = '500 22px Onest'; c.fillText(d.barsTitle || 'Прибыль по дням', L, top - 16);
+    d.bars.forEach((v, i) => { const h = v ? Math.max(6, Math.abs(v) / max * hh) : 4, last = lab && i === n - 1;
+      c.fillStyle = v < 0 ? '#FF6B6B' : !v ? 'rgba(255,255,255,.12)' : lab && !last ? 'rgba(242,181,75,.5)' : '#F2B54B';
+      box(L + i * bw + bw * (lab ? .12 : .18), top + 20 + hh - h, bw * (lab ? .76 : .64), h, lab ? 10 : 4); c.fill();
+      if (lab) { c.fillStyle = '#8691A2'; c.font = '500 22px Onest'; c.textAlign = 'center'; c.fillText(lab[i], L + i * bw + bw / 2, top + 20 + hh + 34); c.textAlign = 'left'; } });
   }
   // подвал и водяной знак для Free
   const pro = !!S.settings.pro;
@@ -3800,20 +4129,28 @@ async function drawCard(d) {
   }
   return cv;
 }
+// Карточки периода (PRO): месяц, календарь, прошлый месяц, всё время. Free — карточка сделки и дня (с водяным знаком)
+const CARD_KINDS = [['month', 'Месяц'], ['cal', 'Календарь'], ['prev', 'Прошлый месяц'], ['all', 'Всё время']];
+const CARD_TITLE = { deal: 'Карточка сделки', day: 'Карточка дня', month: 'Карточка месяца', cal: 'Календарь месяца', prev: 'Прошлый месяц', all: 'За всё время' };
+const cardOf = (kind, arg, t) => kind === 'deal' ? dealCardData(t) : kind === 'day' ? dayCardData(arg) : kind === 'cal' ? calCardData(arg)
+  : kind === 'prev' ? monthCardData(1) : kind === 'all' ? allCardData() : monthCardData();
 async function showCard(kind, id) {
   const t = kind === 'deal' && S.trades.find(x => String(x.id) === String(id));
   if (kind === 'deal' && !t) return;
+  if (!S.settings.pro && !['deal', 'day'].includes(kind)) return openPlans('cards');
   cardHide = !!S.settings.incog;
-  sheet(`<h3>${kind === 'month' ? 'Карточка месяца' : 'Карточка сделки'}</h3>
+  const multi = CARD_KINDS.some(([k]) => k === kind);
+  sheet(`<h3 id="cardH">${CARD_TITLE[kind]}</h3>
+    ${multi ? `<div class="chips card-kinds" id="cardKinds">${CARD_KINDS.map(([k, l]) => `<button class="chip ${k === kind ? 'on' : ''}" data-ck="${k}">${l}</button>`).join('')}</div>` : ''}
     <img class="share-prev" id="cardImg" alt="Предпросмотр карточки">
     <div class="sw-row"><span>Скрыть суммы, оставить проценты</span><button class="toggle" role="switch" id="cardHideBtn" aria-checked="${cardHide}" aria-label="Скрыть суммы"></button></div>
     ${S.settings.pro ? '' : '<button class="pw-why" data-open-plans="card" style="width:100%">На Free на карточке водяной знак · <b style="color:var(--accent)">убрать в PRO</b></button>'}
     <div class="row2"><button class="btn" id="cardSave">Сохранить</button><button class="btn primary" id="cardShare">Поделиться</button></div>`);
   let cv, file = null;
-  const name = kind === 'month' ? 'P2Pro-month.png' : 'P2Pro-deal.png';
+  let name = `P2Pro-${kind}.png`;
   // Файл готовим заранее: на iPhone «Поделиться» работает только сразу по нажатию, без ожидания внутри
   const draw = async () => {
-    const c = await drawCard(kind === 'month' ? monthCardData() : dealCardData(t)); cv = c; file = null;
+    const c = await drawCard(cardOf(kind, id, t)); cv = c; file = null;
     if ($('cardImg')) $('cardImg').src = c.toDataURL('image/png');
     c.toBlob(b => { if (cv === c && b) file = new File([b], name, { type: 'image/png' }); }, 'image/png');
   };
@@ -3833,13 +4170,19 @@ async function showCard(kind, id) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(await getFile()); a.download = name; document.body.appendChild(a); a.click();
     setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 5000); toast('Картинка сохранена'); };
   $('cardHideBtn').onclick = async e => { cardHide = !cardHide; e.currentTarget.setAttribute('aria-checked', cardHide); await draw(); };
+  if ($('cardKinds')) $('cardKinds').onclick = async e => {
+    const b = e.target.closest('[data-ck]'); if (!b || b.dataset.ck === kind) return;
+    kind = b.dataset.ck; id = kind === 'cal' ? calYM : undefined; name = `P2Pro-${kind}.png`; $('cardH').textContent = CARD_TITLE[kind];
+    document.querySelectorAll('[data-ck]').forEach(x => x.classList.toggle('on', x === b)); await draw();
+  };
   $('cardSave').onclick = save;
   $('cardShare').onclick = async () => {
     const f = file || await getFile();
     navigator.canShare?.({ files: [f] }) ? shareFile(f) : save();
   };
 }
-document.addEventListener('click', e => { if (e.target.closest('#monthCardBtn')) showCard('month'); });
+// Free: карточка последнего дня со сделками за неделю (или сегодняшнего)
+document.addEventListener('click', e => { if (e.target.closest('#monthCardBtn')) S.settings.pro ? showCard('month') : showCard('day', dayKey((S.trades.find(freeSees) || { ts: Date.now() }).ts)); });
 
 /* ================= УСТАНОВКА НА ЭКРАН «ДОМОЙ» ================= */
 let installEvt = null;
