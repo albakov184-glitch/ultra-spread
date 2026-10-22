@@ -3681,6 +3681,12 @@ sb?.auth.onAuthStateChange((ev, session) => {
 });
 function afterAuth() {
   if (FROM_RECOVERY && sb) return showNewPass();
+  // Пришли из бота по кнопке «7 дней PRO» или «Оформить PRO» — сразу нужное окно (знакомство покажем в следующий раз)
+  const deep = URL_Q.get('trial') ? 'trial' : URL_Q.get('plans') ? 'plans' : '';
+  if (deep) {
+    try { URL_Q.delete('trial'); URL_Q.delete('plans'); history.replaceState(null, '', location.pathname + (URL_Q.toString() ? '?' + URL_Q : '') + location.hash); } catch (e) {}
+    return setTimeout(() => deep === 'trial' && trialAvail() ? trialSheet() : openPlans(), 500);
+  }
   if (!S.settings.work) showWork(); else if (!S.settings.onboarded) showTour(0); else setTimeout(maybeA2HS, 4000);
 }
 function bootAccount() {

@@ -16,8 +16,7 @@ const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const keyboard = {
   inline_keyboard: [
     [{ text: '🚀 Открыть P2Pro', web_app: { url: APP } }],
-    [{ text: 'Тарифы', url: APP + 'tariffs.html' }, { text: 'Поддержка', url: SUPPORT }],
-    [{ text: 'Документы', url: APP + 'legal.html' }],
+    [{ text: '💬 Поддержка', url: SUPPORT }],
   ],
 };
 
@@ -29,7 +28,8 @@ const WELCOME = (name: string) =>
   `• История, аналитика и график прибыли\n` +
   `• Подбор курса, связки между биржами, контрагенты\n` +
   `• Данные в облаке — на телефоне и компьютере\n\n` +
-  `Нажмите «Открыть P2Pro», чтобы начать. Это бесплатно.`;
+  `Нажмите «Открыть P2Pro», чтобы начать. Это бесплатно.\n\n` +
+  `💱 <b>Курс USDT</b> — карточка с курсом биржи прямо сейчас\n📊 <b>Мой день</b> и 📅 <b>Мой месяц</b> — ваша прибыль без открытия приложения`;
 
 const HELP =
   `Приложение открывается кнопкой <b>«Открыть P2Pro»</b> внизу или под этим сообщением.\n\n` +
@@ -718,7 +718,7 @@ function rateCardSvg(d: { when: string; rate: string; ch: number; hist: number[]
   <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
 // Карточка курса: в канал (chat = CHANNEL) или владельцу для предпросмотра. Рисуется в отдельном запуске функции
-async function ratePost(chat: number | string) {
+async function ratePost(chat: number | string, btn?: Btn) {
   const main = await usdtRate(); if (!main) return false;
   const vals = await Promise.all(RP_FIATS.map(([c]) => fiatRate(c)));
   const { data: hist } = await admin.from('rate_history').select('usdt').gte('ts', new Date(Date.now() - DAY).toISOString()).order('ts');
@@ -728,7 +728,7 @@ async function ratePost(chat: number | string) {
   const caption = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${main.ch >= 0 ? '+' : '−'}${rub2(Math.abs(main.ch))}% за сутки)\n` +
     RP_FIATS.map(([, name], i) => vals[i] ? `${name}: ${fiats[i].v}` : '').filter(Boolean).join(' · ') +
     `\n\nБиржа xRocket. Считайте P2P-сделки в P2Pro — бесплатно.`;
-  const markup = kb([[{ text: '🚀 Открыть P2Pro', url: BOT_LINK }]]);
+  const markup = kb([[btn ?? { text: '🚀 Открыть P2Pro', url: BOT_LINK }]]);
   try {
     const r = await renderer();
     const svg = rateCardSvg({ when, rate: `${rub2(main.rate)} ₽`, ch: main.ch, hist: ((hist ?? []) as { usdt: number }[]).map((h) => +h.usdt), fiats });
@@ -1080,6 +1080,85 @@ async function remindExpiring() {
   }
 }
 
+/* ---------- Кнопки под /start: курс, мой день, мой месяц, PRO ---------- */
+const appBtn = (text = '🚀 Открыть P2Pro', q = ''): Btn => ({ text, web_app: { url: APP + q } });
+// Пробный PRO: показываем, если человек ещё не был в PRO и не брал пробный (проверяет и сервер при включении)
+async function trialFree(userId: string | null, tgId: number) {
+  const { data: tr } = await admin.from('pro_trials').select('user_id').eq('tg_id', tgId).limit(1);
+  if (tr?.length) return false;
+  if (!userId) return true;
+  const s = await subOf(userId);
+  return !s?.pro_until && !(s?.payments ?? []).length;
+}
+async function userOfTg(tgId: number): Promise<string | null> {
+  const { data } = await admin.from('tg_users').select('user_id').eq('tg_id', tgId).maybeSingle();
+  return data?.user_id ?? null;
+}
+async function startKb(tgId: number) {
+  let pro: Btn = appBtn('🎁 7 дней PRO', '?trial=1');
+  if (SERVICE) try {
+    const uid = await userOfTg(tgId);
+    if (!(await trialFree(uid, tgId))) pro = { text: '⭐ Мой PRO', callback_data: 'my:pro' };
+  } catch (e) { console.error('start kb', e); }
+  return kb([[appBtn()], [{ text: '💱 Курс USDT', callback_data: 'my:rate' }, { text: '📊 Мой день', callback_data: 'my:day' }],
+    [{ text: '📅 Мой месяц', callback_data: 'my:month' }, pro], [{ text: '💬 Поддержка', url: SUPPORT }]]);
+}
+// Итоги месяца по Москве: прибыль, сделки, средняя за день, лучший день и сравнение с теми же днями прошлого месяца
+async function monthText(userId: string) {
+  const now = Date.now(), today = mskDay(now), [y, m, d] = today.split('-').map(Number);
+  const start = Date.parse(`${today.slice(0, 7)}-01T00:00:00+03:00`);
+  const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y, pStart = Date.parse(`${py}-${String(pm).padStart(2, '0')}-01T00:00:00+03:00`);
+  const pDays = new Date(Date.UTC(py, pm, 0)).getUTCDate(), pEnd = pStart + Math.min(d, pDays) * DAY;   // те же числа прошлого месяца
+  const { data } = await admin.from('trades').select('ts, data').eq('user_id', userId).eq('deleted', false).gte('ts', new Date(pStart).toISOString()).lt('ts', new Date(now + DAY).toISOString());
+  const all = ((data ?? []) as DayTrade[]).filter((t) => t.data && isFinite(+t.data.profit!) && (t.data.cur || 'RUB') === 'RUB');
+  const cur = all.filter((t) => Date.parse(t.ts) >= start), prev = all.filter((t) => Date.parse(t.ts) < pEnd && Date.parse(t.ts) >= pStart);
+  const sum = (l: DayTrade[], k: 'profit' | 'sum') => l.reduce((a, t) => a + (+t.data[k]! || 0), 0);
+  const MON = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  const MON_DAT = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню', 'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+  const title = `📅 <b>${MON[m - 1][0].toUpperCase() + MON[m - 1].slice(1)} ${y}</b> · по ${d} число`;
+  if (!cur.length) return `${title}\n\nВ этом месяце сделок в рублях пока нет. Запишите сделку в P2Pro — и здесь появятся итоги.`;
+  const byDay = new Map<string, number>();
+  for (const t of cur) { const k = mskDay(Date.parse(t.ts)); byDay.set(k, (byDay.get(k) ?? 0) + (+t.data.profit! || 0)); }
+  const p = sum(cur, 'profit'), best = [...byDay.entries()].sort((a, b) => b[1] - a[1])[0], pp = sum(prev, 'profit');
+  const bestDate = new Date(Date.parse(best[0] + 'T12:00:00+03:00')).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
+  const g = prev.length && pp > 0 ? Math.round((p - pp) / pp * 100) : null;
+  return `${title}\n\n💰 Прибыль: <b>${money(p, 'RUB')}</b>\n🔁 Сделок: ${cur.length} · оборот ${Math.round(sum(cur, 'sum')).toLocaleString('ru-RU')} ₽\n` +
+    `📆 Торговых дней: ${byDay.size} · в среднем ${money(p / byDay.size, 'RUB')} за день\n🏆 Лучший день: ${bestDate} · ${money(best[1], 'RUB')}` +
+    (g !== null ? `\n📈 К ${MON_DAT[pm - 1]} за те же дни: <b>${g >= 0 ? '▲ +' : '▼ −'}${Math.abs(g)}%</b>` : '');
+}
+const rateAsked = new Map<number, number>();
+async function myCallback(cq: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }) {
+  const tgId = cq.from?.id ?? 0, chat = cq.message?.chat.id ?? tgId, a = (cq.data ?? '').slice(3);
+  // Карточку курса рисуем не чаще раза в 20 секунд на человека
+  const busy = a === 'rate' && Date.now() - (rateAsked.get(tgId) ?? 0) < 20e3;
+  await tg('answerCallbackQuery', { callback_query_id: cq.id, text: busy ? 'Карточка уже отправлена — курс обновится через минуту' : a === 'rate' ? 'Рисуем карточку курса…' : undefined });
+  if (a === 'rate') {
+    if (busy) return;
+    rateAsked.set(tgId, Date.now());
+    const ok = await ratePost(chat, appBtn());
+    if (!ok) await tg('sendMessage', { chat_id: chat, text: 'Не получилось получить курс с биржи — попробуйте через минуту.' });
+    return;
+  }
+  const uid = await userOfTg(tgId);
+  if (!uid) return tg('sendMessage', { chat_id: chat, text: 'Сначала откройте P2Pro через Telegram — кнопка ниже. Это бесплатно.', reply_markup: kb([[appBtn()]]) });
+  if (a === 'day') return dailySend(uid, mskDay(Date.now()), true);
+  const s = await subOf(uid);
+  if (a === 'month') {
+    if (!isPro(s)) {
+      const free = await trialFree(uid, tgId);
+      return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: '📅 <b>Итоги месяца — в PRO</b>\n\nПрибыль за месяц, средняя за день, лучший день и рост к прошлому месяцу. В бесплатной версии — итоги дня по кнопке «📊 Мой день».',
+        reply_markup: kb([[appBtn(free ? '🎁 7 дней PRO бесплатно' : '⭐ Оформить PRO', free ? '?trial=1' : '?plans=1')]]) });
+    }
+    return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: await monthText(uid), reply_markup: kb([[appBtn('📊 Открыть аналитику')]]) });
+  }
+  if (a === 'pro') {
+    if (!isPro(s)) return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: '⭐ <b>Сейчас тариф Free</b>\n\nИстория и аналитика — за последние 7 дней. В PRO: вся история, календарь прибыли, связки, контрагенты, график курса и Excel.', reply_markup: kb([[appBtn('⭐ Оформить PRO', '?plans=1')]]) });
+    const left = Math.max(1, Math.ceil((Date.parse(s!.pro_until!) - Date.now()) / DAY));
+    const how = s!.pay_method === 'trial' ? 'пробный период' : s!.pay_method === 'gift' ? 'подарок' : s!.pay_method === 'promo' ? 'промокод' : s!.auto_renew ? 'с автопродлением' : 'без автопродления';
+    return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: `⭐ <b>PRO активен</b> · ${how}\n\nДействует до <b>${date(s!.pro_until)}</b> — осталось ${left} ${plural(left, 'день', 'дня', 'дней')}.`, reply_markup: kb([[appBtn(s!.pay_method === 'trial' ? '⭐ Оставить PRO' : '⭐ Продлить PRO', '?plans=1')]]) });
+  }
+}
+
 Deno.serve(async (req) => {
   // Принимаем запросы только от Telegram и от расписания Supabase: оба присылают секрет, который мы задали
   if (!SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== SECRET) return new Response('forbidden', { status: 403 });
@@ -1099,6 +1178,7 @@ Deno.serve(async (req) => {
   // Нажатие кнопки в админ-панели
   const cq = update?.callback_query;
   if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
+  if (cq && /^my:/.test(cq.data ?? '') && SERVICE) { await myCallback(cq).catch((e) => console.error('my', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
   if (cq) {
     if (isAdmin(cq.from?.id)) await adminCallback(cq).catch(() => {});
@@ -1119,7 +1199,7 @@ Deno.serve(async (req) => {
         return new Response('ok');
       }
       if (isAdmin(msg.from?.id) && await adminMessage(msg)) return new Response('ok');
-      if (text.startsWith('/start')) await send(msg.chat.id, WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))));
+      if (text.startsWith('/start')) await tg('sendMessage', { chat_id: msg.chat.id, text: WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: await startKb(msg.from?.id ?? 0) });
       else await send(msg.chat.id, HELP);
     } catch (_) { /* сеть Telegram недоступна — пропускаем */ }
   }
