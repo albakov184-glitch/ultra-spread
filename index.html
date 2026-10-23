@@ -3448,14 +3448,20 @@ function runSplash(done) {
 // Главный способ входа — через Telegram: в мини-аппе одной кнопкой, на сайте — подтверждением в боте. Почта — для старых аккаунтов
 const tgTop = () => `<button type="button" class="au-btn au-tg" data-au="tg">${AI.tg} Войти через Telegram</button><div class="au-or">или по почте</div>`;
 let auMode = 'in', auRemember = lsGet(REM_KEY) !== false, auAgree = false, auMail = '';
+// Пока вход только через Telegram: регистрация по почте скрыта. Старые аккаунты по почте могут войти по ссылке внизу
+const TG_ONLY = true;
+let auMailOpen = false;
 function authHtml(m) {
+  if (TG_ONLY && (m === 'up' || (m === 'in' && !auMailOpen))) return `<div class="au-ic">${AI.shield}</div><h2>Вход в P2Pro</h2><p class="au-sub">Через Telegram — в один тап, без паролей</p>
+    <button type="button" class="au-btn au-tg" data-au="tg">${AI.tg} Войти через Telegram</button><div class="au-err" id="auErr" role="alert"></div>
+    <div class="au-foot">Аккаунт по почте? <button type="button" class="au-link" data-au="mailin">Войти по почте</button></div>`;
   const pass = (ac, ph) => `<label class="au-f" id="fPass">${AI.lock}<input id="auPass" type="password" autocomplete="${ac}" placeholder="${ph}"><button type="button" class="au-eye" data-au="eye" aria-label="Показать пароль">${AI.eye}</button></label>`;
   const mail = `<label class="au-f" id="fMail">${AI.mail}<input id="auMail" type="email" inputmode="email" autocomplete="email" placeholder="Эл. почта" value="${esc(auMail)}"></label>`;
   if (m === 'in') return `<div class="au-ic">${AI.shield}</div><h2>С возвращением</h2><p class="au-sub">Войдите, чтобы продолжить</p>
     ${tgTop()}${mail}${pass('current-password', 'Пароль')}<div class="au-err" id="auErr" role="alert"></div>
     <div class="au-row"><button type="button" class="au-sw" role="switch" aria-checked="${auRemember}" data-au="rem"><i></i>Запомнить меня</button><button type="button" class="au-link" data-au="forgot">Забыли пароль?</button></div>
     <button class="au-btn" id="auGo" type="submit">Войти ${AI.arrow}</button>
-    <div class="au-foot">Нет аккаунта? <button type="button" class="au-link" data-au="up">Создать</button></div>`;
+    <div class="au-foot">${TG_ONLY ? '<button type="button" class="au-link" data-au="tgback">‹ Войти через Telegram</button>' : 'Нет аккаунта? <button type="button" class="au-link" data-au="up">Создать</button>'}</div>`;
   if (m === 'forgot') return `<div class="au-ic">${AI.key}</div><h2>Сброс пароля</h2><p class="au-sub">Пришлём на почту ссылку, по ней вы зададите новый пароль</p>
     ${mail}<div class="au-err" id="auErr" role="alert"></div>
     <button class="au-btn" id="auGo" type="submit">Прислать ссылку ${AI.arrow}</button>
@@ -3522,6 +3528,7 @@ async function flipAuth(m) {
 function authClick(e) {
   const b = e.target.closest('[data-au]'); if (!b) return;
   const a = b.dataset.au;
+  if (a === 'mailin' || a === 'tgback') { auMailOpen = a === 'mailin'; return flipAuth('in'); }
   if (a === 'in' || a === 'up' || a === 'forgot') return flipAuth(a);
   if (a === 'eye') { const i = $('auPass'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = show ? AI.eyeOff : AI.eye; b.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль'); return; }
   if (a === 'rem') { auRemember = !auRemember; return b.setAttribute('aria-checked', auRemember); }
