@@ -924,7 +924,9 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
 // с чистым названием без чужих подписей. Файлы берутся с серверов Telegram, ничего не скачивается
 type StSticker = { file_id: string; is_animated?: boolean; is_video?: boolean; emoji?: string; needs_repainting?: boolean };
 async function copyPack(chatId: number, src: string, title: string) {
-  const from = src.replace(/^https?:\/\/t\.me\/(addemoji|addstickers)\//i, '').replace(/[?#].*$/, '').trim();
+  // Ссылка может прийти со слэшем на конце или с названием через «/»: …/ИМЯ/P2Pro
+  const [from, glued = ''] = src.replace(/^https?:\/\/t\.me\/(addemoji|addstickers)\//i, '').replace(/[?#].*$/, '').split('/');
+  title = title.replace(/^ИМЯ\s*/i, '') || glued;
   if (!/^\w{1,64}$/.test(from)) return show(chatId, null, 'Пришлите так: <code>/copypack https://t.me/addemoji/ИМЯ P2Pro</code>\nПоследнее слово — название нового набора.', toMenu());
   const set = await tg('getStickerSet', { name: from });
   if (!set?.ok) return show(chatId, null, `Не нашёл набор <code>${esc(from)}</code>: ${esc(set?.description ?? 'нет ответа')}`, toMenu());
