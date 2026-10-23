@@ -919,6 +919,36 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
 }
 
 // Сообщение от владельца: черновик рассылки/поста, команда или поиск. false — пусть отвечает обычный бот
+/* ---------- Копия набора эмодзи/стикеров под своим названием ---------- */
+// /copypack <ссылка t.me/addemoji/... или имя набора> [название]. Бот создаёт такой же набор на владельца,
+// с чистым названием без чужих подписей. Файлы берутся с серверов Telegram, ничего не скачивается
+type StSticker = { file_id: string; is_animated?: boolean; is_video?: boolean; emoji?: string; needs_repainting?: boolean };
+async function copyPack(chatId: number, src: string, title: string) {
+  const from = src.replace(/^https?:\/\/t\.me\/(addemoji|addstickers)\//i, '').replace(/[?#].*$/, '').trim();
+  if (!/^\w{1,64}$/.test(from)) return show(chatId, null, 'Пришлите так: <code>/copypack https://t.me/addemoji/ИМЯ P2Pro</code>\nПоследнее слово — название нового набора.', toMenu());
+  const set = await tg('getStickerSet', { name: from });
+  if (!set?.ok) return show(chatId, null, `Не нашёл набор <code>${esc(from)}</code>: ${esc(set?.description ?? 'нет ответа')}`, toMenu());
+  const st = set.result as { title: string; sticker_type: string; stickers: StSticker[] };
+  const me = await tg('getMe', {}); const bot = me?.result?.username ?? 'P2ProAppBot';
+  const base = (title || st.title).replace(/@\w+/g, '').trim().slice(0, 64) || 'P2Pro';
+  const fmt = (x: StSticker) => x.is_animated ? 'animated' : x.is_video ? 'video' : 'static';
+  const input = (x: StSticker) => ({ sticker: x.file_id, format: fmt(x), emoji_list: [x.emoji || '⭐'] });
+  const list = st.stickers;
+  // Имя набора должно заканчиваться на _by_<бот>; если занято — добавляем цифру
+  let name = '', res: { ok?: boolean; description?: string } | null = null;
+  for (let k = 0; k < 5; k++) {
+    name = `${base.toLowerCase().replace(/[^a-z0-9]/g, '') || 'pack'}${k ? k + 1 : ''}_by_${bot}`.slice(0, 64);
+    res = await tg('createNewStickerSet', { user_id: ADMIN_ID, name, title: base, sticker_type: st.sticker_type,
+      ...(st.sticker_type === 'custom_emoji' && list.some((x) => x.needs_repainting) ? { needs_repainting: true } : {}), stickers: list.slice(0, 50).map(input) });
+    if (res?.ok || !/occupied|already/i.test(res?.description ?? '')) break;
+  }
+  if (!res?.ok) return show(chatId, null, `Не получилось создать набор: ${esc(res?.description ?? 'нет ответа')}`, toMenu());
+  let fail = 0;
+  for (const x of list.slice(50)) { const r = await tg('addStickerToSet', { user_id: ADMIN_ID, name, sticker: input(x) }); if (!r?.ok) fail++; }
+  const link = `https://t.me/${st.sticker_type === 'custom_emoji' ? 'addemoji' : 'addstickers'}/${name}`;
+  return show(chatId, null, `✅ Набор «${esc(base)}» готов: ${list.length - fail} из ${list.length}.\n${link}`, kb([[{ text: '➕ Открыть набор', url: link }], [{ text: '‹ Меню', callback_data: 'm' }]]));
+}
+
 async function adminMessage(msg: Msg): Promise<boolean> {
   const chatId = msg.chat.id, text = (msg.text ?? '').trim();
   const view0 = (v: { text: string; markup: unknown }) => show(chatId, null, v.text, v.markup);
@@ -949,6 +979,7 @@ async function adminMessage(msg: Msg): Promise<boolean> {
     if (!text) return false;
     const [cmd, a = '', b = ''] = text.split(/\s+/), args = text.split(/\s+/).slice(1);
     const c = cmd.toLowerCase().replace(/@\w+$/, '');
+    if (c === '/copypack') { await copyPack(chatId, a, args.slice(1).join(' ')); return true; }
     if (c === '/admin') {
       await tg('setMyCommands', { scope: { type: 'chat', chat_id: ADMIN_ID }, commands: [
         { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' },
