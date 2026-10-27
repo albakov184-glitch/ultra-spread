@@ -4073,7 +4073,8 @@ function trialEndCheck() {
 
 // Промокод: сервер проверяет код и сразу добавляет дни PRO (08-admin.sql, redeem_promo)
 const PROMO_ERR = { promo_invalid: 'Такого промокода нет или он выключен', promo_expired: 'Срок действия промокода закончился',
-  promo_used_up: 'Промокод уже активировали максимальное число раз', promo_already: 'Вы уже активировали этот промокод' };
+  promo_used_up: 'Промокод уже активировали максимальное число раз', promo_already: 'Вы уже активировали этот промокод',
+  promo_slow: 'Слишком много неверных попыток. Попробуйте через час' };
 function showPromo() {
   if (!me()) return toast('Войдите в аккаунт, чтобы активировать промокод');
   sheet(`<h3>Промокод</h3><span class="muted">Введите код — дни PRO добавятся сразу.</span>
@@ -4087,8 +4088,10 @@ function showPromo() {
     if (b.disabled) return;
     b.disabled = true; b.textContent = 'Проверяем…'; $('promoErr').textContent = '';
     try {
+      // Сервер отвечает {error} или {sub} (20-limits.sql); старая версия функции — сразу подпиской
       const r = await cloudRpc('redeem_promo', { p_code: code });
-      subApply(r); persist(false); render(); renderProfile(); closeSheet();
+      if (r?.error) throw new Error(r.error);
+      subApply(r?.sub ?? r); persist(false); render(); renderProfile(); closeSheet();
       toast(`Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)}`);
     } catch (e) {
       const m = String(e?.message || '');

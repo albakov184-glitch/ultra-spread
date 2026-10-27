@@ -1168,6 +1168,18 @@ async function paidBack(chat: number, tgId: number) {
   return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: '⏳ <b>Проверяем оплату</b>\n\nОбычно это занимает до минуты. Как только PRO включится, бот пришлёт сообщение.', reply_markup: kb([[appBtn()]]) });
 }
 const rateAsked = new Map<number, number>();
+// Защита от спама: не больше 20 нажатий и сообщений за 30 секунд от одного человека (оплаты не ограничиваем).
+// Счётчик живёт в памяти функции — этого хватает, чтобы закликивание не нагружало бота и Telegram
+const hits = new Map<number, number[]>();
+function flood(id: number) {
+  const now = Date.now(), list = (hits.get(id) ?? []).filter((t) => now - t < 30e3);
+  list.push(now); hits.set(id, list);
+  if (hits.size > 5000) for (const [k, v] of hits) if (now - v[v.length - 1] > 30e3) hits.delete(k);
+  return list.length > 20;
+}
+// Итоги дня рисуют картинку — по запросу не чаще раза в 15 секунд
+const dayAsked = new Map<number, number>();
+const dayBusy = (id: number) => { const busy = Date.now() - (dayAsked.get(id) ?? 0) < 15e3; if (!busy) dayAsked.set(id, Date.now()); return busy; };
 async function myCallback(cq: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }) {
   const tgId = cq.from?.id ?? 0, chat = cq.message?.chat.id ?? tgId, a = (cq.data ?? '').slice(3);
   // Карточку курса рисуем не чаще раза в 20 секунд на человека
@@ -1182,7 +1194,7 @@ async function myCallback(cq: { id: string; data?: string; from?: { id: number }
   }
   const uid = await userOfTg(tgId);
   if (!uid) return tg('sendMessage', { chat_id: chat, text: 'Сначала откройте P2Pro через Telegram — кнопка ниже. Это бесплатно.', reply_markup: kb([[appBtn()]]) });
-  if (a === 'day') return dailySend(uid, mskDay(Date.now()), true);
+  if (a === 'day') return dayBusy(tgId) ? undefined : dailySend(uid, mskDay(Date.now()), true);
   const s = await subOf(uid);
   if (a === 'month') {
     if (!isPro(s)) {
@@ -1218,6 +1230,8 @@ Deno.serve(async (req) => {
   if (update?.message?.successful_payment) { await paid(update.message).catch((e) => console.error('paid', e)); return new Response('ok'); }
   // Нажатие кнопки в админ-панели
   const cq = update?.callback_query;
+  const who = cq?.from?.id ?? update?.message?.from?.id;
+  if (who && !isAdmin(who) && flood(who)) { if (cq) await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Слишком часто — подождите немного' }); return new Response('ok'); }
   if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
   if (cq && /^my:/.test(cq.data ?? '') && SERVICE) { await myCallback(cq).catch((e) => console.error('my', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
@@ -1237,7 +1251,7 @@ Deno.serve(async (req) => {
       // Итоги дня прямо сейчас — для любого, кто входил в P2Pro через Telegram
       if (/^\/itogi(@\w+)?$/i.test(text.trim()) && SERVICE) {
         const { data: t } = await admin.from('tg_users').select('user_id').eq('tg_id', msg.from?.id ?? 0).maybeSingle();
-        if (t) await dailySend(t.user_id, mskDay(Date.now()), true);
+        if (t && !dayBusy(msg.from?.id ?? 0)) await dailySend(t.user_id, mskDay(Date.now()), true);
         else await send(msg.chat.id, 'Сначала войдите в P2Pro через Telegram — кнопка «Открыть P2Pro» ниже.');
         return new Response('ok');
       }
