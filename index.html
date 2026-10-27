@@ -105,6 +105,18 @@ button { cursor: pointer; border: 0; background: none; }
 /* surfaces */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .card-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Сворачиваемые блоки профиля: заголовок открывает и закрывает, состояние запоминается */
+.fold-h { cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.fold-h .fold-chev { margin-left: auto; color: var(--muted); font-size: 20px; line-height: 1; transition: transform .25s ease; }
+.card-h.fold-h { justify-content: flex-start; }
+.card-h.fold-h > .fold-chev { margin-left: 8px; }
+.card-h.fold-h > .card-t + :not(.info):not(.fold-chev) { margin-left: auto; }   /* кнопки — справа, кружок «i» — рядом с названием */
+.card-h.fold-h > .card-t + .fold-chev, .card-h.fold-h > .info + .fold-chev { margin-left: auto; }
+.card.fold.open .fold-chev { transform: rotate(90deg); }
+.card.fold:not(.open) { gap: 0; }
+.card.fold:not(.open) > :not(.fold-h) { display: none !important; }
+.card.fold.open > :not(.fold-h) { animation: foldIn .28s ease both; }
+@keyframes foldIn { from { opacity: 0; transform: translateY(-6px); } }
 .card-t { font-weight: 600; font-size: 15px; }
 .label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
 .small { font-size: 12px; }
@@ -2584,6 +2596,28 @@ function bankUsage(bank) {
     .filter(t => { const d = new Date(t.ts); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
     .reduce((a, t) => a + t.sum + t.gross, 0);
 }
+// Профиль длинный: всё, кроме аккаунта, подписки и соцсетей, сворачивается. Какие блоки открыты — помним на этом устройстве
+const FOLD_KEY = KEY + '.folds', FOLD_NAME = { 'Мои биржи': 'Мои биржи и банки', 'Данные': 'Данные и тема' };
+(function initFolds() {
+  let open = []; try { open = JSON.parse(localStorage.getItem(FOLD_KEY)) || []; } catch (e) {}
+  document.querySelectorAll('#tab-prof > .card').forEach(card => {
+    if (card.id === 'accCard' || card.id === 'testPanel' || card.querySelector('#subBox, .social')) return;
+    let h = card.firstElementChild; if (!h) return;
+    if (h.classList.contains('card-t')) { const w = document.createElement('div'); w.className = 'card-h'; card.insertBefore(w, h); w.appendChild(h); h = w; }
+    const t = h.querySelector('.card-t'); if (!t) return;
+    const name = t.textContent.trim(); if (FOLD_NAME[name]) t.textContent = FOLD_NAME[name];
+    card.classList.add('fold'); card.dataset.fold = name; card.classList.toggle('open', open.includes(name));
+    h.classList.add('fold-h'); h.setAttribute('role', 'button'); h.tabIndex = 0; h.setAttribute('aria-expanded', open.includes(name));
+    h.insertAdjacentHTML('beforeend', '<span class="fold-chev" aria-hidden="true">›</span>');
+  });
+  const toggle = h => {
+    const card = h.parentElement, on = card.classList.toggle('open'); h.setAttribute('aria-expanded', on);
+    const keys = [...document.querySelectorAll('#tab-prof > .card.fold.open')].map(c => c.dataset.fold);
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(keys)); } catch (e) {}
+  };
+  document.addEventListener('click', e => { const h = e.target.closest('.fold-h'); if (h && !e.target.closest('button, a, input')) toggle(h); });
+  document.addEventListener('keydown', e => { const h = e.target.closest?.('.fold-h'); if (h && e.target === h && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(h); } });
+})();
 function renderProfile() {
   $('rateToggle')?.setAttribute('aria-checked', !S.settings.rateOff);
   renderPinRow();
