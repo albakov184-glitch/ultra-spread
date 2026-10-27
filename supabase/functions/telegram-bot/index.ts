@@ -162,8 +162,7 @@ async function subOf(userId: string): Promise<Sub> {
   return data as Sub;
 }
 async function allSubs(): Promise<NonNullable<Sub>[]> {
-  const { data } = await admin.from('subscriptions').select('user_id, pro_until, auto_renew, pay_method, payments');
-  return (data ?? []) as NonNullable<Sub>[];
+  return await rowsAll<NonNullable<Sub>>('subscriptions', 'user_id, pro_until, auto_renew, pay_method, payments', 'user_id');
 }
 const mskDay = (t: number) => new Date(t + 3 * 3600e3).toISOString().slice(0, 10);
 // Оплата в рублях (карта, СБП). Звёзды считаем отдельно, подарки и промокоды — не деньги
@@ -208,8 +207,8 @@ async function listView(page: number) {
   const users = await allUsers(), pages = Math.max(1, Math.ceil(users.length / PAGE));
   page = Math.min(Math.max(0, page), pages - 1);
   const pro = new Set((await allSubs()).filter(isPro).map((x) => x.user_id));
-  const { data: tgs } = await admin.from('tg_users').select('user_id, username');
-  const nicks = new Map((tgs ?? []).filter((x: { username?: string }) => x.username).map((x: { user_id: string; username: string }) => [x.user_id, x.username]));
+  const tgs = await rowsAll<TgRow>('tg_users', 'user_id, tg_id, username', 'tg_id');
+  const nicks = new Map(tgs.filter((x) => x.username).map((x) => [x.user_id, x.username as string]));
   const view = (u: AUser) => nicks.has(u.id) ? { ...u, user_metadata: { ...u.user_metadata, tg_username: nicks.get(u.id) } } : u;
   const rows: Btn[][] = users.slice(page * PAGE, page * PAGE + PAGE)
     .map(view).map((u) => [{ text: `${isBanned(u) ? '🚫 ' : pro.has(u.id) ? '⭐ ' : ''}${nameOf(u)} | ${contactOf(u)}`.slice(0, 60), callback_data: `u:${u.id}:${page}` }]);
@@ -292,7 +291,7 @@ const NOT_FOUND = 'Не нашёл пользователя. Ник ищется
 type Aud = 'all' | 'pro' | 'exp' | 'free';
 const AUD: Record<Aud, string> = { all: 'всем', pro: 'с PRO', exp: 'у кого PRO кончается за 7 дней', free: 'без PRO' };
 async function recipients(aud: Aud): Promise<number[]> {
-  const { data: tgs } = await admin.from('tg_users').select('tg_id, user_id');
+  const tgs = await rowsAll<TgRow>('tg_users', 'tg_id, user_id', 'tg_id');
   const subs = new Map((await allSubs()).map((s) => [s.user_id, s]));
   const banned = new Set((await allUsers()).filter(isBanned).map((u) => u.id));
   const now = Date.now();
@@ -646,9 +645,9 @@ async function dailyFanout() {
   const { data: rows } = await admin.from('trades').select('user_id').eq('deleted', false)
     .gte('ts', new Date(start).toISOString()).lt('ts', new Date(start + DAY).toISOString());
   const withTrades = new Set((rows ?? []).map((r: { user_id: string }) => r.user_id));
-  const { data: tgs } = await admin.from('tg_users').select('user_id, daily_off');
+  const tgs = await rowsAll<{ user_id: string; daily_off: boolean | null }>('tg_users', 'user_id, daily_off', 'tg_id');
   const banned = new Set((await allUsers()).filter(isBanned).map((u) => u.id));
-  const ids = (tgs ?? []).filter((t: { user_id: string; daily_off?: boolean }) => withTrades.has(t.user_id) && !t.daily_off && !banned.has(t.user_id)).map((t: { user_id: string }) => t.user_id);
+  const ids = tgs.filter((t) => withTrades.has(t.user_id) && !t.daily_off && !banned.has(t.user_id)).map((t) => t.user_id);
   for (let i = 0; i < ids.length; i += 5) {
     await Promise.all(ids.slice(i, i + 5).map((uid: string) => fetch(`${SB_URL}/functions/v1/telegram-bot`, { method: 'POST',
       headers: { 'content-type': 'application/json', 'x-telegram-bot-api-secret-token': SECRET }, body: JSON.stringify({ daily_user: uid, day }) }).catch(() => {})));
@@ -1238,8 +1237,8 @@ async function allTrades(cols = 'user_id, ts, updated_at'): Promise<ATrade[]> {
 }
 const nameOfU = (u: AUser) => String(u.user_metadata?.name ?? '').slice(0, 40) || (isTg(u.email) ? 'Telegram' : (u.email ?? '').split('@')[0]);
 async function nicksMap() {
-  const { data } = await admin.from('tg_users').select('user_id, tg_id, username');
-  return new Map((data ?? []).map((x: { user_id: string; tg_id: number; username: string | null }) => [x.user_id, x]));
+  const data = await rowsAll<TgRow>('tg_users', 'user_id, tg_id, username', 'tg_id');
+  return new Map(data.map((x: { user_id: string; tg_id: number; username: string | null }) => [x.user_id, x]));
 }
 const payKind = (p: Pay & { refund?: boolean; currency?: string }) => p.method === 'stars' ? 'stars' : FREE_METHODS.includes(p.method ?? '') ? 'free' : 'rub';
 
@@ -1267,7 +1266,7 @@ async function adminDash() {
   (recent as { ts: string }[]).sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
   const pro = subs.filter(isPro), byMethod: Record<string, number> = {};
   for (const s of pro) byMethod[s.pay_method ?? 'other'] = (byMethod[s.pay_method ?? 'other'] ?? 0) + 1;
-  const { data: trials } = await admin.from('pro_trials').select('user_id, started_at');
+  const trials = await rowsAll<{ user_id: string; started_at: string }>('pro_trials', 'user_id, started_at', 'started_at');
   const subBy = new Map(subs.map((s) => [s.user_id, s]));
   const converted = (trials ?? []).filter((t: { user_id: string; started_at: string }) => (subBy.get(t.user_id)?.payments ?? [])
     .some((p) => payKind(p) !== 'free' && +p.amount > 0 && Date.parse(p.ts) > Date.parse(t.started_at))).length;
@@ -1296,6 +1295,8 @@ async function adminUsers() {
   });
 }
 
+// Аватарку в профиле человек может подменить на любой адрес (например, чтобы узнать IP владельца) — показываем только из нашего хранилища
+const ownAvatar = (v: unknown) => typeof v === 'string' && v.startsWith(`${SB_URL}/storage/v1/object/public/avatars/`) ? v : null;
 async function adminUser(id: string) {
   const u = await userById(id); if (!u) return null;
   const [s, price, nicks] = await Promise.all([subOf(id), priceOf(id), nicksMap()]);
@@ -1306,7 +1307,7 @@ async function adminUser(id: string) {
   const { data: trial } = await admin.from('pro_trials').select('started_at, ends_at').eq('user_id', id).maybeSingle();
   const nk = nicks.get(id);
   return { id, name: nameOfU(u), nick: nk?.username ?? null, tg: nk?.tg_id ?? null, email: isTg(u.email) ? null : u.email ?? null,
-    created: u.created_at, seen: u.last_sign_in_at ?? null, banned: isBanned(u), avatar: (u.user_metadata?.avatar as string) || null,
+    created: u.created_at, seen: u.last_sign_in_at ?? null, banned: isBanned(u), avatar: ownAvatar(u.user_metadata?.avatar),
     sub: s ? { pro: isPro(s), since: s.pro_since, until: s.pro_until, method: s.pay_method, period: s.period, payments: s.payments ?? [] } : null,
     price, trial: trial ?? null, promos: promos ?? [], tradeCount: list.length, profit,
     trades: list.slice(0, 15).map((t) => ({ ts: t.ts, ex: t.data.ex ?? '', bank: t.data.bank ?? '', mode: t.data.mode ?? 'deal', sum: +(t.data.sum ?? 0), profit: +(t.data.profit ?? 0), cur: t.data.cur ?? 'RUB' })) };
@@ -1346,16 +1347,18 @@ async function partnerJoin(from: { id: number; first_name?: string; username?: s
   await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `🤝 По ссылке партнёра <b>${esc(p.name || code)}</b> пришёл новый человек: ${esc(name) || 'без имени'}` });
 }
 // Таблица целиком (Supabase отдаёт по 1000 строк)
-async function rowsAll<T>(table: string, cols: string): Promise<T[]> {
+// Сортировка по ключу обязательна: без неё страницы могут повторять или терять строки
+async function rowsAll<T>(table: string, cols: string, key: string): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; from < 1e6; from += 1000) {
-    const { data, error } = await admin.from(table).select(cols).range(from, from + 999);
+    const { data, error } = await admin.from(table).select(cols).order(key).range(from, from + 999);
     if (error) throw error;
     out.push(...(data as unknown as T[]));
     if ((data ?? []).length < 1000) break;
   }
   return out;
 }
+type TgRow = { user_id: string; tg_id: number; username: string | null };
 type PRow = { code: string; name: string; pct: number; note: string; active: boolean; created_at: string };
 type PRef = { tg_id: number; code: string; name: string; at: string };
 type PPay = { id: number; code: string; amount: number; cur: string; note: string; at: string };
@@ -1363,8 +1366,8 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 // Всё по партнёрам сразу: кто пришёл, сколько заплатил после перехода, доля партнёра, выплачено и долг
 async function partnerData() {
   const [ps, refs, pays, tgs, subs] = await Promise.all([
-    rowsAll<PRow>('partners', '*'), rowsAll<PRef>('partner_refs', 'tg_id, code, name, at'), rowsAll<PPay>('partner_payouts', '*'),
-    rowsAll<{ user_id: string; tg_id: number; username: string | null }>('tg_users', 'user_id, tg_id, username'), allSubs()]);
+    rowsAll<PRow>('partners', '*', 'code'), rowsAll<PRef>('partner_refs', 'tg_id, code, name, at', 'tg_id'), rowsAll<PPay>('partner_payouts', '*', 'id'),
+    rowsAll<TgRow>('tg_users', 'user_id, tg_id, username', 'tg_id'), allSubs()]);
   const tgBy = new Map(tgs.map((t) => [Number(t.tg_id), t])), subBy = new Map(subs.map((s) => [s.user_id, s]));
   const people = refs.map((r) => {
     const t = tgBy.get(Number(r.tg_id)), s = t ? subBy.get(t.user_id) : undefined;
@@ -1412,7 +1415,7 @@ const csvCell = (v: unknown) => {
 const mskTime = (v: string | null) => v ? new Date(Date.parse(v) + 3 * 3600e3).toISOString().slice(0, 16).replace('T', ' ') : '';
 const METHOD_RU: Record<string, string> = { sbp: 'СБП', card: 'Карта', crypto: 'Крипта', stars: 'Звёзды', gift: 'Подарок', promo: 'Промокод', trial: 'Пробный' };
 async function usersExport() {
-  const [users, refs] = await Promise.all([adminUsers(), rowsAll<PRef>('partner_refs', 'tg_id, code')]);
+  const [users, refs] = await Promise.all([adminUsers(), rowsAll<PRef>('partner_refs', 'tg_id, code', 'tg_id')]);
   const refBy = new Map(refs.map((r) => [Number(r.tg_id), r.code]));
   const rows = users.map((u) => [u.name, u.nick ? '@' + u.nick : '', u.tg ?? '', u.email ?? '', mskTime(u.created), mskTime(u.seen),
     u.banned ? 'Заблокирован' : u.pro ? (u.method === 'trial' ? 'Пробный' : 'PRO') : 'Free', u.pro ? mskTime(u.until) : '', u.method ? METHOD_RU[u.method] ?? u.method : '',
