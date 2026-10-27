@@ -166,6 +166,53 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
 .sk { background: linear-gradient(90deg, var(--s2), var(--s3), var(--s2)); background-size: 200% 100%; animation: sk 1.2s linear infinite; border-radius: 10px; }
 @keyframes sk { to { background-position: -200% 0; } }
 
+/* иконки показателей: цветная плитка с бликом */
+.kpi .ic { --c: var(--acc); width: 34px; height: 34px; border-radius: 11px; color: #fff; position: relative; overflow: hidden; flex: none;
+  background: var(--c); background: linear-gradient(145deg, color-mix(in srgb, var(--c), #fff 22%), color-mix(in srgb, var(--c), #000 40%));
+  box-shadow: 0 8px 20px -8px var(--c), inset 0 1px 0 rgba(255,255,255,.35); animation: icpop .65s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(var(--i, 0) * 60ms + 160ms); }
+.kpi .ic svg { width: 18px; height: 18px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.kpi .ic::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.5) 50%, transparent 65%); transform: translateX(-130%);
+  animation: shine 5s ease-in-out infinite; animation-delay: calc(var(--i, 0) * .4s + 1.2s); }
+@keyframes shine { 0%, 72% { transform: translateX(-130%); } 88%, 100% { transform: translateX(130%); } }
+@keyframes icpop { from { transform: scale(.3) rotate(-15deg); opacity: 0; } }
+.mi { --c: var(--acc); color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 28%, transparent); }
+.mi svg { width: 17px; height: 17px; }
+
+/* живость: смена страниц, наведение, нажатие, бегунок в нижнем меню */
+.vin { animation: vin .38s cubic-bezier(.2,.8,.3,1) both; }
+@keyframes vin { from { opacity: 0; transform: translateY(10px); } }
+.card, .ucard { transition: transform .25s cubic-bezier(.2,.8,.3,1), border-color .25s, box-shadow .25s; }
+@media (hover: hover) { .kpi:hover, .pcard:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.13); box-shadow: 0 20px 44px -20px rgba(0,0,0,.7); } }
+.pcard:active, .ucard:active, .chip:active { transform: scale(.97); }
+.bgfx { animation: drift 22s ease-in-out infinite alternate; }
+@keyframes drift { to { transform: translate3d(0, -28px, 0) scale(1.06); } }
+.tab-ind { position: absolute; top: 6px; bottom: 6px; left: 6px; width: 0; border-radius: 16px; background: var(--acc-s); box-shadow: inset 0 0 0 1px rgba(242,181,75,.22);
+  transition: left .42s cubic-bezier(.3,1.25,.5,1), width .42s cubic-bezier(.3,1.25,.5,1); pointer-events: none; }
+.tabbar button { position: relative; z-index: 1; transition: color .25s; }
+.tabbar button.on svg { animation: tabpop .5s cubic-bezier(.3,1.7,.5,1); }
+@keyframes tabpop { 40% { transform: translateY(-3px) scale(1.15); } }
+
+/* партнёры */
+.pgrid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.pcard { cursor: pointer; display: flex; flex-direction: column; gap: 12px; animation: up .5s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.pcard.off { opacity: .6; }
+.plink { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 7px 7px 12px; border-radius: 12px; background: var(--bg); border: 1px dashed #334050; font-size: 13px; color: var(--muted); min-width: 0; }
+.plink .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.plink.big { color: var(--fg); font-size: 13.5px; }
+.pstat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pstat div { background: var(--s2); border-radius: 12px; padding: 9px 10px; min-width: 0; }
+.pstat b { display: block; font-family: var(--f-m); font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pstat span { font-size: 11.5px; color: var(--muted); }
+.powe { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: 14px; flex-wrap: wrap;
+  background: linear-gradient(135deg, rgba(242,181,75,.2), rgba(242,181,75,.05)); border: 1px solid rgba(242,181,75,.38); }
+.powe span { font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); }
+.powe b { font: 700 18px var(--f-d); letter-spacing: -.5px; white-space: nowrap; }
+.powe.zero { background: var(--s2); border-color: var(--line); } .powe.zero span { color: var(--muted); }
+.pct-in { position: relative; display: inline-flex; }
+.pct-in .inp { padding-right: 28px; width: 92px; }
+.pct-in i { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); pointer-events: none; }
+.pava { background: linear-gradient(145deg, #F6C164, #B9822A); color: #1B1405; }
+
 /* мобильная версия */
 .tabbar { display: none; }
 .mtop { display: none; align-items: center; gap: 12px; margin-bottom: 18px; }
@@ -181,7 +228,7 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
     border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.45); }
   .tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border-radius: 16px; color: var(--muted); font-size: 10.5px; font-weight: 600; }
   .tabbar button svg { width: 21px; height: 21px; }
-  .tabbar button.on { color: var(--acc); background: var(--acc-s); }
+  .tabbar button.on { color: var(--acc); }
   .mtop { display: flex; }
   .kpis { grid-template-columns: 1fr 1fr; gap: 12px; }
   .kpi .v { font-size: 21px; }
@@ -333,10 +380,49 @@ const IC = {
   pays: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg>',
   promo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V5a2 2 0 0 1 2-2h4l12 12-6 6L3 9z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
   bc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h3l6 5V5L7 10H4a1 1 0 0 0-1 1zM17 8a5 5 0 0 1 0 8M20 5a9 9 0 0 1 0 14"/></svg>',
+  ref: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>',
 };
-const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['pays', 'Оплаты'], ['promo', 'Промокоды'], ['bc', 'Рассылка']];
+// Иконки для плиток показателей и способов оплаты
+const sv = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const KI = {
+  users: sv('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6 6 0 0 0-3.5-5.4"/>'),
+  star: sv('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'),
+  wallet: sv('<path d="M19 7V5.5A1.5 1.5 0 0 0 17.5 4H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6"/><circle cx="16.5" cy="14" r="1.3" fill="currentColor"/>'),
+  trend: sv('<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>'),
+  sun: sv('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  cal: sv('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="m9 15 2 2 4-4"/>'),
+  bank: sv('<path d="M3 10 12 4l9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18"/>'),
+  deals: sv('<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>'),
+  link: sv('<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/>'),
+  hand: sv('<path d="M12 21c-4.4 0-8-1.8-8-4v-3l4-1.5h4.5a1.5 1.5 0 0 1 0 3H9"/><path d="m12.5 15.5 5.5-2.2a1.6 1.6 0 0 1 1.2 3L13 19"/><circle cx="15" cy="6" r="3"/>'),
+  check: sv('<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>'),
+  bolt: sv('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
+  card: sv('<rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M2.5 10h19M6.5 15h4"/>'),
+  gem: sv('<path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M12 21 8.5 9 12 3l3.5 6z"/>'),
+  gift: sv('<rect x="3" y="8" width="18" height="5" rx="1.5"/><path d="M5 13v8h14v-8M12 8v13M12 8S10.5 3 7.8 4.2C5.6 5.2 8 8 12 8zm0 0s1.5-5 4.2-3.8C18.4 5.2 16 8 12 8z"/>'),
+  ticket: sv('<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="2 2.5"/>'),
+};
+const kpi = (i, ic, col, lb, v, sub) => `<div class="card kpi" style="--i:${i}"><div class="glow" style="background:${col}"></div><div class="lb"><span class="ic" style="--c:${col}">${KI[ic] || ''}</span>${lb}</div><div class="v">${v}</div><div class="sub">${sub}</div></div>`;
+// Числа в показателях «добегают» от нуля до значения
+const cu = (v, f = '') => `<span data-cu="${v}" data-f="${f}">${fmtCu(v, f)}</span>`;
+const fmtCu = (v, f) => f === 'rub' ? rub(v) : f === 'pct' ? nf0.format(Math.round(v)) + '%' : nf0.format(Math.round(v));
+function countUps() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('[data-cu]').forEach((el, i) => {
+    const to = +el.dataset.cu, f = el.dataset.f, t0 = performance.now() + 120 + i * 50, dur = 900;
+    if (!to) return;
+    el.textContent = fmtCu(0, f);
+    const step = now => { const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 4); el.textContent = fmtCu(to * e, f); if (k < 1 && el.isConnected) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
+const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка']];
+const SHORT = { users: 'Люди', promo: 'Промо' };
 $('nav').innerHTML = PAGES.map(([k, n]) => `<button class="nav-b" data-go="${k}">${IC[k]}${n}</button>`).join('');
-$('tabbar').innerHTML = PAGES.map(([k, n]) => `<button data-go="${k}">${IC[k]}${n === 'Пользователи' ? 'Люди' : n}</button>`).join('');
+$('tabbar').innerHTML = '<i class="tab-ind" id="tabInd"></i>' + PAGES.map(([k, n]) => `<button data-go="${k}">${IC[k]}${SHORT[k] || n}</button>`).join('');
+// Бегунок под активной вкладкой нижнего меню
+function moveInd() { const b = document.querySelector('#tabbar button.on'), i = $('tabInd'); if (!b || !i) return; i.style.left = b.offsetLeft + 'px'; i.style.width = b.offsetWidth + 'px'; }
+addEventListener('resize', moveInd);
 let page = 'dash';
 document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b && !e.target.closest('.drawer')) go(b.dataset.go); });
 $('refreshM').onclick = () => go(page, true);
@@ -344,7 +430,9 @@ function go(p, force) {
   if (!PAGES.some(x => x[0] === p)) p = 'dash';
   page = p; history.replaceState(null, '', '#' + p);
   document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('on', b.dataset.go === p));
-  ({ dash: renderDash, users: renderUsers, pays: renderPays, promo: renderPromo, bc: renderBc })[p](force);
+  moveInd();
+  const v = $('view'); v.classList.remove('vin'); void v.offsetWidth; v.classList.add('vin');
+  ({ dash: renderDash, users: renderUsers, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc })[p](force);
   scrollTo(0, 0);
 }
 const skel = () => `<div class="grid kpis">${'<div class="card"><div class="sk" style="height:14px;width:50%"></div><div class="sk" style="height:30px;width:70%;margin-top:16px"></div></div>'.repeat(4)}</div><div class="card" style="margin-top:16px"><div class="sk" style="height:240px"></div></div>`;
@@ -373,21 +461,20 @@ async function renderDash(force) {
   if (page !== 'dash') return;
   const d = DASH, m = d.money, conv = d.trials.total ? Math.round(d.trials.converted / d.trials.total * 100) : 0;
   const labels = d.days.map(x => { const [, mo, da] = x.split('-'); return `${+da}.${mo}`; });
-  const kpi = (i, ic, col, lb, v, sub) => `<div class="card kpi" style="--i:${i}"><div class="glow" style="background:${col}"></div><div class="lb"><span class="ic">${ic}</span>${lb}</div><div class="v">${v}</div><div class="sub">${sub}</div></div>`;
   const pm = Object.entries(d.pro.byMethod).sort((a, b) => b[1] - a[1]);
   const oplat = n => `${n} ${plural(n, 'оплата', 'оплаты', 'оплат')}`;
   $('view').innerHTML = head('Обзор', 'Главные цифры P2Pro · обновлено ' + dTime(Date.now()), refBtn('dash')) +
     `<div class="grid kpis">
-      ${kpi(0, '👥', '#5AA9FF', 'Пользователи', nf0.format(d.users.total), `+${d.users.d7} за неделю · +${d.users.d1} сегодня`)}
-      ${kpi(1, '⭐', '#F2B54B', 'PRO сейчас', nf0.format(d.pro.now), `пробный: ${d.pro.trialActive} · подарки и промо: ${(d.pro.byMethod.gift || 0) + (d.pro.byMethod.promo || 0)}`)}
-      ${kpi(2, '💰', '#3CD38A', 'Выручка за 30 дней', rub(m.month.rub), oplat(m.month.n) + (m.month.stars ? ` · ${nf0.format(m.month.stars)} ⭐` : ''))}
-      ${kpi(3, '📈', '#A78BFA', 'Пробный → оплата', conv + '%', `${d.trials.converted} из ${d.trials.total} оплатили после пробного`)}
+      ${kpi(0, 'users', '#5AA9FF', 'Пользователи', cu(d.users.total), `+${d.users.d7} за неделю · +${d.users.d1} сегодня`)}
+      ${kpi(1, 'star', '#F2B54B', 'PRO сейчас', cu(d.pro.now), `пробный: ${d.pro.trialActive} · подарки и промо: ${(d.pro.byMethod.gift || 0) + (d.pro.byMethod.promo || 0)}`)}
+      ${kpi(2, 'wallet', '#3CD38A', 'Выручка за 30 дней', cu(m.month.rub, 'rub'), oplat(m.month.n) + (m.month.stars ? ` · ${nf0.format(m.month.stars)} ⭐` : ''))}
+      ${kpi(3, 'trend', '#A78BFA', 'Пробный → оплата', cu(conv, 'pct'), `${d.trials.converted} из ${d.trials.total} оплатили после пробного`)}
     </div>
     <div class="grid kpis" style="margin-top:16px">
-      ${kpi(4, '☀️', '#F2B54B', 'Сегодня', rub(m.today.rub), oplat(m.today.n) + (m.today.stars ? ` · ${nf0.format(m.today.stars)} ⭐` : ''))}
-      ${kpi(5, '🗓', '#3CD38A', 'За неделю', rub(m.week.rub), oplat(m.week.n))}
-      ${kpi(6, '🏦', '#5AA9FF', 'За всё время', rub(m.total.rub), `${nf0.format(m.total.stars)} ⭐ звёздами`)}
-      ${kpi(7, '🧮', '#FF6B6B', 'Сделок за неделю', nf0.format(d.trades.d7), `всего ${nf0.format(d.trades.total)} · заходили за неделю: ${d.users.seen7}`)}
+      ${kpi(4, 'sun', '#F2B54B', 'Сегодня', cu(m.today.rub, 'rub'), oplat(m.today.n) + (m.today.stars ? ` · ${nf0.format(m.today.stars)} ⭐` : ''))}
+      ${kpi(5, 'cal', '#3CD38A', 'За неделю', cu(m.week.rub, 'rub'), oplat(m.week.n))}
+      ${kpi(6, 'bank', '#5AA9FF', 'За всё время', cu(m.total.rub, 'rub'), `${nf0.format(m.total.stars)} ⭐ звёздами`)}
+      ${kpi(7, 'deals', '#FF6B6B', 'Сделок за неделю', cu(d.trades.d7), `всего ${nf0.format(d.trades.total)} · заходили за неделю: ${d.users.seen7}`)}
     </div>
     <div class="grid charts">
       <div class="card"><div class="card-t">Выручка по дням <span class="legend"><span><i style="background:#F2B54B"></i>СБП</span><span><i style="background:#3CD38A"></i>Карта</span><span><i style="background:#5AA9FF"></i>Крипта</span></span></div><div class="chart-box"><canvas id="chRev"></canvas></div></div>
@@ -404,6 +491,7 @@ async function renderDash(force) {
           .map(([a, b]) => `<div class="row"><span class="grow">${a}</span><b class="mono">${nf0.format(b)}</b></div>`).join('')}
       </div></div>
     </div>`;
+  countUps();
   chart('chRev', { type: 'bar', data: { labels, datasets: [['СБП', d.rub.sbp, '#F2B54B'], ['Карта', d.rub.card, '#3CD38A'], ['Крипта', d.rub.crypto, '#5AA9FF'], ['Другое', d.rub.other, '#A78BFA']]
       .filter(x => x[0] !== 'Другое' || x[1].some(Boolean)).map(([label, data, c]) => ({ label, data, backgroundColor: c, borderRadius: 4, maxBarThickness: 18, stack: 's' })) },
     options: { responsive: true, maintainAspectRatio: false, animation: anim, interaction: { mode: 'index', intersect: false },
@@ -422,8 +510,8 @@ async function renderDash(force) {
 }
 function payRow(p) {
   const st = p.method === 'stars' ? `${nf0.format(Math.abs(p.amount))} ⭐` : p.kind === 'free' ? (p.days ? `${p.days} дн.` : '0 ₽') : rub(Math.abs(p.amount));
-  const ic = { sbp: '⚡', card: '💳', crypto: '💎', stars: '⭐', gift: '🎁', promo: '🎟', trial: '🎁' }[p.method] || '💰';
-  return `<div class="row" data-user="${esc(p.user)}" style="cursor:pointer"><div class="ava">${ic}</div><div class="grow"><div class="t1">${esc(p.nick ? '@' + p.nick : p.name)}</div><div class="t2">${METHOD[p.method] || esc(p.method || '—')}${p.period ? ' · ' + (p.period === 'y' ? 'год' : 'месяц') : ''} · ${dTime(p.ts)}${p.code ? ' · ' + esc(p.code) : ''}</div></div>
+  const [ik, ic] = { sbp: ['bolt', '#F2B54B'], card: ['card', '#3CD38A'], crypto: ['gem', '#00C2FF'], stars: ['star', '#FFD84D'], gift: ['gift', '#A78BFA'], promo: ['ticket', '#FF8FB1'], trial: ['gift', '#5AA9FF'] }[p.method] || ['wallet', '#8691A2'];
+  return `<div class="row" data-user="${esc(p.user)}" style="cursor:pointer"><div class="ava mi" style="--c:${ic}">${KI[ik]}</div><div class="grow"><div class="t1">${esc(p.nick ? '@' + p.nick : p.name)}</div><div class="t2">${METHOD[p.method] || esc(p.method || '—')}${p.period ? ' · ' + (p.period === 'y' ? 'год' : 'месяц') : ''} · ${dTime(p.ts)}${p.code ? ' · ' + esc(p.code) : ''}</div></div>
     <b class="mono ${p.refund || p.amount < 0 ? 'neg' : p.kind === 'free' ? 'muted' : 'pos'}">${p.refund || p.amount < 0 ? '↩ −' : p.kind === 'free' ? '' : '+'}${st}</b></div>`;
 }
 function fail(e) {
@@ -443,7 +531,7 @@ async function renderUsers(force) {
   const wk = 7 * 864e5;
   const F = [['all', 'Все', () => true], ['pro', 'PRO', u => u.pro && u.method !== 'trial'], ['trial', 'Пробный', u => u.pro && u.method === 'trial'], ['free', 'Free', u => !u.pro],
     ['active', 'Активные 7 дн', u => u.lastTrade && Date.now() - Date.parse(u.lastTrade) < wk], ['paid', 'Платили', u => u.paid > 0], ['ban', 'Заблокированы', u => u.banned]];
-  $('view').innerHTML = head('Пользователи', `${USERS.length} ${plural(USERS.length, 'аккаунт', 'аккаунта', 'аккаунтов')}`, refBtn('users')) +
+  $('view').innerHTML = head('Пользователи', `${USERS.length} ${plural(USERS.length, 'аккаунт', 'аккаунта', 'аккаунтов')}`, `<div class="inl"><button class="btn" id="uxls">⤓ Выгрузить в Excel</button>${refBtn('users')}</div>`) +
     `<div class="tools"><label class="search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="uq" placeholder="Ник, имя, почта или Telegram id" value="${esc(uq)}" autocomplete="off"></label>
       <select class="sel" id="us"><option value="new">Сначала новые</option><option value="seen">Недавно заходили</option><option value="trades">Больше сделок</option><option value="paid">Больше заплатили</option><option value="until">PRO дольше</option></select></div>
     <div class="chips" id="uf" style="margin-bottom:14px">${F.map(([k, n, f]) => `<button class="chip ${k === uf ? 'on' : ''}" data-uf="${k}">${n}<b>${USERS.filter(f).length}</b></button>`).join('')}</div>
@@ -468,12 +556,24 @@ async function renderUsers(force) {
   $('umore').onclick = e => { if (e.target.closest('#umoreB')) { ushow += 100; draw(); } };
 }
 
+// Выгрузка всех пользователей в таблицу: файл всегда приходит в бот (с телефона так удобнее всего), в браузере ещё и скачивается
+document.addEventListener('click', async e => {
+  const b = e.target.closest('#uxls'); if (!b) return;
+  b.disabled = true; b.innerHTML = '<span class="spin"></span> Готовлю…';
+  try {
+    const r = await api('users_export');
+    if (!IN_APP) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv;charset=utf-8' })); a.download = r.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); }
+    toast(r.sent ? `Таблица отправлена тебе в бот · ${r.n} ${plural(r.n, 'человек', 'человека', 'человек')}` : IN_APP ? 'Не получилось отправить в бот — попробуйте ещё раз' : 'Таблица скачана');
+  } catch (err) { toast(err.message, true); }
+  finally { if (b.isConnected) { b.disabled = false; b.innerHTML = '⤓ Выгрузить в Excel'; } }
+});
+
 /* ---------- Карточка пользователя ---------- */
 let CUR = null;
 document.addEventListener('click', e => { const r = e.target.closest('[data-user]'); if (r && !e.target.closest('.drawer') && r.dataset.user) openUser(r.dataset.user); });
 $('scrim').onclick = closeUser;
 addEventListener('keydown', e => { if (e.key === 'Escape' && $('drawer').classList.contains('on')) closeUser(); });
-function closeUser() { $('drawer').classList.remove('on'); $('scrim').classList.remove('on'); $('drawer').setAttribute('aria-hidden', 'true'); setTimeout(() => { if (!$('drawer').classList.contains('on')) $('scrim').hidden = true; }, 300); CUR = null; }
+function closeUser() { $('drawer').classList.remove('on'); $('scrim').classList.remove('on'); $('drawer').setAttribute('aria-hidden', 'true'); setTimeout(() => { if (!$('drawer').classList.contains('on')) $('scrim').hidden = true; }, 300); CUR = null; CURP = null; }
 async function openUser(id) {
   $('scrim').hidden = false; $('drawer').setAttribute('aria-hidden', 'false');
   requestAnimationFrame(() => { $('scrim').classList.add('on'); $('drawer').classList.add('on'); });
@@ -595,6 +695,123 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('[data-pt]'), d = e.target.closest('[data-pd]');
   if (t) { t.disabled = true; try { await api('promo_toggle', { code: t.dataset.pt }); renderPromo(); } catch (er) { toast(er.message, true); t.disabled = false; } }
   if (d && await confirmBox('Удалить ' + d.dataset.pd + '?', 'Уже выданные дни PRO у людей останутся.', 'Удалить', true)) { try { await api('promo_delete', { code: d.dataset.pd }); toast('Удалён'); renderPromo(); } catch (er) { toast(er.message, true); } }
+});
+
+/* ---------- Партнёры ---------- */
+// Партнёр раздаёт свою ссылку. Кто пришёл по ней и потом заплатил — с этих оплат партнёру причитается его процент.
+// Деньги сами никуда не уходят: здесь видно, сколько ему должны, а выплату владелец отмечает вручную
+let PARTS = null;
+const slug = s => s.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24);
+const TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch', ы: 'y', э: 'e', ю: 'yu', я: 'ya' };
+const latin = s => s.toLowerCase().replace(/[а-яё]/g, c => TR[c] ?? '');
+const stars = v => nf0.format(v) + ' ⭐';
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return toast('Ссылка скопирована ✓'); } catch (e) { /* ниже — запасной способ */ }
+  const a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(a); a.select();
+  try { document.execCommand('copy'); toast('Ссылка скопирована ✓'); } catch (e) { toast('Не получилось скопировать', true); } a.remove();
+}
+document.addEventListener('click', e => { const c = e.target.closest('[data-copy]'); if (c) { e.stopPropagation(); copyText(c.dataset.copy); } }, true);
+async function renderRef(force) {
+  killCharts();
+  $('view').innerHTML = head('Партнёры', 'Ссылки партнёров и сколько им причитается') + skel();
+  try { if (force || !PARTS) PARTS = (await api('partners')).partners; } catch (e) { return fail(e); }
+  if (page !== 'ref') return;
+  const P = PARTS, sum = k => P.reduce((a, p) => a + p[k], 0);
+  $('view').innerHTML = head('Партнёры', `${P.length} ${plural(P.length, 'партнёр', 'партнёра', 'партнёров')}`, refBtn('ref')) +
+    `<div class="grid kpis">
+      ${kpi(0, 'link', '#5AA9FF', 'Пришли по ссылкам', cu(sum('joined')), `открыли приложение: ${sum('registered')}`)}
+      ${kpi(1, 'wallet', '#3CD38A', 'Они заплатили', cu(sum('rub'), 'rub'), `${sum('payers')} ${plural(sum('payers'), 'плательщик', 'плательщика', 'плательщиков')}${sum('stars') ? ' · ' + stars(sum('stars')) : ''}`)}
+      ${kpi(2, 'hand', '#F2B54B', 'Должен партнёрам', cu(Math.max(0, sum('owedRub')), 'rub'), sum('owedStars') > 0 ? 'и ' + stars(sum('owedStars')) : 'к выплате сейчас')}
+      ${kpi(3, 'check', '#A78BFA', 'Уже выплачено', cu(sum('paidRub'), 'rub'), sum('paidStars') ? 'и ' + stars(sum('paidStars')) : 'за всё время')}
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-t">Новый партнёр</div>
+      <div class="inl"><input class="inp" id="npName" placeholder="Имя, например Иван Блогер" style="flex:2;min-width:180px" maxlength="60">
+        <input class="inp" id="npCode" placeholder="код ссылки" style="flex:1;min-width:130px;font-family:var(--f-m)" maxlength="24" autocapitalize="off" spellcheck="false">
+        <span class="pct-in"><input class="inp n" id="npPct" type="number" min="0" max="90" step="0.5" value="15"><i>%</i></span><button class="btn pri" id="npGo">Создать</button></div>
+      <p class="hint" style="margin-top:10px">Ссылка будет <span class="mono" id="npLink" style="color:var(--fg)">t.me/P2ProAppBot?start=p_…</span>. Процент — доля партнёра со всех оплат людей, которые пришли по ней. Засчитываются только новые люди, у кого ещё нет аккаунта P2Pro.</p></div>
+    <div class="grid pgrid" style="margin-top:16px">${P.map((p, i) => `
+      <div class="card pcard ${p.active ? '' : 'off'}" data-partner="${esc(p.code)}" style="--i:${i}">
+        <div class="card-t" style="margin-bottom:4px"><span>${esc(p.name || p.code)}</span><span class="badge ${p.active ? 'pro' : ''}">${p.active ? nf2.format(p.pct) + '%' : 'выключен'}</span></div>
+        <div class="plink"><span class="mono">…start=p_${esc(p.code)}</span><button class="btn small" data-copy="${esc(p.link)}">Копировать</button></div>
+        <div class="pstat"><div><b>${p.joined}</b><span>пришли</span></div><div><b>${p.payers}</b><span>платили</span></div><div><b>${rub(p.rub)}</b><span>выручка</span></div></div>
+        <div class="powe ${p.owedRub > 0 ? '' : 'zero'}"><span>${p.owedRub > 0 ? 'К выплате' : p.owedRub < 0 ? 'Переплата' : 'Долга нет'}</span><b>${rub(Math.abs(p.owedRub))}${p.owedStars > 0 ? ' + ' + stars(p.owedStars) : ''}</b></div>
+      </div>`).join('') || '<div class="card empty" style="grid-column:1/-1">Пока нет партнёров — создайте первого выше</div>'}</div>`;
+  countUps();
+  const syncLink = () => { $('npLink').textContent = 't.me/P2ProAppBot?start=p_' + ($('npCode').value || '…'); };
+  $('npName').oninput = () => { if (!$('npCode').dataset.touched) $('npCode').value = slug(latin($('npName').value)); syncLink(); };
+  $('npCode').oninput = () => { $('npCode').dataset.touched = 1; $('npCode').value = slug($('npCode').value); syncLink(); };
+  $('npGo').onclick = async () => {
+    const name = $('npName').value.trim(), code = $('npCode').value, pct = +$('npPct').value;
+    if (!name) return toast('Впишите имя партнёра', true);
+    if (!/^[a-z0-9_]{2,24}$/.test(code)) return toast('Код — латиница, цифры и _, от 2 знаков', true);
+    if (!(pct >= 0 && pct <= 90)) return toast('Процент — от 0 до 90', true);
+    $('npGo').disabled = true;
+    try { await api('partner_save', { create: true, code, name, pct }); toast('Партнёр создан — ссылка скопирована'); copyText('https://t.me/P2ProAppBot?start=p_' + code); PARTS = null; renderRef(true); }
+    catch (e) { toast(e.message, true); $('npGo').disabled = false; }
+  };
+}
+document.addEventListener('click', e => { const c = e.target.closest('[data-partner]'); if (c && !e.target.closest('[data-copy]')) openPartner(c.dataset.partner); });
+let CURP = null;
+async function openPartner(code) {
+  CUR = null; $('scrim').hidden = false; $('drawer').setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => { $('scrim').classList.add('on'); $('drawer').classList.add('on'); });
+  $('drawer').innerHTML = '<div class="sk" style="height:60px;flex:none"></div><div class="sk" style="height:140px;flex:none"></div><div class="sk" style="height:220px;flex:none"></div>';
+  try { drawPartner(await api('partner', { code })); } catch (e) { $('drawer').innerHTML = `<div class="dr-head"><button class="x" data-close>×</button></div><p class="neg">${esc(e.message)}</p>`; }
+}
+function drawPartner(d) {
+  const p = d.partner; CURP = p;
+  $('drawer').innerHTML = `
+    <div class="dr-head"><div class="ava pava">${esc((p.name || p.code)[0].toUpperCase())}</div>
+      <div style="min-width:0"><h3>${esc(p.name || p.code)}</h3><div class="muted small">с ${dLong(p.created_at)} · ${nf2.format(p.pct)}% с оплат</div></div><button class="x" data-close aria-label="Закрыть">×</button></div>
+    <div class="plink big"><span class="mono">${esc(p.link.replace('https://', ''))}</span><button class="btn small pri" data-copy="${esc(p.link)}">Копировать</button></div>
+    <div class="powe ${p.owedRub > 0 ? '' : 'zero'}" style="padding:16px"><span>${p.owedRub > 0 ? 'Должен партнёру' : p.owedRub < 0 ? 'Переплата' : 'Долга нет'}</span><b style="font-size:24px">${rub(Math.abs(p.owedRub))}${p.owedStars > 0 ? ' + ' + stars(p.owedStars) : ''}</b></div>
+    <div class="facts">
+      <div class="fact"><div class="lb">Пришли</div><div class="v mono">${p.joined}</div></div>
+      <div class="fact"><div class="lb">Открыли приложение</div><div class="v mono">${p.registered}</div></div>
+      <div class="fact"><div class="lb">Платили</div><div class="v mono">${p.payers} · PRO сейчас ${p.pro}</div></div>
+      <div class="fact"><div class="lb">Выручка с них</div><div class="v mono">${rub(p.rub)}${p.stars ? '<br>' + stars(p.stars) : ''}</div></div>
+      <div class="fact"><div class="lb">Доля партнёра</div><div class="v mono">${rub(p.shareRub)}${p.shareStars ? '<br>' + stars(p.shareStars) : ''}</div></div>
+      <div class="fact"><div class="lb">Выплачено</div><div class="v mono">${rub(p.paidRub)}${p.paidStars ? '<br>' + stars(p.paidStars) : ''}</div></div>
+    </div>
+    <div class="sec"><h4>💸 Отметить выплату</h4>
+      <div class="inl"><input class="inp n" id="poAmt" type="number" min="1" step="0.01" value="${p.owedRub > 0 ? p.owedRub : ''}" placeholder="сумма" style="width:130px">
+        <select class="sel" id="poCur"><option value="rub">₽</option><option value="stars">⭐</option></select>
+        <input class="inp" id="poNote" placeholder="комментарий, например «перевод на Сбер»" style="flex:1;min-width:160px" maxlength="200"><button class="btn pri" data-pa="pay">Отметить</button></div>
+      <p class="hint">Сначала переведите деньги партнёру сами, потом отметьте здесь — долг уменьшится.</p>
+      ${d.payouts.length ? `<div class="list">${d.payouts.map(x => `<div class="row"><div class="ava">✓</div><div class="grow"><div class="t1">${x.cur === 'stars' ? stars(x.amount) : rub(x.amount)}</div><div class="t2">${dTime(x.at)}${x.note ? ' · ' + esc(x.note) : ''}</div></div><button class="btn ghost small" data-pa="undo" data-id="${x.id}" aria-label="Удалить выплату">×</button></div>`).join('')}</div>` : ''}</div>
+    <div class="sec"><h4>👥 Кто пришёл <span class="muted small">${d.people.length}</span></h4><div class="list">${d.people.length ? d.people.map(x => `
+      <div class="row" ${x.user ? `data-pu="${esc(x.user)}" style="cursor:pointer"` : ''}><div class="ava">${esc(((x.name || x.label || '?').replace('@', '') || '?')[0].toUpperCase())}</div>
+        <div class="grow"><div class="t1">${esc(x.nick ? '@' + x.nick : x.name || x.label || 'без имени')}</div><div class="t2">пришёл ${dShort(x.at)} · ${x.registered ? (x.pro ? 'PRO' : 'открыл приложение') : 'ещё не открывал приложение'}</div></div>
+        <b class="mono ${x.rub > 0 ? 'pos' : 'muted'}">${x.rub ? rub(x.rub) : x.stars ? stars(x.stars) : '—'}</b></div>`).join('') : '<div class="empty" style="padding:20px">По ссылке ещё никто не пришёл</div>'}</div></div>
+    <div class="sec"><h4>⚙️ Настройки</h4>
+      <div class="inl"><input class="inp" id="peName" value="${esc(p.name)}" placeholder="Имя" style="flex:1;min-width:150px" maxlength="60"><span class="pct-in"><input class="inp n" id="pePct" type="number" min="0" max="90" step="0.5" value="${p.pct}"><i>%</i></span></div>
+      <textarea class="inp" id="peNote" placeholder="Заметка: реквизиты, условия, контакты" style="min-height:70px" maxlength="300">${esc(p.note)}</textarea>
+      <div class="inl" style="justify-content:space-between"><button class="btn small" data-pa="toggle">${p.active ? '⏸ Выключить ссылку' : '▶ Включить ссылку'}</button><button class="btn pri" data-pa="save">Сохранить</button></div>
+      <p class="hint">Процент меняет расчёт по всем оплатам этого партнёра, включая прошлые. Выключенная ссылка перестаёт засчитывать новых людей, старые остаются.</p></div>
+    <button class="btn danger wide" data-pa="del">Удалить партнёра</button>`;
+}
+$('drawer').addEventListener('click', async e => {
+  const u = e.target.closest('[data-pu]'); if (u) return openUser(u.dataset.pu);
+  const b = e.target.closest('[data-pa]'); if (!b || !CURP) return;
+  const p = CURP, a = b.dataset.pa;
+  let call;
+  if (a === 'pay') {
+    const amount = +$('poAmt').value, cur = $('poCur').value;
+    if (!(amount > 0)) return toast('Впишите сумму', true);
+    if (!await confirmBox('Отметить выплату?', `${esc(p.name || p.code)}: ${cur === 'stars' ? stars(amount) : rub(amount)}. Деньги переводите сами — здесь только отметка.`, 'Отметить')) return;
+    call = ['partner_payout', { code: p.code, amount, cur, note: $('poNote').value }];
+  } else if (a === 'undo') { if (!await confirmBox('Удалить выплату?', 'Долг партнёру снова увеличится на эту сумму.', 'Удалить', true)) return; call = ['partner_payout_del', { id: +b.dataset.id }]; }
+  else if (a === 'save') call = ['partner_save', { code: p.code, name: $('peName').value, pct: +$('pePct').value, note: $('peNote').value, active: p.active }];
+  else if (a === 'toggle') call = ['partner_save', { code: p.code, name: p.name, pct: p.pct, note: p.note, active: !p.active }];
+  else if (a === 'del') { if (!await confirmBox('Удалить партнёра?', 'Ссылка перестанет работать, а вся статистика и выплаты по нему удалятся.', 'Удалить', true)) return; call = ['partner_delete', { code: p.code }]; }
+  if (!call) return;
+  b.disabled = true;
+  try {
+    await api(call[0], call[1]); PARTS = null; toast('Готово ✓');
+    if (a === 'del') { closeUser(); CURP = null; } else drawPartner(await api('partner', { code: p.code }));
+    if (page === 'ref') renderRef(true);
+  } catch (err) { toast(err.message, true); }
+  finally { if (b.isConnected) b.disabled = false; }
 });
 
 /* ---------- Рассылка ---------- */

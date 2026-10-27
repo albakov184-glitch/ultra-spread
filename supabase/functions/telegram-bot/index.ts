@@ -59,7 +59,7 @@ type AUser = { id: string; email?: string; created_at: string; last_sign_in_at?:
 type Pay = { ts: string; amount: number; period?: string; method?: string; days?: number };
 type Sub = { user_id: string; pro_since: string | null; pro_until: string | null; auto_renew: boolean; pay_method: string | null; period: string; payments: Pay[]; reminded_for?: string | null } | null;
 type Btn = { text: string; callback_data?: string; url?: string; web_app?: { url: string } };
-type Msg = { message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string }; text?: string };
+type Msg = { message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; username?: string }; text?: string };
 const kb = (rows: Btn[][]) => ({ inline_keyboard: rows });
 const isPro = (s: Sub) => !!s?.pro_until && Date.parse(s.pro_until) > Date.now();
 const isBanned = (u: AUser) => !!u.banned_until && Date.parse(u.banned_until) > Date.now();
@@ -1327,6 +1327,104 @@ async function broadcastText(text: string, aud: Aud) {
 // Текст рассылки и личного сообщения: экранируем всё, кроме **жирного** — его превращаем в <b>
 const fmtText = (t: string) => esc(t.slice(0, 3500)).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
 
+/* ---------- Партнёрские ссылки ---------- */
+// Ссылка партнёра: https://t.me/P2ProAppBot?start=p_КОД. Доля партнёра — процент со всех оплат людей, пришедших по ней.
+// Сами деньги никуда не уходят: админка только считает, сколько должны партнёру, выплаты владелец отмечает вручную
+const PCODE = /^[a-z0-9_]{2,24}$/;
+const partnerLink = (code: string) => `https://t.me/P2ProAppBot?start=p_${code}`;
+// Запоминаем только новых: у кого ещё нет аккаунта P2Pro и кто не пришёл раньше по другой ссылке
+async function partnerJoin(from: { id: number; first_name?: string; username?: string }, raw: string) {
+  const code = raw.toLowerCase();
+  if (!PCODE.test(code)) return;
+  const { data: p } = await admin.from('partners').select('name, active').eq('code', code).maybeSingle();
+  if (!p?.active) return;
+  const { data: had } = await admin.from('tg_users').select('tg_id').eq('tg_id', from.id).maybeSingle();
+  if (had) return;
+  const name = (from.username ? '@' + from.username : from.first_name ?? '').slice(0, 64);
+  const { data: ins, error } = await admin.from('partner_refs').upsert({ tg_id: from.id, code, name }, { onConflict: 'tg_id', ignoreDuplicates: true }).select('tg_id');
+  if (error || !ins?.length) return;
+  await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `🤝 По ссылке партнёра <b>${esc(p.name || code)}</b> пришёл новый человек: ${esc(name) || 'без имени'}` });
+}
+// Таблица целиком (Supabase отдаёт по 1000 строк)
+async function rowsAll<T>(table: string, cols: string): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; from < 1e6; from += 1000) {
+    const { data, error } = await admin.from(table).select(cols).range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data as unknown as T[]));
+    if ((data ?? []).length < 1000) break;
+  }
+  return out;
+}
+type PRow = { code: string; name: string; pct: number; note: string; active: boolean; created_at: string };
+type PRef = { tg_id: number; code: string; name: string; at: string };
+type PPay = { id: number; code: string; amount: number; cur: string; note: string; at: string };
+const r2 = (v: number) => Math.round(v * 100) / 100;
+// Всё по партнёрам сразу: кто пришёл, сколько заплатил после перехода, доля партнёра, выплачено и долг
+async function partnerData() {
+  const [ps, refs, pays, tgs, subs] = await Promise.all([
+    rowsAll<PRow>('partners', '*'), rowsAll<PRef>('partner_refs', 'tg_id, code, name, at'), rowsAll<PPay>('partner_payouts', '*'),
+    rowsAll<{ user_id: string; tg_id: number; username: string | null }>('tg_users', 'user_id, tg_id, username'), allSubs()]);
+  const tgBy = new Map(tgs.map((t) => [Number(t.tg_id), t])), subBy = new Map(subs.map((s) => [s.user_id, s]));
+  const people = refs.map((r) => {
+    const t = tgBy.get(Number(r.tg_id)), s = t ? subBy.get(t.user_id) : undefined;
+    let rub = 0, stars = 0, n = 0;
+    // Считаем только оплаты после перехода по ссылке. Возвраты записаны отрицательной суммой — они уменьшают долю
+    for (const p of (s?.payments ?? []) as Pay[]) {
+      if (Date.parse(p.ts) < Date.parse(r.at)) continue;
+      const k = payKind(p); if (k === 'free') continue;
+      if (k === 'stars') stars += +p.amount || 0; else rub += +p.amount || 0;
+      if (+p.amount > 0) n++;
+    }
+    return { tg: Number(r.tg_id), code: r.code, at: r.at, label: r.name, user: t?.user_id ?? null, nick: t?.username ?? null, registered: !!t, pro: isPro(s ?? null), rub, stars, n };
+  });
+  const list = ps.map((p) => {
+    const mine = people.filter((x) => x.code === p.code), pp = pays.filter((x) => x.code === p.code), k = +p.pct / 100;
+    const rub = mine.reduce((a, x) => a + x.rub, 0), stars = mine.reduce((a, x) => a + x.stars, 0);
+    const paidRub = pp.filter((x) => x.cur === 'rub').reduce((a, x) => a + +x.amount, 0), paidStars = pp.filter((x) => x.cur === 'stars').reduce((a, x) => a + +x.amount, 0);
+    const shareRub = r2(Math.max(0, rub) * k), shareStars = Math.floor(Math.max(0, stars) * k);
+    return { ...p, pct: +p.pct, link: partnerLink(p.code), joined: mine.length, registered: mine.filter((x) => x.registered).length, payers: mine.filter((x) => x.n > 0).length,
+      pro: mine.filter((x) => x.pro).length, rub: r2(rub), stars, shareRub, shareStars, paidRub: r2(paidRub), paidStars, owedRub: r2(shareRub - paidRub), owedStars: shareStars - paidStars };
+  });
+  return { list, people, pays };
+}
+async function partnerSave(b: Record<string, unknown>) {
+  const code = String(b.code ?? '').trim().toLowerCase(), pct = Number(b.pct);
+  if (!PCODE.test(code)) throw new Error('Код — от 2 до 24 знаков: латиница, цифры, _');
+  if (!Number.isFinite(pct) || pct < 0 || pct > 90) throw new Error('Процент — от 0 до 90');
+  const row = { name: String(b.name ?? '').trim().slice(0, 60), pct: r2(pct), note: String(b.note ?? '').trim().slice(0, 300), active: b.active !== false };
+  if (b.create) {
+    const { error } = await admin.from('partners').insert({ code, ...row });
+    if (error) throw new Error(error.code === '23505' ? 'Такой код уже занят' : error.message);
+  } else {
+    const { data, error } = await admin.from('partners').update(row).eq('code', code).select('code');
+    if (error) throw error; if (!data?.length) throw new Error('Партнёр не найден');
+  }
+}
+
+// Выгрузка пользователей в таблицу (CSV, открывается в Excel): файл приходит владельцу в бот — так он доступен и с телефона
+const CSV_HEAD = ['Имя', 'Ник', 'Telegram id', 'Почта', 'Регистрация', 'Последний вход', 'Статус', 'PRO до', 'Способ', 'Сделок', 'Последняя сделка', 'Заплатил, ₽', 'Партнёр'];
+const csvCell = (v: unknown) => {
+  let s = v == null ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;   // чтобы Excel не принял имя за формулу
+  return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+const mskTime = (v: string | null) => v ? new Date(Date.parse(v) + 3 * 3600e3).toISOString().slice(0, 16).replace('T', ' ') : '';
+const METHOD_RU: Record<string, string> = { sbp: 'СБП', card: 'Карта', crypto: 'Крипта', stars: 'Звёзды', gift: 'Подарок', promo: 'Промокод', trial: 'Пробный' };
+async function usersExport() {
+  const [users, refs] = await Promise.all([adminUsers(), rowsAll<PRef>('partner_refs', 'tg_id, code')]);
+  const refBy = new Map(refs.map((r) => [Number(r.tg_id), r.code]));
+  const rows = users.map((u) => [u.name, u.nick ? '@' + u.nick : '', u.tg ?? '', u.email ?? '', mskTime(u.created), mskTime(u.seen),
+    u.banned ? 'Заблокирован' : u.pro ? (u.method === 'trial' ? 'Пробный' : 'PRO') : 'Free', u.pro ? mskTime(u.until) : '', u.method ? METHOD_RU[u.method] ?? u.method : '',
+    u.trades, mskTime(u.lastTrade), u.paid || '', u.tg ? refBy.get(Number(u.tg)) ?? '' : '']);
+  const csv = '﻿' + [CSV_HEAD, ...rows].map((r) => r.map(csvCell).join(';')).join('\r\n');
+  const name = `P2Pro-users-${mskDay(Date.now())}.csv`, fd = new FormData();
+  fd.append('chat_id', String(ADMIN_ID)); fd.append('caption', `👥 Пользователи P2Pro: ${users.length}. Файл открывается в Excel и Google Таблицах`);
+  fd.append('document', new Blob([csv], { type: 'text/csv' }), name);
+  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendDocument`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+  return { ok: true, n: users.length, sent: !!r?.ok, csv, name };
+}
+
 // Вход по одноразовой ссылке из бота: код забираем одним запросом (второй раз не сработает) и выдаём сессию аккаунта владельца
 // Код из 12 знаков без похожих (0/O, 1/I): ~60 бит — за 5 минут его не подобрать
 const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1391,6 +1489,26 @@ async function adminApi(body: Record<string, unknown>) {
     }
     if (act === 'promo_toggle') { const { data: p } = await admin.from('promo_codes').select('active').eq('code', String(body.code)).maybeSingle(); if (!p) throw new Error('Нет такого кода'); await admin.from('promo_codes').update({ active: !p.active }).eq('code', String(body.code)); return aj({ ok: true }); }
     if (act === 'promo_delete') { await admin.from('promo_codes').delete().eq('code', String(body.code)); return aj({ ok: true }); }
+    if (act === 'users_export') return aj(await usersExport());
+    if (act === 'partners') { const d = await partnerData(); return aj({ partners: d.list }); }
+    if (act === 'partner') {
+      const code = String(body.code ?? ''), d = await partnerData(), p = d.list.find((x) => x.code === code);
+      if (!p) throw new Error('Партнёр не найден');
+      const users = new Map((await allUsers()).map((u) => [u.id, u]));
+      const people = d.people.filter((x) => x.code === code).map((x) => { const u = x.user ? users.get(x.user) : undefined; return { ...x, name: u ? nameOfU(u) : '' }; })
+        .sort((a, b) => b.rub - a.rub || Date.parse(b.at) - Date.parse(a.at));
+      return aj({ partner: p, people, payouts: d.pays.filter((x) => x.code === code).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)) });
+    }
+    if (act === 'partner_save') { await partnerSave(body); return aj({ ok: true }); }
+    if (act === 'partner_delete') { const { error } = await admin.from('partners').delete().eq('code', String(body.code ?? '')); if (error) throw error; return aj({ ok: true }); }
+    if (act === 'partner_payout') {
+      const amount = r2(Number(body.amount)), cur = body.cur === 'stars' ? 'stars' : 'rub';
+      if (!(amount > 0) || amount > 1e7) throw new Error('Сумма должна быть больше нуля');
+      const { error } = await admin.from('partner_payouts').insert({ code: String(body.code ?? ''), amount, cur, note: String(body.note ?? '').trim().slice(0, 200) });
+      if (error) throw new Error(error.code === '23503' ? 'Партнёр не найден' : error.message);
+      return aj({ ok: true });
+    }
+    if (act === 'partner_payout_del') { const { error } = await admin.from('partner_payouts').delete().eq('id', Number(body.id)); if (error) throw error; return aj({ ok: true }); }
     if (act === 'bc_counts') { const n = await Promise.all((['all', 'pro', 'exp', 'free'] as Aud[]).map((a) => recipients(a).then((r) => r.length))); return aj({ all: n[0], pro: n[1], exp: n[2], free: n[3] }); }
     if (act === 'bc_test' || act === 'bc_send') {
       const t = String(body.text ?? '').trim(); if (!t) throw new Error('Пустой текст');
@@ -1452,6 +1570,9 @@ Deno.serve(async (req) => {
         return new Response('ok');
       }
       if (isAdmin(msg.from?.id) && await adminMessage(msg)) return new Response('ok');
+      // Пришёл по ссылке партнёра — запоминаем, затем обычное приветствие
+      const pm = text.trim().match(/^\/start p_([A-Za-z0-9_]{2,24})$/);
+      if (pm && msg.from && SERVICE) await partnerJoin(msg.from, pm[1]).catch((e) => console.error('partner', e));
       if (text.startsWith('/start')) await tg('sendMessage', { chat_id: msg.chat.id, text: WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: await startKb(msg.from?.id ?? 0) });
       else await send(msg.chat.id, HELP);
     } catch (_) { /* сеть Telegram недоступна — пропускаем */ }
