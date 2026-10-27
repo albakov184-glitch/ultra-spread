@@ -538,6 +538,8 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .cal-w, .cal-g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .cal-w span { font-size: 11px; color: var(--muted); text-align: center; }
 .cal-g { margin-top: 6px; }
+.cal-g.wave .cal-d { animation: calIn .42s cubic-bezier(.2, .8, .3, 1.2) both; animation-delay: calc(var(--d, 0) * 16ms + 80ms); }
+@keyframes calIn { from { opacity: 0; transform: scale(.6); } }
 .cal-d { aspect-ratio: 1 / 1.08; min-width: 0; border-radius: 10px; background: var(--surface-2); display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; padding: 5px 5px 4px; font-size: 11px; color: var(--muted); font-family: inherit; text-align: left; }
 .cal-d i { font-style: normal; font-family: var(--f-mono); font-size: 9.5px; font-weight: 600; letter-spacing: -.3px; white-space: nowrap; max-width: 100%; overflow: hidden; }
 .cal-d.p, .cal-d.n { color: var(--fg); }
@@ -661,6 +663,9 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .tab-in-l { animation: tabInL .32s cubic-bezier(.2, .8, .3, 1); }
 @keyframes tabInR { from { opacity: 0; transform: translateX(22px); } }
 @keyframes tabInL { from { opacity: 0; transform: translateX(-22px); } }
+/* Карточки новой вкладки появляются по очереди, сверху вниз */
+.stag > * { animation: cardUp .46s cubic-bezier(.2, .8, .3, 1) both; animation-delay: calc(var(--k, 7) * 45ms); }
+@keyframes cardUp { from { opacity: 0; transform: translateY(14px) scale(.985); } }
 
 /* sheet + toast */
 .scrim { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; }
@@ -1930,6 +1935,7 @@ function openTrade(id) {
 
 /* ================= АНАЛИТИКА ================= */
 let sPeriod = '30', sCur = 'RUB', chartMode = 'bar', chart = null;
+let chartFx = false, calFx = false;   // при входе в аналитику: столбики вырастают по очереди, дни календаря загораются волной
 function renderStats() {
   const pro = S.settings.pro;
   if (!pro && sPeriod !== '7') sPeriod = '7';   // Free: аналитика за последние 7 дней
@@ -1994,13 +2000,14 @@ function renderCal() {
   ms.bars.forEach((v, i) => {
     const n = ms.cnt[i], a = (.18 + .62 * Math.abs(v) / max).toFixed(2), k = dayKey(new Date(y, m, i + 1));
     const bg = !n ? '' : v > 0 ? `background:rgba(60,211,138,${a})` : v < 0 ? `background:rgba(255,107,107,${a})` : '';
-    cells += `<button class="cal-d ${n ? (v < 0 ? 'n' : 'p') : ''} ${isNow && i + 1 === now.getDate() ? 'today' : ''}" style="${bg}" ${n ? `data-cal-day="${k}" aria-label="${fmtDay(k)}: ${money(v, c, true)}"` : 'disabled'}>${i + 1}${n ? `<i>${S.settings.incog ? '•••' : kfmt(v)}</i>` : ''}</button>`;
+    cells += `<button class="cal-d ${n ? (v < 0 ? 'n' : 'p') : ''} ${isNow && i + 1 === now.getDate() ? 'today' : ''}" style="${bg};--d:${first + i}" ${n ? `data-cal-day="${k}" aria-label="${fmtDay(k)}: ${money(v, c, true)}"` : 'disabled'}>${i + 1}${n ? `<i>${S.settings.incog ? '•••' : kfmt(v)}</i>` : ''}</button>`;
   });
+  const wave = calFx; calFx = false;
   $('calBody').innerHTML = `<div class="cal-h"><span class="card-t">Календарь прибыли</span><div class="cal-nav"><button data-cal-nav="-1" aria-label="Прошлый месяц" ${canBack ? '' : 'disabled'}>‹</button><button data-cal-nav="1" aria-label="Следующий месяц" ${isNow ? 'disabled' : ''}>›</button></div></div>
     <div class="cal-m">${monTitle(y, m)}</div>
     <div class="cal-sum"><span>Итого <b class="${cls(ms.p)}">${money(ms.p, c, true)}</b></span><span>${ms.active} ${plural(ms.active, 'торговый день', 'торговых дня', 'торговых дней')}${ms.active ? ` · ${ms.plus} в плюсе` : ''}</span></div>
     <div class="cal-w">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(x => `<span>${x}</span>`).join('')}</div>
-    <div class="cal-g">${cells}</div>
+    <div class="cal-g${wave ? ' wave' : ''}">${cells}</div>
     <div class="cal-leg">меньше <s style="background:rgba(60,211,138,.25)"></s><s style="background:rgba(60,211,138,.5)"></s><s style="background:rgba(60,211,138,.8)"></s> больше · <s style="background:rgba(255,107,107,.5)"></s> минус</div>
     <button class="btn" data-cal-card style="margin-top:12px;width:100%">🗓 Карточка с календарём</button>`;
   $('calBody').classList.toggle('locked', !pro); $('calBody').inert = !pro; $('calPaywall').hidden = pro;
@@ -2038,13 +2045,14 @@ function drawChart(T, c) {
   const vals = keys.map(k => chartMode === 'bar' ? byDay[k] : (acc += byDay[k]));
   const labels = keys.map(k => { const [, m, d] = k.split('-'); return `${+d}.${m}`; });
   const pos = cssVar('--pos'), neg = cssVar('--neg'), ac = cssVar('--accent'), mut = cssVar('--muted'), line = cssVar('--line'), soft = cssVar('--accent-soft');
+  const fx = chartFx && !reduceMotion; chartFx = false;
   if (chart) chart.destroy();
   chart = new Chart($('chart'), {
     type: chartMode === 'bar' ? 'bar' : 'line',
     data: { labels, datasets: [chartMode === 'bar'
       ? { data: vals, backgroundColor: vals.map(v => v >= 0 ? pos : neg), borderRadius: 3, maxBarThickness: 18 }
       : { data: vals, borderColor: ac, backgroundColor: soft, fill: true, tension: .3, pointRadius: vals.map((_, i) => i === vals.length - 1 ? 4 : 0), pointBackgroundColor: ac, pointHoverRadius: 4, borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+    options: { responsive: true, maintainAspectRatio: false, animation: fx ? { duration: 700, easing: 'easeOutQuart', delay: x => x.type === 'data' && x.mode === 'default' ? x.dataIndex * 14 : 0 } : { duration: 300 },
       interaction: { intersect: false, mode: 'index' },
       plugins: { legend: { display: false }, tooltip: { callbacks: { title: it => fmtDay(keys[it[0].dataIndex]), label: it => ' ' + money(it.raw, c, true) } } },
       scales: { x: { grid: { display: false }, border: { color: line }, ticks: { color: mut, maxRotation: 0, autoSkipPadding: 14, font: { size: 10 } } },
@@ -2714,9 +2722,12 @@ function show(tab) {
     if (changed && b.dataset.tab === tab) { b.classList.remove('hop'); void b.offsetWidth; b.classList.add('hop'); }
   });
   if (changed) {
-    const sec = $('tab-' + tab); sec.classList.remove('tab-in-r', 'tab-in-l'); void sec.offsetWidth; sec.classList.add(to > from ? 'tab-in-r' : 'tab-in-l');
+    const sec = $('tab-' + tab); sec.classList.remove('tab-in-r', 'tab-in-l', 'stag'); void sec.offsetWidth; sec.classList.add(to > from ? 'tab-in-r' : 'tab-in-l');
+    [...sec.children].forEach((el, i) => el.style.setProperty('--k', Math.min(i, 7))); sec.classList.add('stag');
+    clearTimeout(sec._stag); sec._stag = setTimeout(() => sec.classList.remove('stag'), 900);
     const tg = window.Telegram?.WebApp?.HapticFeedback; if (tg) tg.selectionChanged(); else navigator.vibrate?.(8);
   }
+  if (tab === 'stats' && changed) chartFx = calFx = true;
   if (tab === 'hist' && newSaved) { newSaved = 0; navBadge(); }
   movePill(!changed);
   render();
@@ -2833,13 +2844,13 @@ document.addEventListener('click', e => {
     if (ds.act === 'del') return confirmSheet('Удалить сделку?', `${fmtDay(dayKey(t.ts))}, ${fmtTime(t.ts)} · ${money(t.profit, t.cur, true)}`, 'Удалить', () => { S.trades = S.trades.filter(x => String(x.id) !== String(t.id)); persist(); render(); toast('Сделка удалена'); }, true);
   }
   if (ds.close !== undefined) return closeSheet();
-  if (ds.sp) { if (!st.pro && ds.sp !== '7') return openPlans('stats'); sPeriod = ds.sp; return renderStats(); }
-  if (ds.calNav) { calYM = { ...calYM, m: calYM.m + +ds.calNav }; if (calYM.m < 0) calYM = { y: calYM.y - 1, m: 11 }; if (calYM.m > 11) calYM = { y: calYM.y + 1, m: 0 }; return renderCal(); }
+  if (ds.sp) { if (!st.pro && ds.sp !== '7') return openPlans('stats'); sPeriod = ds.sp; chartFx = true; return renderStats(); }
+  if (ds.calNav) { calYM = { ...calYM, m: calYM.m + +ds.calNav }; if (calYM.m < 0) calYM = { y: calYM.y - 1, m: 11 }; if (calYM.m > 11) calYM = { y: calYM.y + 1, m: 0 }; calFx = true; return renderCal(); }
   if (ds.calDay) return calDay(ds.calDay);
   if (ds.calCard !== undefined) return showCard('cal', calYM);
   if (ds.dayCard) return showCard('day', ds.dayCard);
   if (ds.scur) { sCur = ds.scur; return renderStats(); }
-  if (b.id === 'chBar' || b.id === 'chCum') { chartMode = b.id === 'chBar' ? 'bar' : 'cum'; $('chBar').classList.toggle('on', chartMode === 'bar'); $('chCum').classList.toggle('on', chartMode !== 'bar'); return renderStats(); }
+  if (b.id === 'chBar' || b.id === 'chCum') { chartMode = b.id === 'chBar' ? 'bar' : 'cum'; $('chBar').classList.toggle('on', chartMode === 'bar'); $('chCum').classList.toggle('on', chartMode !== 'bar'); chartFx = true; return renderStats(); }
   if (b.id === 'reportBtn') return monthReport();
   if (ds.openPlans !== undefined) return openPlans(ds.openPlans);
   if (ds.period) { payPeriod = ds.period; document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('on', x.dataset.period === payPeriod)); if ($('payBtn')) $('payBtn').textContent = payLabel(); return; }
