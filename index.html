@@ -4457,7 +4457,7 @@ async function drawCard(d) {
   if (d.chip) {   // плашка роста к прошлому месяцу
     const x = L + 2 + c.measureText(d.sub).width + 18; c.font = '500 28px "JetBrains Mono"';
     const w = c.measureText(d.chip.text).width + 40;
-    c.fillStyle = d.chip.neg ? 'rgba(255,107,107,.15)' : 'rgba(60,211,138,.15)'; box(x, 582 - 34, w, 48, 24); c.fill();
+    c.fillStyle = d.chip.neg ? 'rgba(255,107,107,.15)' : 'rgba(60,211,138,.15)'; box(x, 582 - 25, w, 50, 25); c.fill();   // текст здесь по середине (textBaseline: middle) — плашка тоже по центру строки
     c.fillStyle = d.chip.neg ? '#FF6B6B' : '#3CD38A'; c.fillText(d.chip.text, x + 20, 582);
   }
   // календарь месяца вместо плиток: дни цветом, внизу сумма дня
