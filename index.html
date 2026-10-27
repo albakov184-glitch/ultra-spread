@@ -1951,7 +1951,7 @@ function renderStats() {
   $('sWorst').textContent = worst ? money(worst.profit, c, true) : '—'; $('sWorst').className = 'v ' + (worst ? cls(worst.profit) : '');
   $('sWorstD').textContent = worst ? `${fmtDay(dayKey(worst.ts))} · ${worst.ex}` : '';
   breakdown('byEx', T, t => t.ex, c);
-  breakdown('byBank', T, t => t.bank, c);
+  breakdown('byBank', T, t => !t.bank || t.bank === '—' ? 'Без карты' : t.bank, c);   // треугольник идёт без своей карты
   drawChart(T, c);
   renderCal();
   $('monthCardBtn').textContent = pro ? 'Карточки' : 'Карточка дня';
