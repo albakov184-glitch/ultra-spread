@@ -1,0 +1,11 @@
+{
+  "name": "p2pro-admin-ios",
+  "private": true,
+  "version": "1.0.0",
+  "description": "P2Pro Админ для iPhone: оболочка (Capacitor) вокруг админ-панели p2pro.app/admin",
+  "dependencies": {
+    "@capacitor/cli": "6.2.0",
+    "@capacitor/core": "6.2.0",
+    "@capacitor/ios": "6.2.0"
+  }
+}

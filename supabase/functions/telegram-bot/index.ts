@@ -831,11 +831,11 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
     // Любая другая кнопка отменяет ожидание текста рассылки/поста: иначе следующий поиск по @нику стал бы рассылкой
     if (!['ba', 'cp', 'go', 'no', 'nop', 'sq'].includes(k)) await stSet('await', null);
     if (k === 'm') { await stSet('await', null); await show(chatId, msgId, ADMIN_HELP, MENU()); }
-    else if (k === 'wa') {   // одноразовая ссылка во веб-админку: 5 минут, один вход
-      const code = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
+    else if (k === 'wa') {   // одноразовый вход в админку (сайт или приложение «P2Pro Админ»): 5 минут, один раз
+      const code = adminCode();
       await stSet('wa:' + code, { exp: Date.now() + 5 * 60e3 });
-      await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: '🖥 <b>Веб-админка</b>\n\nСсылка одноразовая и действует 5 минут. Никому её не пересылайте.',
-        reply_markup: kb([[{ text: '🖥 Открыть веб-админку', url: `${APP}admin#k=${code}` }]]) });
+      await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `🖥 <b>Вход в админку</b>\n\nКод для приложения «P2Pro Админ» (нажмите — скопируется):\n<code>${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}</code>\n\nИли откройте на сайте кнопкой ниже. Код и ссылка одноразовые, действуют 5 минут. Никому их не пересылайте.`,
+        reply_markup: kb([[{ text: '🖥 Открыть на сайте', url: `${APP}admin#k=${code}` }]]) });
       toastText = 'Ссылка отправлена';
     }
     else if (k === 'st') await show(chatId, msgId, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
@@ -1328,8 +1328,12 @@ async function broadcastText(text: string, aud: Aud) {
 const fmtText = (t: string) => esc(t.slice(0, 3500)).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
 
 // Вход по одноразовой ссылке из бота: код забираем одним запросом (второй раз не сработает) и выдаём сессию аккаунта владельца
-async function adminRedeem(code: string) {
-  if (!/^[a-f0-9]{48}$/.test(code)) return aj({ error: 'bad' }, 400);
+// Код из 12 знаков без похожих (0/O, 1/I): ~60 бит — за 5 минут его не подобрать
+const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const adminCode = () => [...crypto.getRandomValues(new Uint8Array(12))].map((x) => CODE_ABC[x % 32]).join('');
+async function adminRedeem(raw: string) {
+  const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z2-9]{12}$/.test(code)) return aj({ error: 'bad' }, 400);
   const v = await stTake<{ exp: number }>('wa:' + code);
   if (!v || Date.now() > v.exp) return aj({ error: 'expired' }, 403);
   const { data: t } = await admin.from('tg_users').select('user_id').eq('tg_id', ADMIN_ID).maybeSingle();

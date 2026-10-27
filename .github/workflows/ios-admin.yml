@@ -1,0 +1,64 @@
+# Сборка «P2Pro Админ» для iPhone (.ipa) на Mac GitHub. Запускается при изменениях в ios-admin или вручную (Actions → iOS Admin IPA → Run workflow).
+# Итог — неподписанный P2Pro-Admin.ipa в релизе «admin-latest»: прямая ссылка
+# https://github.com/albakov184-glitch/ultra-spread/releases/download/admin-latest/P2Pro-Admin.ipa
+name: iOS Admin IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['ios-admin/**', '.github/workflows/ios-admin.yml']
+permissions:
+  contents: write
+concurrency:
+  group: ios-admin-ipa
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ios-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app && xcodebuild -version
+      - name: Capacitor iOS project
+        run: |
+          npm install --no-audit --no-fund
+          npx cap add ios
+          npx cap sync ios
+      - name: Icon and splash
+        run: |
+          ICONS=ios/App/App/Assets.xcassets/AppIcon.appiconset
+          for f in "$ICONS"/*.png; do cp icon-1024.png "$f"; done
+          for f in ios/App/App/Assets.xcassets/Splash.imageset/*.png; do cp splash-2732.png "$f"; done
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName P2Pro Админ" ios/App/App/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string P2Pro Админ" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UIUserInterfaceStyle string Dark" ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string 'Вход в P2Pro Админ по Face ID'" ios/App/App/Info.plist || true
+      - name: Build (unsigned)
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
+            MARKETING_VERSION=1.0 CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -n 40
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/ipa/Payload/"
+          cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/P2Pro-Admin.ipa" Payload
+          ls -la "$GITHUB_WORKSPACE/P2Pro-Admin.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P2Pro-Admin-ipa
+          path: P2Pro-Admin.ipa
+      - name: Release admin-latest
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete admin-latest -y --cleanup-tag || true
+          gh release create admin-latest P2Pro-Admin.ipa --title "P2Pro Админ для iPhone (сборка ${{ github.run_number }})" \
+            --notes "Неподписанный P2Pro-Admin.ipa — приложение админ-панели, вход только по коду из бота владельца. Установка: открыть ссылку на iPhone и подписать в ESign / Scarlet / Feather, либо через SideStore, AltStore или Sideloadly." --latest=false

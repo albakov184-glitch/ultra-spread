@@ -172,11 +172,11 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
   .side { display: none; }
-  .main { padding: 18px 16px 110px; }
+  .main { padding: calc(18px + env(safe-area-inset-top)) 16px calc(110px + env(safe-area-inset-bottom)); }
   .head h2 { font-size: 23px; }
   .charts, .charts2, .bc { grid-template-columns: 1fr; }
   .tbl-wrap { display: none; } .ucards { display: flex; }
-  .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 30; padding: 6px; gap: 2px; border-radius: 22px; background: rgba(22,28,36,.92); backdrop-filter: blur(16px);
+  .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom) * .6); z-index: 30; padding: 6px; gap: 2px; border-radius: 22px; background: rgba(22,28,36,.92); backdrop-filter: blur(16px);
     border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.45); }
   .tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border-radius: 16px; color: var(--muted); font-size: 10.5px; font-weight: 600; }
   .tabbar button svg { width: 21px; height: 21px; }
@@ -185,7 +185,7 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
   .kpis { grid-template-columns: 1fr 1fr; gap: 12px; }
   .kpi .v { font-size: 21px; }
   .card { padding: 15px; }
-  .drawer { width: 100vw; border-left: 0; padding: 18px 16px 40px; }
+  .drawer { width: 100vw; border-left: 0; padding: calc(18px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom)); }
   .toast { bottom: 96px; }
   .head [data-ref] { display: none; }   /* на телефоне «Обновить» — в верхней строке */
 }
@@ -202,6 +202,20 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
     <h1 style="font-size:46px;letter-spacing:-2px">404</h1>
     <p class="muted" style="margin:0">Страница не найдена. Возможно, её удалили или в адресе ошибка.</p>
     <a class="btn pri wide" href="./">На главную P2Pro</a>
+  </div>
+</div>
+
+<!-- Вход в приложении «P2Pro Админ»: код из бота (/admin → «Веб-админка»). В браузере этого экрана нет — там 404 -->
+<div class="gate" id="codeGate" hidden>
+  <div class="gate-card">
+    <div class="tile"><b>P2</b><i>PRO</i></div>
+    <h1>P2Pro Админ</h1>
+    <p class="muted" style="margin:0">Откройте бота @P2ProAppBot → <b style="color:var(--fg)">/admin</b> → «🖥 Веб-админка». Нажмите на код — он скопируется — и вставьте сюда.</p>
+    <input class="inp" id="codeIn" placeholder="XXXX-XXXX-XXXX" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="16"
+      style="width:100%;text-align:center;font:600 22px var(--f-m);letter-spacing:3px;padding:14px;text-transform:uppercase">
+    <p class="neg small" id="codeErr" style="margin:0;min-height:18px"></p>
+    <div style="display:flex;gap:10px;width:100%"><button class="btn" id="codePaste" style="flex:1">📋 Вставить</button><button class="btn pri" id="codeGo" style="flex:1">Войти</button></div>
+    <a class="btn ghost wide" href="https://t.me/P2ProAppBot" target="_blank" rel="noopener">Открыть бота</a>
   </div>
 </div>
 
@@ -266,24 +280,43 @@ async function api(action, extra = {}) {
 /* ---------- Вход ---------- */
 // Никаких кнопок входа: посторонний видит 404. Владелец приходит по ссылке из бота с одноразовым кодом (#k=…),
 // код меняется на сессию, дальше сервер на каждый запрос проверяет, что это именно владелец
-function notFound() { $('app').hidden = true; $('gate').hidden = false; document.title = 'Страница не найдена · P2Pro'; closeUser?.(); }
+// Приложение «P2Pro Админ» добавляет к браузеру метку P2ProAdmin: там вместо 404 — экран ввода кода
+const IN_APP = /P2ProAdmin/.test(navigator.userAgent);
+function notFound() {
+  closeUser?.(); $('app').hidden = true;
+  if (IN_APP) { $('gate').hidden = true; $('codeGate').hidden = false; document.title = 'P2Pro Админ'; return; }
+  $('codeGate').hidden = true; $('gate').hidden = false; document.title = 'Страница не найдена · P2Pro';
+}
+// Код из бота → сессия владельца. Ответ: true — вошли, иначе текст ошибки
+async function redeem(code) {
+  try {
+    const r = await fetch(SB_URL + '/functions/v1/telegram-bot', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ admin_api: 'redeem', code }) });
+    const j = await r.json().catch(() => ({}));
+    if (j.access_token) { await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token }); return true; }
+    return j.error === 'expired' ? 'Код устарел или уже использован — возьмите новый в боте' : 'Неверный код';
+  } catch (e) { return 'Нет связи с сервером — проверьте интернет'; }
+}
+$('codePaste').onclick = async () => { try { $('codeIn').value = (await navigator.clipboard.readText()).trim(); $('codeGo').click(); } catch (e) { $('codeErr').textContent = 'Не удалось прочитать буфер — вставьте код вручную'; $('codeIn').focus(); } };
+$('codeIn').onkeydown = e => { if (e.key === 'Enter') $('codeGo').click(); };
+$('codeGo').onclick = async () => {
+  const code = $('codeIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 12) return $('codeErr').textContent = 'Код — 12 знаков, как в сообщении бота';
+  $('codeGo').disabled = true; $('codeErr').textContent = '';
+  const r = await redeem(code);
+  $('codeGo').disabled = false;
+  if (r === true) { $('codeIn').value = ''; return boot(); }
+  $('codeErr').textContent = r;
+};
 async function boot() {
-  const k = (location.hash.match(/k=([a-f0-9]{48})/) || [])[1];
-  if (k) {
-    history.replaceState(null, '', location.pathname);   // код одноразовый — из адресной строки убираем сразу
-    try {
-      const r = await fetch(SB_URL + '/functions/v1/telegram-bot', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ admin_api: 'redeem', code: k }) });
-      const j = await r.json().catch(() => ({}));
-      if (j.access_token) await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
-    } catch (e) {}
-  }
+  const k = (location.hash.match(/k=([A-Za-z0-9]{12})/) || [])[1];
+  if (k) { history.replaceState(null, '', location.pathname); await redeem(k); }   // код одноразовый — из адресной строки убираем сразу
   const { data } = await sb.auth.getSession();
   if (!data.session) return notFound();
   try {
     const me = await api('me');
     $('meName').textContent = me.name || 'Владелец'; $('meAva').textContent = (me.name || 'P')[0].toUpperCase();
     document.title = 'P2Pro — админ-панель';
-    $('gate').hidden = true; $('app').hidden = false; go((location.hash.slice(1) || 'dash').replace(/^k=.*/, 'dash'));
+    $('gate').hidden = true; $('codeGate').hidden = true; $('app').hidden = false; go((location.hash.slice(1) || 'dash').replace(/^k=.*/, 'dash'));
   } catch (e) { notFound(); }
 }
 document.addEventListener('click', async e => {

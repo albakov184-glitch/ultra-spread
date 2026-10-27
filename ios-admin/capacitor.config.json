@@ -1,0 +1,16 @@
+{
+  "appId": "app.p2pro.admin",
+  "appName": "P2Pro Админ",
+  "webDir": "www",
+  "backgroundColor": "#0C0F14",
+  "appendUserAgent": "P2ProAdmin",
+  "server": {
+    "url": "https://p2pro.app/admin",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0C0F14",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}
