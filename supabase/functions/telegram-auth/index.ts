@@ -17,7 +17,7 @@ const RUB = { m: 490, y: 3990 };     // цены PRO в рублях (сайт).
 const XR_TOKEN = Deno.env.get('XROCKET_API_TOKEN') ?? '';
 const XR_SECRET = Deno.env.get('XROCKET_WEBHOOK_SECRET') ?? '';
 const XR_API = 'https://pay.api.xrocket.exchange';
-// Platega — оплата через СБП. ID мерчанта и API-ключ — в Secrets (PLATEGA_MERCHANT_ID, PLATEGA_SECRET)
+// Platega — оплата через СБП и картой. ID мерчанта и API-ключ — в Secrets (PLATEGA_MERCHANT_ID, PLATEGA_SECRET)
 const PL_ID = Deno.env.get('PLATEGA_MERCHANT_ID') ?? '';
 const PL_SECRET = Deno.env.get('PLATEGA_SECRET') ?? '';
 const PL_API = 'https://app.platega.io';
@@ -271,7 +271,7 @@ async function xrWebhook(req: Request, raw: string) {
   return new Response('ok');
 }
 type Grant = { fresh: boolean; user_id?: string; gift_from?: string | null; period?: string; price_rub?: number; pro_until?: string; method?: string };
-// PRO включён: сообщения получателю, дарителю и (для крипты) владельцу. Об оплате СБП владельцу пишет бот — как о любой оплате в рублях
+// PRO включён: сообщения получателю, дарителю и (для крипты) владельцу. Об оплате СБП и картой владельцу пишет бот — как о любой оплате в рублях
 async function grantNotify(res: Grant, invoice: string, paid: string, toAdmin: boolean) {
   if (res.fresh && res.user_id) {
     const until = res.pro_until ? new Date(res.pro_until).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' }).replace(' г.', '') : '';
@@ -290,15 +290,15 @@ async function grantNotify(res: Grant, invoice: string, paid: string, toAdmin: b
   }
 }
 
-/* ================= Platega: оплата через СБП (18-platega.sql) ================= */
+/* ================= Platega: оплата через СБП и картой (18-platega.sql, 19-card.sql) ================= */
 // deno-lint-ignore no-explicit-any
 const pl = (path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: any }> => fetch(PL_API + path, { ...init, signal: AbortSignal.timeout(20000),
   headers: { 'content-type': 'application/json', 'X-MerchantId': PL_ID, 'X-Secret': PL_SECRET, ...(init.headers ?? {}) } })
   .then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => null) }))
   .catch((e) => ({ ok: false, status: 0, data: { message: e?.name === 'TimeoutError' ? 'Platega не ответила за 20 секунд' : 'нет связи с Platega' } }));
 
-// Счёт на PRO через СБП. Цена в рублях — персональная из админки или обычная. Подарок другу — как у крипты
-async function plInvoice(body: { pl_invoice?: string; access_token?: string; gift?: string; tg?: boolean }) {
+// Счёт на PRO через СБП (или картой, если card: true). Цена в рублях — персональная из админки или обычная. Подарок другу — как у крипты
+async function plInvoice(body: { pl_invoice?: string; access_token?: string; gift?: string; tg?: boolean; card?: boolean }) {
   if (!PL_ID || !PL_SECRET) return json({ error: 'pl_off' }, 503);
   const period = body.pl_invoice === 'y' ? 'y' : 'm';
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
@@ -309,13 +309,13 @@ async function plInvoice(body: { pl_invoice?: string; access_token?: string; gif
   let gift: Gift | null = null;
   if (body.gift) { const g = await giftTarget(body.gift, ud.user.id); if ('error' in g) return json(g, 404); gift = g; }
   const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
-  const { error: ie } = await admin.from('crypto_invoices').insert({ id, provider: 'platega', user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
+  const { error: ie } = await admin.from('crypto_invoices').insert({ id, provider: body.card ? 'platega_card' : 'platega', user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
   if (ie) { console.error('pl invoice db', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
   const r = await pl('/transaction/process', { method: 'POST', body: JSON.stringify({
-    paymentMethod: 2, paymentDetails: { amount: price, currency: 'RUB' },
+    paymentMethod: body.card ? 11 : 2, paymentDetails: { amount: price, currency: 'RUB' },
     description: `${gift ? `Подарок для @${gift.nick}: ` : ''}P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'}`,
     // Из Telegram после оплаты возвращаем в бота (он покажет, что PRO включён), с сайта — на сайт
-    return: body.tg ? 'https://t.me/P2ProAppBot?start=paid' : SITE + '?paid=sbp', failedUrl: body.tg ? 'https://t.me/P2ProAppBot' : SITE, payload: id }) });
+    return: body.tg ? 'https://t.me/P2ProAppBot?start=paid' : SITE + (body.card ? '?paid=card' : '?paid=sbp'), failedUrl: body.tg ? 'https://t.me/P2ProAppBot' : SITE, payload: id }) });
   const link = r.data?.redirect ?? r.data?.url, tx = r.data?.transactionId;
   if (!r.ok || !link || !tx) {
     console.error('pl invoice', r.status, r.data);
