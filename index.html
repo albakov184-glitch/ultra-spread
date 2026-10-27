@@ -2323,7 +2323,7 @@ function plansHtml() {
   return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор: сделка, круг, треугольник</li><li>Подбор курса и курс USDT</li><li>История и аналитика за 7 дней</li><li>Итоги дня с карточкой</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
     <div class="plan pro"><h4>PRO</h4><span class="price">${nf0.format(myRub.m)} ₽<span class="muted small">/мес</span></span><ul><li>Вся история и аналитика</li><li>Календарь прибыли и связки</li><li>Контрагенты и чёрный список</li><li>График курса и уведомления</li><li>Excel и карточки без водяного знака</li></ul>
-    ${pro ? '<span class="muted small">Текущий тариф</span>' : trialAvail() ? '<button class="btn primary" data-trial>7 дней бесплатно</button>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
+    ${pro ? '<span class="muted small">Текущий тариф</span>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;   // пробный период — отдельной плашкой над тарифами
 }
 // Значки способов оплаты: узнаваемые логотипы в цвете
 function payIcon(k, z = 18) {
