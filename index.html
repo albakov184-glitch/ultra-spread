@@ -2453,7 +2453,7 @@ async function cryptoPay(sbp = false) {
   let res = {};
   try {
     const token = (await sb.auth.getSession()).data?.session?.access_token;
-    const r = await tgAuthCall({ [sbp ? 'pl_invoice' : 'xr_invoice']: payPeriod, access_token: token, ...(payGift ? { gift: payGift } : {}) });
+    const r = await tgAuthCall({ [sbp ? 'pl_invoice' : 'xr_invoice']: payPeriod, access_token: token, ...(payGift ? { gift: payGift } : {}), ...(inTelegram() ? { tg: true } : {}) });
     res = await r.json().catch(() => ({ error: 'http ' + r.status }));
   } catch (e) { res = { error: e?.name === 'TimeoutError' ? 'timeout' : 'network', detail: e?.name === 'TimeoutError' ? 'сервер не ответил за 45 секунд' : String(e?.message || e).slice(0, 100) }; }
   if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }

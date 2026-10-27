@@ -298,7 +298,7 @@ const pl = (path: string, init: RequestInit = {}): Promise<{ ok: boolean; status
   .catch((e) => ({ ok: false, status: 0, data: { message: e?.name === 'TimeoutError' ? 'Platega не ответила за 20 секунд' : 'нет связи с Platega' } }));
 
 // Счёт на PRO через СБП. Цена в рублях — персональная из админки или обычная. Подарок другу — как у крипты
-async function plInvoice(body: { pl_invoice?: string; access_token?: string; gift?: string }) {
+async function plInvoice(body: { pl_invoice?: string; access_token?: string; gift?: string; tg?: boolean }) {
   if (!PL_ID || !PL_SECRET) return json({ error: 'pl_off' }, 503);
   const period = body.pl_invoice === 'y' ? 'y' : 'm';
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
@@ -314,7 +314,8 @@ async function plInvoice(body: { pl_invoice?: string; access_token?: string; gif
   const r = await pl('/transaction/process', { method: 'POST', body: JSON.stringify({
     paymentMethod: 2, paymentDetails: { amount: price, currency: 'RUB' },
     description: `${gift ? `Подарок для @${gift.nick}: ` : ''}P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'}`,
-    return: SITE + '?paid=sbp', failedUrl: SITE, payload: id }) });
+    // Из Telegram после оплаты возвращаем в бота (он покажет, что PRO включён), с сайта — на сайт
+    return: body.tg ? 'https://t.me/P2ProAppBot?start=paid' : SITE + '?paid=sbp', failedUrl: body.tg ? 'https://t.me/P2ProAppBot' : SITE, payload: id }) });
   const link = r.data?.redirect ?? r.data?.url, tx = r.data?.transactionId;
   if (!r.ok || !link || !tx) {
     console.error('pl invoice', r.status, r.data);

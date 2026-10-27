@@ -1159,6 +1159,12 @@ async function monthText(userId: string) {
     `📆 Торговых дней: ${byDay.size} · в среднем ${money(p / byDay.size, 'RUB')} за день\n🏆 Лучший день: ${bestDate} · ${money(best[1], 'RUB')}` +
     (g !== null ? `\n📈 К ${MON_DAT[pm - 1]} за те же дни: <b>${g >= 0 ? '▲ +' : '▼ −'}${Math.abs(g)}%</b>` : '');
 }
+async function paidBack(chat: number, tgId: number) {
+  const uid = await userOfTg(tgId), s = uid ? await subOf(uid) : null;
+  if (isPro(s) && s!.payments?.[0] && Date.now() - Date.parse(s!.payments[0].ts) < 30 * 60e3)
+    return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: `✅ <b>Оплата прошла!</b>\n\nPRO действует до <b>${date(s!.pro_until)}</b>. Спасибо!`, reply_markup: kb([[appBtn()]]) });
+  return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: '⏳ <b>Проверяем оплату</b>\n\nОбычно это занимает до минуты. Как только PRO включится, бот пришлёт сообщение.', reply_markup: kb([[appBtn()]]) });
+}
 const rateAsked = new Map<number, number>();
 async function myCallback(cq: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }) {
   const tgId = cq.from?.id ?? 0, chat = cq.message?.chat.id ?? tgId, a = (cq.data ?? '').slice(3);
@@ -1224,6 +1230,8 @@ Deno.serve(async (req) => {
     const text: string = msg.text ?? '';
     try {
       if (text.startsWith('/start login_') && SERVICE) { await loginPrompt(msg); return new Response('ok'); }
+      // Вернулись со страницы оплаты СБП: показываем, включился ли PRO
+      if (text.trim() === '/start paid' && SERVICE) { await paidBack(msg.chat.id, msg.from?.id ?? 0); return new Response('ok'); }
       // Итоги дня прямо сейчас — для любого, кто входил в P2Pro через Telegram
       if (/^\/itogi(@\w+)?$/i.test(text.trim()) && SERVICE) {
         const { data: t } = await admin.from('tg_users').select('user_id').eq('tg_id', msg.from?.id ?? 0).maybeSingle();
