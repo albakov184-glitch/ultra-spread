@@ -21,7 +21,7 @@ const XR_API = 'https://pay.api.xrocket.exchange';
 const PL_ID = Deno.env.get('PLATEGA_MERCHANT_ID') ?? '';
 const PL_SECRET = Deno.env.get('PLATEGA_SECRET') ?? '';
 const PL_API = 'https://app.platega.io';
-const SITE = 'https://albakov184-glitch.github.io/ultra-spread/';
+const SITE = 'https://p2pro.app/';
 const ADMIN_ID = 6928515440;
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };

@@ -7,7 +7,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? '';
 const SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET') ?? '';
-const APP = 'https://albakov184-glitch.github.io/ultra-spread/';
+const APP = 'https://p2pro.app/';
 const SUPPORT = 'https://t.me/MVSR_P2P';
 const ADMIN_ID = 6928515440;   // Telegram id владельца. Telegram присылает его сам — подделать нельзя
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
