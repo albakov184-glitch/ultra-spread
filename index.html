@@ -2296,7 +2296,7 @@ function plansHtml() {
   const pro = S.settings.pro;
   return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор: сделка, круг, треугольник</li><li>Подбор курса и курс USDT</li><li>История и аналитика за 7 дней</li><li>Итоги дня с карточкой</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
-    <div class="plan pro"><h4>PRO</h4><span class="price">${inTelegram() ? nf0.format(myStars.m) + ' ⭐' : '490 ₽'}<span class="muted small">/мес</span></span><ul><li>Вся история и аналитика</li><li>Календарь прибыли и связки</li><li>Контрагенты и чёрный список</li><li>График курса и уведомления</li><li>Excel и карточки без водяного знака</li></ul>
+    <div class="plan pro"><h4>PRO</h4><span class="price">${nf0.format(myRub.m)} ₽<span class="muted small">/мес</span></span><ul><li>Вся история и аналитика</li><li>Календарь прибыли и связки</li><li>Контрагенты и чёрный список</li><li>График курса и уведомления</li><li>Excel и карточки без водяного знака</li></ul>
     ${pro ? '<span class="muted small">Текущий тариф</span>' : trialAvail() ? '<button class="btn primary" data-trial>7 дней бесплатно</button>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;
 }
 // Значки способов оплаты: узнаваемые логотипы в цвете
@@ -2358,8 +2358,8 @@ function payRefresh() {
 // Подарок другу: тот же выбор срока и способа оплаты, плюс ник получателя. Сервер проверяет ник (gift_find)
 let payGift = '';
 function giftSheet() {
-  payGift = ''; payPeriod = 'm'; payMethod = inTelegram() ? 'stars' : 'sbp';
-  const M = inTelegram() ? [['stars', 'Звёзды'], ['sbp', 'СБП'], ['crypto', 'Крипта · USDT']] : [['sbp', 'СБП'], ['crypto', 'Крипта · USDT']];
+  payGift = ''; payPeriod = 'm'; payMethod = 'sbp';
+  const M = inTelegram() ? [['sbp', 'СБП'], ['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['sbp', 'СБП'], ['crypto', 'Крипта · USDT']];
   sheet(`<div class="pw-hero"><div class="pw-badge">🎁</div><h3>Подарить PRO</h3><span class="muted small">Друг получит PRO и сообщение от бота @P2ProAppBot</span></div>
     <label class="field"><span>Ник друга в Telegram</span><div class="inp text"><input id="gfNick" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="@username"></div></label>
     <span class="muted small" id="gfWho">Друг должен хотя бы раз открыть P2Pro через Telegram — так мы его найдём</span>
@@ -2391,8 +2391,8 @@ function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
   if (why !== 'end') payPeriod = why === 'renew' ? 'y' : 'm';
   const F = PRO_FEATS;
-  const M = inTelegram() ? [['stars', 'Звёзды'], ['sbp', 'СБП'], ['crypto', 'Крипта · USDT']] : [['sbp', 'СБП'], ['crypto', 'Крипта · USDT'], ['card', 'Карта'], ['stars', 'Telegram Stars']];
-  payMethod = inTelegram() ? 'stars' : 'sbp';   // в Telegram по умолчанию звёзды, на сайте — СБП
+  const M = inTelegram() ? [['sbp', 'СБП'], ['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['sbp', 'СБП'], ['crypto', 'Крипта · USDT'], ['card', 'Карта'], ['stars', 'Telegram Stars']];
+  payMethod = 'sbp';   // по умолчанию СБП — цена в рублях; звёзды и крипта рядом
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день${trialAvail() ? ' · 7 дней бесплатно' : ''}</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
     <ul class="pw-list">${F.map(([i, t], k) => `<li style="animation-delay:${.12 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>

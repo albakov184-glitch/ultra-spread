@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0C0F14">
+<meta name="robots" content="noindex">
+<title>P2Pro — оплата</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700&family=Onest:wght@400;600&display=swap">
+<style>
+  /* Страница возврата после оплаты (Platega). Из Telegram сразу ведёт обратно в бота, с сайта — кнопки на выбор */
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: #0C0F14; color: #E8ECF2; font: 16px/1.5 Onest, system-ui, sans-serif;
+    background-image: radial-gradient(60% 40% at 50% 20%, rgba(242,181,75,.18), transparent 70%); }
+  .c { width: 100%; max-width: 380px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .ok { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; background: rgba(60,211,138,.14); color: #3CD38A; animation: pop .6s cubic-bezier(.2,1.5,.4,1) both; }
+  h1 { margin: 6px 0 0; font: 700 26px Unbounded, sans-serif; letter-spacing: -.5px; }
+  p { margin: 0; color: #9AA4B4; }
+  a.b { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 16px; border-radius: 16px; font-weight: 600; text-decoration: none; }
+  .b1 { background: #F2B54B; color: #1B1405; margin-top: 10px; }
+  .b2 { border: 1px solid rgba(255,255,255,.16); color: #E8ECF2; }
+  @keyframes pop { from { transform: scale(.4); opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="c">
+  <div class="ok" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
+  <h1>Спасибо за оплату</h1>
+  <p id="t">PRO включится в течение минуты, бот @P2ProAppBot пришлёт подтверждение.</p>
+  <a class="b b1" href="https://t.me/P2ProAppBot?start=paid">Вернуться в Telegram</a>
+  <a class="b b2" href="./?paid=sbp">Открыть P2Pro на сайте</a>
+</div>
+<script>
+  // Оплату начали в Telegram — сразу возвращаем в бота: он покажет, что PRO включён
+  if (new URLSearchParams(location.search).get('tg')) { document.getElementById('t').textContent = 'Возвращаем вас в Telegram…'; location.replace('https://t.me/P2ProAppBot?start=paid'); }
+</script>
+</body>
+</html>
