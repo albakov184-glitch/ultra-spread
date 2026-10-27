@@ -4025,7 +4025,8 @@ function subHtml() {
 }
 // Пробный PRO на 7 дней: один раз на человека, проверяет сервер (17-trial.sql, start_trial). Деньги не списываются
 function isTrial() { return !!S.settings.pro && S.settings.payMethod === 'trial'; }
-function trialAvail() { const st = S.settings; return !!(sb && me()) && !st.pro && !st.proUntil && !(st.payments || []).length && !st.trialUsed; }
+// Пробный — только в аккаунте Telegram (у него служебная почта @telegram.invalid): так проверяет и сервер
+function trialAvail() { const st = S.settings; return !!(sb && me()) && /@telegram\.invalid$/i.test(U?.email || '') && !st.pro && !st.proUntil && !(st.payments || []).length && !st.trialUsed; }
 const PRO_FEATS = [['∞', 'Вся история и аналитика'], ['▦', 'Календарь прибыли и связки'], ['★', 'Контрагенты и чёрный список'], ['📈', 'График курса и уведомления в Telegram'], ['⤓', 'Excel и карточки без водяного знака']];
 const featList = () => `<ul class="pw-list">${PRO_FEATS.map(([i, t], k) => `<li style="animation-delay:${.1 + k * .07}s"><i>${i}</i>${t}</li>`).join('')}</ul>`;
 function trialSheet() {
@@ -4052,6 +4053,8 @@ async function trialStart() {
       return sheet(`<h3>Пробный период уже был</h3><p>Бесплатные 7 дней даются один раз. Оформите PRO — и всё снова откроется.</p>
         <div class="row2"><button class="btn" data-close>Закрыть</button><button class="btn primary" data-plan="pro">Тарифы</button></div>`);
     }
+    if (/trial_tg/.test(m)) return sheet(`<h3>Пробный PRO — через Telegram</h3><p>Бесплатные 7 дней включаются в аккаунте, который открыт через бота @P2ProAppBot.</p>
+      <div class="row2"><button class="btn" data-close>Закрыть</button><a class="btn primary" href="https://t.me/P2ProAppBot?start=trial" target="_blank" rel="noopener">Открыть бота</a></div>`);
     if ($('trialGo') === b) { b.disabled = false; b.textContent = 'Включить пробный PRO'; }
     toast(/start_trial|function/i.test(m) ? 'Пробный период скоро заработает — попробуйте позже' : 'Нет связи с сервером — попробуйте ещё раз');
   }

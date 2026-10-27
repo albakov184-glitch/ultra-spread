@@ -1,4 +1,4 @@
--- P2Pro, шаг 20: защита от перебора промокодов и от засорения базы.
+-- P2Pro, шаг 20: защита от перебора промокодов, засорения базы и повторных пробных периодов.
 -- Запуск: Supabase → SQL Editor → вставить весь файл → Run. Повторный запуск безопасен.
 
 -- 1. Промокоды: не больше 10 неверных попыток в час на аккаунт — подобрать код перебором не получится.
@@ -73,3 +73,29 @@ drop trigger if exists guard_size on public.counterparties;
 create trigger guard_size before insert or update on public.counterparties for each row execute function public.guard_size();
 drop trigger if exists guard_size on public.profiles;
 create trigger guard_size before insert or update on public.profiles for each row execute function public.guard_size();
+
+-- 3. Пробный PRO — только для аккаунтов, открытых через Telegram. Почту можно завести сколько угодно,
+-- а Telegram-аккаунт — нет: так пробные 7 дней нельзя получать снова и снова
+create or replace function public.start_trial() returns public.subscriptions
+language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); s public.subscriptions; tg bigint; em text;
+begin
+  if uid is null then raise exception 'not signed in'; end if;
+  select t.tg_id into tg from public.tg_users t where t.user_id = uid;
+  if tg is null then raise exception 'trial_tg'; end if;
+  select u.email into em from auth.users u where u.id = uid;
+  if exists (select 1 from public.pro_trials p where p.user_id = uid or p.tg_id = tg
+      or (em is not null and lower(p.email) = lower(em))) then raise exception 'trial_used'; end if;
+  insert into public.subscriptions (user_id) values (uid) on conflict (user_id) do nothing;
+  select * into s from public.subscriptions where user_id = uid for update;
+  if s.pro_until is not null or jsonb_array_length(s.payments) > 0 then raise exception 'trial_used'; end if;   -- уже был PRO
+  update public.subscriptions set
+    pro_since = now(), pro_until = now() + interval '7 days', auto_renew = false, pay_method = 'trial', period = 'm', reminded_for = null,
+    payments = jsonb_build_array(jsonb_build_object('ts', now(), 'amount', 0, 'days', 7, 'period', 'm', 'method', 'trial')) || payments,
+    updated_at = now()
+  where user_id = uid returning * into s;
+  insert into public.pro_trials (user_id, tg_id, email, ends_at) values (uid, tg, em, s.pro_until);
+  return s;
+end $$;
+revoke execute on function public.start_trial() from public, anon;
+grant execute on function public.start_trial() to authenticated;
