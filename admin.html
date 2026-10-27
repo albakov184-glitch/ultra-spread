@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0C0F14">
 <title>P2Pro</title>
@@ -19,6 +19,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 Onest, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 body { min-height: 100vh; }
+html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }   /* экран не уезжает вбок */
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; }
 a { color: var(--acc); }
@@ -187,6 +188,8 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
   .card { padding: 15px; }
   .drawer { width: 100vw; border-left: 0; padding: calc(18px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom)); }
   .toast { bottom: 96px; }
+  input, select, textarea { font-size: 16px !important; }   /* iPhone приближает экран, если шрифт в поле меньше 16px */
+  .search { min-width: 0; }
   .head [data-ref] { display: none; }   /* на телефоне «Обновить» — в верхней строке */
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
