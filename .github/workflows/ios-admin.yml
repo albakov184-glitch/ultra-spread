@@ -1,12 +1,8 @@
-# Сборка «P2Pro Админ» для iPhone (.ipa) на Mac GitHub. Запускается при изменениях в ios-admin или вручную (Actions → iOS Admin IPA → Run workflow).
-# Итог — неподписанный P2Pro-Admin.ipa в релизе «admin-latest»: прямая ссылка
-# https://github.com/albakov184-glitch/ultra-spread/releases/download/admin-latest/P2Pro-Admin.ipa
+# Сборка «P2Pro Админ» для iPhone (.ipa) на Mac GitHub. Запускается вручную (Actions → iOS Admin IPA → Run workflow).
+# Итог — неподписанный P2Pro-Admin.ipa во вложениях запуска (Artifacts), хранится 3 дня. В открытые релизы не попадает
 name: iOS Admin IPA
 on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['ios-admin/**', '.github/workflows/ios-admin.yml']
+  workflow_dispatch:   # только вручную: админ-приложение не выкладываем в открытый релиз
 permissions:
   contents: write
 concurrency:
@@ -54,11 +50,4 @@ jobs:
         with:
           name: P2Pro-Admin-ipa
           path: P2Pro-Admin.ipa
-      - name: Release admin-latest
-        working-directory: .
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete admin-latest -y --cleanup-tag || true
-          gh release create admin-latest P2Pro-Admin.ipa --title "P2Pro Админ для iPhone (сборка ${{ github.run_number }})" \
-            --notes "Неподписанный P2Pro-Admin.ipa — приложение админ-панели, вход только по коду из бота владельца. Установка: открыть ссылку на iPhone и подписать в ESign / Scarlet / Feather, либо через SideStore, AltStore или Sideloadly." --latest=false
+          retention-days: 3

@@ -5,5 +5,5 @@
 (в обычном браузере посторонние видят 404). Код выдаёт бот: `/admin` → «🖥 Веб-админка», он одноразовый и живёт 5 минут.
 Данные и действия сервер (функция telegram-bot) отдаёт только аккаунту владельца.
 
-Сборка — GitHub Actions (`.github/workflows/ios-admin.yml`). Результат — неподписанный `P2Pro-Admin.ipa`
-в релизе `admin-latest`. Ставится так же, как обычное P2Pro: ESign, Scarlet, Feather, SideStore, AltStore или Sideloadly.
+Сборка — GitHub Actions вручную (`.github/workflows/ios-admin.yml`). Результат — неподписанный `P2Pro-Admin.ipa`
+во вложениях запуска (Artifacts, 3 дня) — в открытые релизы не попадает. Ставится так же, как обычное P2Pro: ESign, Scarlet, Feather, SideStore, AltStore или Sideloadly.
