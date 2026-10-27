@@ -1444,8 +1444,8 @@ img { max-width: 100%; }
     <div class="card">
       <span class="card-t">Данные</span>
       <div class="row2">
-        <button class="btn" id="backupBtn">Резервная копия</button>
-        <button class="btn" id="importBtn">Загрузить файл</button>
+        <button class="btn" id="backupBtn">Резервная копия <span class="pro-tag">PRO</span></button>
+        <button class="btn" id="importBtn">Загрузить файл <span class="pro-tag">PRO</span></button>
       </div>
       <button class="btn" id="csvAllBtn">⤓ Все сделки в Excel <span class="pro-tag">PRO</span></button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
@@ -2371,7 +2371,7 @@ const rubPlans = () => {
   return `<button class="pw-plan ${payPeriod === 'm' ? 'on' : ''}" data-period="m"><span>Месяц</span><b>${nf0.format(myRub.m)} ₽</b>${was('m') || '<span>в месяц</span>'}</button>
       <button class="pw-plan ${payPeriod === 'y' ? 'on' : ''}" data-period="y">${yearOff(myRub)}<span>Год</span><b>${nf0.format(myRub.y)} ₽</b>${was('y') || `<span>≈ ${nf0.format(Math.round(myRub.y / 12))} ₽ в месяц</span>`}</button>`;
 };
-const PW_WHY = { hist: 'Вся история сделок — в PRO. В Free видны последние 7 дней', stats: 'Аналитика за 30, 90 дней и всё время — в PRO', cal: 'Календарь прибыли — в PRO', combo: 'Связки между биржами — в PRO', rate: 'График курса и уведомления о курсе — в PRO', excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO', cards: 'Карточки месяца, календаря и за всё время — в PRO' };
+const PW_WHY = { backup: 'Резервная копия и загрузка сделок из файла — в PRO', hist: 'Вся история сделок — в PRO. В Free видны последние 7 дней', stats: 'Аналитика за 30, 90 дней и всё время — в PRO', cal: 'Календарь прибыли — в PRO', combo: 'Связки между биржами — в PRO', rate: 'График курса и уведомления о курсе — в PRO', excel: 'Выгрузка в Excel доступна в PRO', card: 'Карточки без водяного знака — в PRO', cp: 'Контрагенты и чёрный список — в PRO', cards: 'Карточки месяца, календаря и за всё время — в PRO' };
 // В Telegram два способа: звёзды и крипта (цены в рублях, как на сайте)
 const payStars = () => inTelegram() && payMethod === 'stars';
 const payLabel = () => {
@@ -2627,6 +2627,7 @@ const FOLD_KEY = KEY + '.folds', FOLD_NAME = { 'Мои биржи': 'Мои би
   document.addEventListener('keydown', e => { const h = e.target.closest?.('.fold-h'); if (h && e.target === h && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(h); } });
 })();
 function renderProfile() {
+  document.querySelectorAll('#tab-prof .pro-tag').forEach(x => x.hidden = !!S.settings.pro);
   $('rateToggle')?.setAttribute('aria-checked', !S.settings.rateOff);
   renderPinRow();
   const st = S.settings;
@@ -2910,7 +2911,7 @@ document.addEventListener('click', e => {
   }
   if (ds.themeSet) { st.theme = ds.themeSet; persist(); applyTheme(); return renderProfile(); }
   if (b.id === 'backupBtn') return backupFile();
-  if (b.id === 'importBtn') return $('importFile').click();
+  if (b.id === 'importBtn') return S.settings.pro ? $('importFile').click() : openPlans('backup');
   if (b.id === 'delAccBtn') return confirmSheet('Удалить аккаунт?', 'Аккаунт, все сделки, контрагенты, настройки и подписка будут удалены навсегда — с сервера и с этого устройства. Отменить это нельзя.', 'Удалить навсегда', deleteAccount, true);
   if (b.id === 'wipeBtn') return wipeSheet();
 });
@@ -4292,11 +4293,25 @@ show(TABS.includes(startTab) ? startTab : 'calc');
 
 /* ================= ТАБЛИЦА EXCEL ================= */
 // CSV с «;» и запятой в дробях — так его правильно открывает русский Excel и Google Таблицы
-// Резервная копия файлом: его потом можно загрузить кнопкой «Загрузить файл». На телефоне — через «Поделиться»
-function backupFile() {
+// Резервная копия файлом (только PRO): его потом можно загрузить кнопкой «Загрузить файл» — в этот или другой аккаунт.
+// В Telegram файл скачать нельзя — его присылает бот в чат. На телефоне в браузере — через «Поделиться»
+async function backupFile() {
+  if (!S.settings.pro) return openPlans('backup');
   const text = JSON.stringify({ app: 'ultra-spread', v: 2, trades: S.trades, settings: S.settings, cps: S.cps });
-  // В Telegram файл не скачать — показываем текст для копирования, как раньше
-  if (inTelegram()) return copySheet('Резервная копия', text);
+  if (inTelegram()) {
+    if (!sb || !me()) return toast('Войдите в аккаунт, чтобы сохранить копию');
+    const btn = $('backupBtn'); if (btn) btn.disabled = true;
+    toast('Отправляем файл в чат с ботом…');
+    let res = {};
+    try { const token = (await sb.auth.getSession()).data?.session?.access_token; res = await (await tgAuthCall({ backup_send: text, access_token: token })).json().catch(() => ({})); } catch (e) {}
+    if (btn) btn.disabled = false;
+    if (res.ok) return sheet(`<div class="pw-hero"><div class="pw-badge">📁</div><h3>Копия в чате с ботом</h3>
+      <p>Файл с ${S.trades.length} ${plural(S.trades.length, 'сделкой', 'сделками', 'сделками')} отправлен в чат @P2ProAppBot. Храните его там — он не пропадёт.</p>
+      <p class="muted small">Как загрузить: откройте файл в чате → «Поделиться» → «Сохранить в Файлы». Потом здесь: Профиль → Данные и тема → «Загрузить файл». Сделки появятся в том аккаунте, где вы его загрузите (нужен PRO).</p></div>
+      <button class="btn primary" data-close>Понятно</button>`);
+    const ERR = { pro: 'Резервная копия — в PRO', no_tg: 'Бот не знает ваш Telegram — откройте P2Pro через @P2ProAppBot', big: 'Файл слишком большой — напишите в поддержку @MVSR_P2P', auth: 'Войдите заново и попробуйте ещё раз' };
+    return toast(ERR[res.error] || 'Не получилось отправить файл. Проверьте интернет и попробуйте ещё раз');
+  }
   const name = 'P2Pro-backup-' + new Date().toISOString().slice(0, 10) + '.json', file = new File([text], name, { type: 'application/json' });
   if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) return navigator.share({ files: [file] }).catch(() => {});
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
