@@ -1363,7 +1363,7 @@ img { max-width: 100%; }
       <span class="card-t">Безопасность</span>
       <div class="sw-row"><span>PIN-код при входе<br><span class="muted small">4 цифры при каждом открытии P2Pro. Хранится только на этом устройстве</span></span>
         <button class="toggle" role="switch" id="pinToggle" aria-checked="false" aria-label="PIN-код при входе"></button></div>
-      <div class="sw-row" id="bioRow" hidden><span>Face ID / отпечаток<br><span class="muted small">Открывать P2Pro без ввода PIN</span></span>
+      <div class="sw-row" id="bioRow" hidden><span>Face ID / отпечаток<br><span class="muted small" id="bioSub">Открывать P2Pro без ввода PIN</span></span>
         <button class="toggle" role="switch" id="bioToggle" aria-checked="false" aria-label="Вход по Face ID или отпечатку"></button></div>
       <button class="btn" id="pinChange" hidden>Сменить PIN-код</button>
     </div>
@@ -3279,12 +3279,13 @@ async function pinHash(pin, salt) {
 }
 const pinTap = k => { const h = window.Telegram?.WebApp?.HapticFeedback; if (h) k === 'tap' ? h.impactOccurred('light') : h.notificationOccurred(k); else navigator.vibrate?.(k === 'error' ? [30, 40, 30] : k === 'tap' ? 8 : [12, 60, 18]); };
 const bioMgr = () => window.Telegram?.WebApp?.BiometricManager;
-// Face ID / отпечаток есть только в Telegram (BiometricManager). Ждём инициализацию не дольше 1,5 с
+// Face ID / отпечаток есть только в Telegram (BiometricManager, Telegram 7.2+). Ждём ответ телефона не дольше 4 с
+const bioSupported = () => !!bioMgr() && inTelegram() && !!window.Telegram?.WebApp?.isVersionAtLeast?.('7.2');
 function bioReady() {
   return new Promise(res => {
-    const b = bioMgr(); if (!b || !inTelegram()) return res(null);
+    const b = bioMgr(); if (!bioSupported()) return res(null);
     if (b.isInited) return res(b.isBiometricAvailable ? b : null);
-    const t = setTimeout(() => res(null), 1500);
+    const t = setTimeout(() => res(null), 4000);
     try { b.init(() => { clearTimeout(t); res(b.isBiometricAvailable ? b : null); }); } catch (e) { clearTimeout(t); res(null); }
   });
 }
@@ -3417,8 +3418,9 @@ function renderPinRow() {
   if ($('pinChange')) $('pinChange').hidden = !p;
   if (!$('bioRow')) return;
   $('bioToggle').setAttribute('aria-checked', !!p?.bio);
-  if (!p) return $('bioRow').hidden = true;
-  bioReady().then(b => { if ($('bioRow')) $('bioRow').hidden = !b; });
+  // Строку показываем всегда в Telegram: без PIN-кода при включении сначала попросим его придумать (он запасной, если Face ID не сработает)
+  $('bioRow').hidden = !bioSupported();
+  $('bioSub').textContent = p ? 'Открывать P2Pro без ввода PIN' : 'Сначала придумаете PIN-код — он запасной, если Face ID не сработает';
 }
 document.addEventListener('click', e => {
   const k = e.target.closest('[data-pin]');
@@ -3432,10 +3434,11 @@ document.addEventListener('click', e => {
   }
   if (e.target.closest('#pinChange')) return pinOpen('verify', ok => ok && setTimeout(() => pinOpen('set', ok2 => { renderPinRow(); if (ok2) toast('PIN-код изменён'); }), 450));
   if (e.target.closest('#bioToggle')) {
-    const p = pinGet(); if (!p) return;
-    if (p.bio) { lsSet(PIN_KEY, { ...p, bio: false }); return renderPinRow(); }
+    const p = pinGet();
+    if (p?.bio) { lsSet(PIN_KEY, { ...p, bio: false }); toast('Вход по Face ID выключен'); return renderPinRow(); }
     bioReady().then(b => {
-      if (!b) return toast('Этот телефон не поддерживает вход по биометрии в Telegram');
+      if (!b) return toast('Face ID недоступен. Разрешите его для Telegram: Настройки телефона → Telegram → Face ID');
+      if (!pinGet()) return pinOpen('set', ok => { renderPinRow(); if (ok) setTimeout(() => $('bioToggle')?.click(), 500); });
       const on = () => { lsSet(PIN_KEY, { ...pinGet(), bio: true }); renderPinRow(); toast('Вход по Face ID / отпечатку включён'); };
       if (b.isAccessGranted) return on();
       b.requestAccess({ reason: 'Чтобы открывать P2Pro по Face ID или отпечатку' }, g => g ? on() : toast('Доступ к биометрии не дали — включите его в настройках Telegram'));
