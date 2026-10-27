@@ -103,7 +103,7 @@ const MENU = () => kb([
   [{ text: '📣 Рассылка', callback_data: 'bc' }, { text: '🎟 Промокоды', callback_data: 'pl' }],
   [{ text: '📢 Канал', callback_data: 'ch' }, { text: '💱 Курс в канал', callback_data: 'rc' }],
   [{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '🌅 Утренний отчёт', callback_data: 'rp' }],
-  [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🖥 Веб-админка', url: APP + 'admin' }],
+  [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🖥 Веб-админка', callback_data: 'wa' }],
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
@@ -831,6 +831,13 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
     // Любая другая кнопка отменяет ожидание текста рассылки/поста: иначе следующий поиск по @нику стал бы рассылкой
     if (!['ba', 'cp', 'go', 'no', 'nop', 'sq'].includes(k)) await stSet('await', null);
     if (k === 'm') { await stSet('await', null); await show(chatId, msgId, ADMIN_HELP, MENU()); }
+    else if (k === 'wa') {   // одноразовая ссылка во веб-админку: 5 минут, один вход
+      const code = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
+      await stSet('wa:' + code, { exp: Date.now() + 5 * 60e3 });
+      await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: '🖥 <b>Веб-админка</b>\n\nСсылка одноразовая и действует 5 минут. Никому её не пересылайте.',
+        reply_markup: kb([[{ text: '🖥 Открыть веб-админку', url: `${APP}admin#k=${code}` }]]) });
+      toastText = 'Ссылка отправлена';
+    }
     else if (k === 'st') await show(chatId, msgId, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (k === 'l') await view(await listView(Number(a) || 0));
     else if (k === 'fs') await show(chatId, msgId, '🔍 Пришлите @ник, почту или Telegram id пользователя.', toMenu());
@@ -1320,8 +1327,26 @@ async function broadcastText(text: string, aud: Aud) {
 // Текст рассылки и личного сообщения: экранируем всё, кроме **жирного** — его превращаем в <b>
 const fmtText = (t: string) => esc(t.slice(0, 3500)).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
 
+// Вход по одноразовой ссылке из бота: код забираем одним запросом (второй раз не сработает) и выдаём сессию аккаунта владельца
+async function adminRedeem(code: string) {
+  if (!/^[a-f0-9]{48}$/.test(code)) return aj({ error: 'bad' }, 400);
+  const v = await stTake<{ exp: number }>('wa:' + code);
+  if (!v || Date.now() > v.exp) return aj({ error: 'expired' }, 403);
+  const { data: t } = await admin.from('tg_users').select('user_id').eq('tg_id', ADMIN_ID).maybeSingle();
+  const u = t ? await userById(t.user_id) : null;
+  if (!u?.email) return aj({ error: 'no owner' }, 500);
+  const { data: link, error: le } = await admin.auth.admin.generateLink({ type: 'magiclink', email: u.email });
+  if (le) throw le;
+  const pub = createClient(SB_URL, Deno.env.get('SUPABASE_ANON_KEY') || SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data, error } = await pub.auth.verifyOtp({ token_hash: link.properties.hashed_token, type: 'magiclink' });
+  if (error || !data.session) throw error ?? new Error('no session');
+  await tg('sendMessage', { chat_id: ADMIN_ID, text: '🖥 Выполнен вход в веб-админку.' });
+  return aj({ access_token: data.session.access_token, refresh_token: data.session.refresh_token });
+}
+
 async function adminApi(body: Record<string, unknown>) {
   if (!SERVICE || !TOKEN) return aj({ error: 'server' }, 500);
+  if (body.admin_api === 'redeem') return adminRedeem(String(body.code ?? ''));
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
   if (ue || !ud?.user) return aj({ error: 'auth' }, 401);
   if (await tgIdOf(ud.user.id) !== ADMIN_ID) return aj({ error: 'forbidden' }, 403);

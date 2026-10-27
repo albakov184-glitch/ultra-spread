@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0C0F14">
-<title>P2Pro — админ-панель</title>
+<title>P2Pro</title>
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700&family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
@@ -195,13 +195,13 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
 <body>
 <div class="bgfx"></div>
 
-<!-- Вход: та же сессия, что в приложении на p2pro.app; если её нет — вход через бота -->
-<div class="gate" id="gate">
+<!-- Посторонним — обычная «страница не найдена». Панель открывается только владельцу: вход по одноразовой ссылке из бота (/admin → «Веб-админка») -->
+<div class="gate" id="gate" hidden>
   <div class="gate-card">
     <div class="tile"><b>P2</b><i>PRO</i></div>
-    <h1>Админ-панель</h1>
-    <p class="muted" id="gateText" style="margin:0">Проверяем доступ…</p>
-    <div id="gateAct" style="width:100%;display:flex;flex-direction:column;gap:10px"></div>
+    <h1 style="font-size:46px;letter-spacing:-2px">404</h1>
+    <p class="muted" style="margin:0">Страница не найдена. Возможно, её удалили или в адресе ошибка.</p>
+    <a class="btn pri wide" href="./">На главную P2Pro</a>
   </div>
 </div>
 
@@ -264,44 +264,30 @@ async function api(action, extra = {}) {
 }
 
 /* ---------- Вход ---------- */
-const TG_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21.9 4.3 18.7 19.4c-.2 1.1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.2 13 1.4 11.5c-1-.3-1.1-1 .2-1.5L20.6 2.8c.9-.3 1.6.2 1.3 1.5z"/></svg>';
-const TG_BTN = `<button class="btn pri wide" id="tgIn">${TG_SVG} Войти через Telegram</button>`;
-function gate(text, actions = '') { $('gate').hidden = false; $('app').hidden = true; $('gateText').innerHTML = text; $('gateAct').innerHTML = actions; }
+// Никаких кнопок входа: посторонний видит 404. Владелец приходит по ссылке из бота с одноразовым кодом (#k=…),
+// код меняется на сессию, дальше сервер на каждый запрос проверяет, что это именно владелец
+function notFound() { $('app').hidden = true; $('gate').hidden = false; document.title = 'Страница не найдена · P2Pro'; closeUser?.(); }
 async function boot() {
+  const k = (location.hash.match(/k=([a-f0-9]{48})/) || [])[1];
+  if (k) {
+    history.replaceState(null, '', location.pathname);   // код одноразовый — из адресной строки убираем сразу
+    try {
+      const r = await fetch(SB_URL + '/functions/v1/telegram-bot', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ admin_api: 'redeem', code: k }) });
+      const j = await r.json().catch(() => ({}));
+      if (j.access_token) await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+    } catch (e) {}
+  }
   const { data } = await sb.auth.getSession();
-  if (!data.session) return gate('Войдите через Telegram, чтобы открыть панель управления.', TG_BTN);
+  if (!data.session) return notFound();
   try {
     const me = await api('me');
     $('meName').textContent = me.name || 'Владелец'; $('meAva').textContent = (me.name || 'P')[0].toUpperCase();
-    $('gate').hidden = true; $('app').hidden = false; go(location.hash.slice(1) || 'dash');
-  } catch (e) {
-    if (e.code === 403) return gate('Этот аккаунт не владелец P2Pro — доступа к панели нет.', '<button class="btn wide" id="outBtn">Войти другим аккаунтом</button><a class="btn ghost wide" href="./">Открыть приложение</a>');
-    if (e.code === 401) { await sb.auth.signOut().catch(() => {}); return gate('Сессия устарела — войдите ещё раз.', TG_BTN); }
-    gate('Не получилось связаться с сервером: ' + esc(e.message) + '.<br>Если функцию telegram-bot только что обновляли — проверьте, что она задеплоена.', '<button class="btn pri wide" id="retry">Попробовать снова</button>');
-  }
-}
-// Вход как на сайте: бот присылает «Войти», а мы раз в 2 секунды спрашиваем сервер, подтвердили ли
-let loginRun = 0;
-async function tgLogin() {
-  const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-  const url = 'https://t.me/P2ProAppBot?start=login_' + id, run = ++loginRun;
-  window.open(url, '_blank');
-  gate('Откроется бот @P2ProAppBot. Нажмите там «✅ Войти» и вернитесь сюда.', `<div class="btn wide" style="pointer-events:none"><span class="spin"></span> Ждём подтверждение…</div><a class="btn ghost wide" href="${url}" target="_blank" rel="noopener">${TG_SVG} Открыть Telegram</a>`);
-  for (const until = Date.now() + 5 * 60e3; Date.now() < until;) {
-    await wait(2000);
-    if (run !== loginRun) return;
-    let j = {};
-    try { j = await (await fetch(SB_URL + '/functions/v1/telegram-auth', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY }, body: JSON.stringify({ web_login: id }) })).json(); } catch (e) { continue; }
-    if (j.access_token) { await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token }); return boot(); }
-    if (j.status === 'no') return gate('Вход отменён в Telegram.', TG_BTN);
-    if (j.status === 'expired' || j.error) return gate('Ссылка устарела — попробуйте ещё раз.', TG_BTN);
-  }
-  gate('Время вышло — попробуйте ещё раз.', TG_BTN);
+    document.title = 'P2Pro — админ-панель';
+    $('gate').hidden = true; $('app').hidden = false; go((location.hash.slice(1) || 'dash').replace(/^k=.*/, 'dash'));
+  } catch (e) { notFound(); }
 }
 document.addEventListener('click', async e => {
-  if (e.target.closest('#tgIn')) return tgLogin();
-  if (e.target.closest('#retry')) return boot();
-  if (e.target.closest('#outBtn, #logout')) { await sb.auth.signOut().catch(() => {}); return gate('Вы вышли.', TG_BTN); }
+  if (e.target.closest('#logout')) { await sb.auth.signOut().catch(() => {}); notFound(); }
 });
 
 /* ---------- Навигация ---------- */
@@ -405,7 +391,7 @@ function payRow(p) {
     <b class="mono ${p.refund || p.amount < 0 ? 'neg' : p.kind === 'free' ? 'muted' : 'pos'}">${p.refund || p.amount < 0 ? '↩ −' : p.kind === 'free' ? '' : '+'}${st}</b></div>`;
 }
 function fail(e) {
-  if (e.code === 401 || e.code === 403) return boot();
+  if (e.code === 401 || e.code === 403) return notFound();
   $('view').insertAdjacentHTML('beforeend', `<div class="card" style="margin-top:16px"><b class="neg">Не получилось загрузить</b><p class="muted">${esc(e.message)}</p><button class="btn" data-ref="${page}">Попробовать снова</button></div>`);
 }
 
