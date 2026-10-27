@@ -103,7 +103,7 @@ const MENU = () => kb([
   [{ text: '📣 Рассылка', callback_data: 'bc' }, { text: '🎟 Промокоды', callback_data: 'pl' }],
   [{ text: '📢 Канал', callback_data: 'ch' }, { text: '💱 Курс в канал', callback_data: 'rc' }],
   [{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '🌅 Утренний отчёт', callback_data: 'rp' }],
-  [{ text: '🔍 Поиск', callback_data: 'fs' }],
+  [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🖥 Веб-админка', url: APP + 'admin' }],
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
@@ -1212,10 +1212,177 @@ async function myCallback(cq: { id: string; data?: string; from?: { id: number }
   }
 }
 
+/* ================= ВЕБ-АДМИНКА (p2pro.app/admin) ================= */
+// Страница admin.html шлёт сюда { admin_api: 'действие', access_token, ... }. Пускаем только владельца:
+// сессию проверяет Supabase, а Telegram id этого аккаунта должен совпасть с ADMIN_ID. Уведомления в бот приходят как раньше
+const ACORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
+const aj = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...ACORS, 'content-type': 'application/json' } });
+type ATrade = { user_id: string; ts: string; updated_at: string; data: { ex?: string; bank?: string; profit?: number; sum?: number; cur?: string; mode?: string } };
+// Все сделки, только нужные поля (Supabase отдаёт по 1000 строк)
+async function allTrades(cols = 'user_id, ts, updated_at'): Promise<ATrade[]> {
+  const out: ATrade[] = [];
+  for (let from = 0; from < 500000; from += 1000) {
+    const { data, error } = await admin.from('trades').select(cols).eq('deleted', false).range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data as unknown as ATrade[]));
+    if ((data ?? []).length < 1000) break;
+  }
+  return out;
+}
+const nameOfU = (u: AUser) => String(u.user_metadata?.name ?? '').slice(0, 40) || (isTg(u.email) ? 'Telegram' : (u.email ?? '').split('@')[0]);
+async function nicksMap() {
+  const { data } = await admin.from('tg_users').select('user_id, tg_id, username');
+  return new Map((data ?? []).map((x: { user_id: string; tg_id: number; username: string | null }) => [x.user_id, x]));
+}
+const payKind = (p: Pay & { refund?: boolean; currency?: string }) => p.method === 'stars' ? 'stars' : FREE_METHODS.includes(p.method ?? '') ? 'free' : 'rub';
+
+async function adminDash() {
+  const [users, subs, nicks, trades] = await Promise.all([allUsers(), allSubs(), nicksMap(), allTrades()]);
+  const now = Date.now(), days: string[] = [];
+  for (let i = 29; i >= 0; i--) days.push(mskDay(now - i * DAY));
+  const idx = new Map(days.map((d, i) => [d, i])), z = () => days.map(() => 0);
+  const signups = z(), rub = { sbp: z(), card: z(), crypto: z(), other: z() }, stars = z(), active = z();
+  for (const u of users) { const i = idx.get(mskDay(Date.parse(u.created_at))); if (i != null) signups[i]++; }
+  const tradeDays = new Map<string, Set<string>>();
+  for (const t of trades) { const d = mskDay(Date.parse(t.ts)); const i = idx.get(d); if (i == null) continue; if (!tradeDays.has(d)) tradeDays.set(d, new Set()); tradeDays.get(d)!.add(t.user_id); }
+  days.forEach((d, i) => active[i] = tradeDays.get(d)?.size ?? 0);
+  let total = { rub: 0, stars: 0, n: 0 }, today = { rub: 0, stars: 0, n: 0 }, week = { rub: 0, stars: 0, n: 0 }, month = { rub: 0, stars: 0, n: 0 };
+  const recent: unknown[] = [], byUser = new Map(users.map((u) => [u.id, u]));
+  for (const s of subs) for (const p of (s.payments ?? []) as (Pay & { refund?: boolean })[]) {
+    const k = payKind(p); if (k === 'free') continue;
+    const t = Date.parse(p.ts), d = mskDay(t), i = idx.get(d), a = +p.amount || 0;
+    const add = (o: typeof total) => { if (k === 'stars') o.stars += a; else o.rub += a; if (a > 0) o.n++; };
+    add(total); if (d === mskDay(now)) add(today); if (now - t < 7 * DAY) add(week); if (i != null) add(month);
+    if (i != null) { if (k === 'stars') stars[i] += a; else (rub[(p.method as 'sbp' | 'card' | 'crypto')] ?? rub.other)[i] += a; }
+    const u = byUser.get(s.user_id), nk = nicks.get(s.user_id);
+    recent.push({ ts: p.ts, amount: a, method: p.method, period: p.period, refund: !!p.refund, user: s.user_id, name: u ? nameOfU(u) : '—', nick: nk?.username ?? null });
+  }
+  (recent as { ts: string }[]).sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
+  const pro = subs.filter(isPro), byMethod: Record<string, number> = {};
+  for (const s of pro) byMethod[s.pay_method ?? 'other'] = (byMethod[s.pay_method ?? 'other'] ?? 0) + 1;
+  const { data: trials } = await admin.from('pro_trials').select('user_id, started_at');
+  const subBy = new Map(subs.map((s) => [s.user_id, s]));
+  const converted = (trials ?? []).filter((t: { user_id: string; started_at: string }) => (subBy.get(t.user_id)?.payments ?? [])
+    .some((p) => payKind(p) !== 'free' && +p.amount > 0 && Date.parse(p.ts) > Date.parse(t.started_at))).length;
+  const since = (n: number) => users.filter((u) => now - Date.parse(u.created_at) < n * DAY).length;
+  return {
+    users: { total: users.length, tg: users.filter((u) => isTg(u.email)).length, banned: users.filter(isBanned).length, d1: since(1), d7: since(7), d30: since(30),
+      seen7: users.filter((u) => u.last_sign_in_at && now - Date.parse(u.last_sign_in_at) < 7 * DAY).length },
+    pro: { now: pro.length, byMethod, trialActive: pro.filter((s) => s.pay_method === 'trial').length },
+    trials: { total: (trials ?? []).length, converted },
+    trades: { total: trades.length, d7: trades.filter((t) => now - Date.parse(t.ts) < 7 * DAY).length },
+    money: { total, today, week, month },
+    days, signups, rub, stars, active, recent: recent.slice(0, 12),
+  };
+}
+
+async function adminUsers() {
+  const [users, subs, nicks, trades] = await Promise.all([allUsers(), allSubs(), nicksMap(), allTrades()]);
+  const subBy = new Map(subs.map((s) => [s.user_id, s])), tr = new Map<string, { n: number; last: number }>();
+  for (const t of trades) { const x = tr.get(t.user_id) ?? { n: 0, last: 0 }; x.n++; x.last = Math.max(x.last, Date.parse(t.updated_at)); tr.set(t.user_id, x); }
+  return users.map((u) => {
+    const s = subBy.get(u.id) ?? null, nk = nicks.get(u.id), t = tr.get(u.id);
+    const paid = (s?.payments ?? []).filter((p) => payKind(p) === 'rub').reduce((a, p) => a + (+p.amount || 0), 0);
+    return { id: u.id, name: nameOfU(u), nick: nk?.username ?? null, tg: nk?.tg_id ?? null, email: isTg(u.email) ? null : u.email ?? null,
+      created: u.created_at, seen: u.last_sign_in_at ?? null, banned: isBanned(u), pro: isPro(s), until: s?.pro_until ?? null, method: s?.pay_method ?? null,
+      trades: t?.n ?? 0, lastTrade: t?.last ? new Date(t.last).toISOString() : null, paid };
+  });
+}
+
+async function adminUser(id: string) {
+  const u = await userById(id); if (!u) return null;
+  const [s, price, nicks] = await Promise.all([subOf(id), priceOf(id), nicksMap()]);
+  const { data: tr } = await admin.from('trades').select('ts, data').eq('user_id', id).eq('deleted', false).order('ts', { ascending: false }).limit(500);
+  const list = (tr ?? []) as { ts: string; data: ATrade['data'] }[], profit: Record<string, number> = {};
+  for (const t of list) { const c = t.data.cur ?? 'RUB'; profit[c] = (profit[c] ?? 0) + (+(t.data.profit ?? 0) || 0); }
+  const { data: promos } = await admin.from('promo_uses').select('code, used_at').eq('user_id', id);
+  const { data: trial } = await admin.from('pro_trials').select('started_at, ends_at').eq('user_id', id).maybeSingle();
+  const nk = nicks.get(id);
+  return { id, name: nameOfU(u), nick: nk?.username ?? null, tg: nk?.tg_id ?? null, email: isTg(u.email) ? null : u.email ?? null,
+    created: u.created_at, seen: u.last_sign_in_at ?? null, banned: isBanned(u), avatar: (u.user_metadata?.avatar as string) || null,
+    sub: s ? { pro: isPro(s), since: s.pro_since, until: s.pro_until, method: s.pay_method, period: s.period, payments: s.payments ?? [] } : null,
+    price, trial: trial ?? null, promos: promos ?? [], tradeCount: list.length, profit,
+    trades: list.slice(0, 15).map((t) => ({ ts: t.ts, ex: t.data.ex ?? '', bank: t.data.bank ?? '', mode: t.data.mode ?? 'deal', sum: +(t.data.sum ?? 0), profit: +(t.data.profit ?? 0), cur: t.data.cur ?? 'RUB' })) };
+}
+
+// Рассылка текстом со страницы: тот же список получателей, что и в боте, итог придёт владельцу в бот
+async function broadcastText(text: string, aud: Aud) {
+  const ids = await recipients(aud), markup = aud === 'exp' || aud === 'free' ? openBtn('⭐ Продлить PRO') : openBtn();
+  let ok = 0;
+  const one = async (id: number) => {
+    let r = await tg('sendMessage', { chat_id: id, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: markup });
+    if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); r = await tg('sendMessage', { chat_id: id, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: markup }); }
+    if (r?.ok) ok++;
+  };
+  for (let i = 0; i < ids.length; i += 25) { await Promise.all(ids.slice(i, i + 25).map(one)); if (i + 25 < ids.length) await sleep(1000); }
+  await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `📣 <b>Рассылка ${AUD[aud]} (с сайта) завершена</b>\nДоставлено: ${ok} из ${ids.length}` });
+}
+// Текст рассылки и личного сообщения: экранируем всё, кроме **жирного** — его превращаем в <b>
+const fmtText = (t: string) => esc(t.slice(0, 3500)).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+
+async function adminApi(body: Record<string, unknown>) {
+  if (!SERVICE || !TOKEN) return aj({ error: 'server' }, 500);
+  const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
+  if (ue || !ud?.user) return aj({ error: 'auth' }, 401);
+  if (await tgIdOf(ud.user.id) !== ADMIN_ID) return aj({ error: 'forbidden' }, 403);
+  const act = String(body.admin_api), id = typeof body.id === 'string' ? body.id : '';
+  const needUser = async () => { const u = id ? await userById(id) : null; if (!u) throw new Error('Пользователь не найден'); return u; };
+  try {
+    if (act === 'me') return aj({ ok: true, name: nameOfU(ud.user as AUser) });
+    if (act === 'dash') return aj(await adminDash());
+    if (act === 'users') return aj({ users: await adminUsers() });
+    if (act === 'payments') {
+      const [users, subs, nicks] = await Promise.all([allUsers(), allSubs(), nicksMap()]), byUser = new Map(users.map((u) => [u.id, u])), out = [];
+      for (const s of subs) for (const p of (s.payments ?? []) as (Pay & { refund?: boolean; code?: string; paid?: string })[]) {
+        const u = byUser.get(s.user_id);
+        out.push({ ts: p.ts, amount: +p.amount || 0, method: p.method ?? null, kind: payKind(p), period: p.period ?? null, days: p.days ?? null, refund: !!p.refund, code: p.code ?? null, paid: p.paid ?? null,
+          user: s.user_id, name: u ? nameOfU(u) : '—', nick: nicks.get(s.user_id)?.username ?? null });
+      }
+      out.sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
+      return aj({ payments: out.slice(0, 3000) });
+    }
+    if (act === 'user') { const r = await adminUser(id); return r ? aj(r) : aj({ error: 'Пользователь не найден' }, 404); }
+    if (act === 'give') { const d = Number(body.days); if (!Number.isInteger(d) || d < 1 || d > 3650) throw new Error('Дни — от 1 до 3650'); const r = await giveDays(await needUser(), d); return aj({ ok: true, ...r, user: await adminUser(id) }); }
+    if (act === 'revoke') { const r = await revokePro(await needUser()); return aj({ ok: true, ...r, user: await adminUser(id) }); }
+    if (act === 'ban') { const notified = await setBan(await needUser(), !!body.on); return aj({ ok: true, notified, user: await adminUser(id) }); }
+    if (act === 'price') { const cur = body.cur === 'rub' ? 'rub' : 'stars'; const r = await setPrice(await needUser(), Number(body.m), body.y ? Number(body.y) : undefined, cur); return aj({ ok: true, ...r, user: await adminUser(id) }); }
+    if (act === 'discount') { const d = Number(body.pct); if (!Number.isInteger(d) || d < 1 || d > 90) throw new Error('Скидка — от 1 до 90%'); const r = await setDiscount(await needUser(), d); return aj({ ok: true, ...r, user: await adminUser(id) }); }
+    if (act === 'price_reset') { await needUser(); const { error } = await admin.from('custom_prices').delete().eq('user_id', id); if (error) throw error; return aj({ ok: true, user: await adminUser(id) }); }
+    if (act === 'msg') { const t = String(body.text ?? '').trim(); if (!t) throw new Error('Пустое сообщение'); const u = await needUser(); return aj({ ok: true, notified: await notify(u.id, fmtText(t), kb([[{ text: '💬 Поддержка', url: SUPPORT }]])) }); }
+    if (act === 'promos') {
+      const { data: list } = await admin.from('promo_codes').select('*').order('created_at', { ascending: false });
+      const { data: uses } = await admin.from('promo_uses').select('code, user_id, used_at').order('used_at', { ascending: false }).limit(500);
+      const nicks = await nicksMap();
+      return aj({ promos: list ?? [], uses: (uses ?? []).map((x: { code: string; user_id: string; used_at: string }) => ({ ...x, nick: nicks.get(x.user_id)?.username ?? null })) });
+    }
+    if (act === 'promo_create') {
+      const args = [String(body.code ?? ''), String(body.days ?? ''), body.max ? String(body.max) : '', body.ttl ? String(body.ttl) : ''];
+      const r = await promoCreate(args); if (!r.startsWith('✅')) throw new Error(r.replace(/<[^>]+>/g, ''));
+      return aj({ ok: true });
+    }
+    if (act === 'promo_toggle') { const { data: p } = await admin.from('promo_codes').select('active').eq('code', String(body.code)).maybeSingle(); if (!p) throw new Error('Нет такого кода'); await admin.from('promo_codes').update({ active: !p.active }).eq('code', String(body.code)); return aj({ ok: true }); }
+    if (act === 'promo_delete') { await admin.from('promo_codes').delete().eq('code', String(body.code)); return aj({ ok: true }); }
+    if (act === 'bc_counts') { const n = await Promise.all((['all', 'pro', 'exp', 'free'] as Aud[]).map((a) => recipients(a).then((r) => r.length))); return aj({ all: n[0], pro: n[1], exp: n[2], free: n[3] }); }
+    if (act === 'bc_test' || act === 'bc_send') {
+      const t = String(body.text ?? '').trim(); if (!t) throw new Error('Пустой текст');
+      if (act === 'bc_test') { const r = await tg('sendMessage', { chat_id: ADMIN_ID, text: fmtText(t), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: openBtn() }); if (!r?.ok) throw new Error('Telegram не принял текст: ' + (r?.description ?? '')); return aj({ ok: true }); }
+      const aud = (['all', 'pro', 'exp', 'free'] as Aud[]).includes(body.aud as Aud) ? body.aud as Aud : 'all';
+      const n = (await recipients(aud)).length; background(broadcastText(fmtText(t), aud)); return aj({ ok: true, n });
+    }
+    return aj({ error: 'Неизвестное действие' }, 400);
+  } catch (e) { return aj({ error: String((e as Error)?.message ?? e).slice(0, 300) }, 400); }
+}
+
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: ACORS });
+  const raw = await req.text().catch(() => '');
+  // deno-lint-ignore no-explicit-any
+  let update: any = null;
+  try { update = JSON.parse(raw); } catch (_) { /* не JSON */ }
+  // Веб-админка: своя проверка (сессия владельца), секрет Telegram ей не нужен
+  if (typeof update?.admin_api === 'string') return adminApi(update).catch((e) => { console.error('admin api', e); return aj({ error: 'server' }, 500); });
   // Принимаем запросы только от Telegram и от расписания Supabase: оба присылают секрет, который мы задали
   if (!SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== SECRET) return new Response('forbidden', { status: 403 });
-  const update = await req.json().catch(() => null);
   if (update?.cron === 'daily') { if (TOKEN && SERVICE) background(dailyFanout()); return new Response('ok'); }
   if (update?.cron) { if (TOKEN && SERVICE) await tick().catch((e) => console.error('tick', e)); return new Response('ok'); }
   if (update?.rate_post === 'channel' || update?.rate_post === 'admin') {
