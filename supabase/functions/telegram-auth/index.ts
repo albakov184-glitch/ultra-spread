@@ -297,27 +297,6 @@ async function grantNotify(res: Grant, invoice: string, paid: string, toAdmin: b
   }
 }
 
-/* ================= Резервная копия в Telegram ================= */
-// В мини-аппе файл не скачать — бот присылает копию сделок файлом в чат. Только для PRO: так копию нельзя гонять между бесплатными аккаунтами
-async function backupSend(body: { backup_send?: string; access_token?: string }) {
-  const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
-  if (ue || !ud?.user) return json({ error: 'auth' }, 401);
-  const { data: s } = await admin.from('subscriptions').select('pro_until').eq('user_id', ud.user.id).maybeSingle();
-  if (!s?.pro_until || Date.parse(s.pro_until) < Date.now()) return json({ error: 'pro' }, 403);
-  const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
-  if (!t?.tg_id) return json({ error: 'no_tg' }, 400);
-  const text = String(body.backup_send ?? '');
-  if (text.length > 15e6) return json({ error: 'big' }, 413);
-  let n = 0; try { const d = JSON.parse(text); if (!Array.isArray(d?.trades)) throw 0; n = d.trades.length; } catch (_) { return json({ error: 'bad' }, 400); }
-  const day = new Date().toISOString().slice(0, 10), fd = new FormData();
-  fd.append('chat_id', String(t.tg_id));
-  fd.append('caption', `📁 Резервная копия P2Pro от ${day.split('-').reverse().join('.')} — сделок: ${n}.\n\nЧтобы загрузить: сохраните файл («Поделиться» → «Сохранить в Файлы»), затем в P2Pro: Профиль → Данные и тема → «Загрузить файл».`);
-  fd.append('document', new Blob([text], { type: 'application/json' }), `P2Pro-backup-${day}.json`);
-  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendDocument`, { method: 'POST', body: fd, signal: AbortSignal.timeout(20000) }).then((x) => x.json()).catch(() => null);
-  if (!r?.ok) { console.error('backup send', r); return json({ error: 'tg', detail: String(r?.description ?? '').slice(0, 200) }, 502); }
-  return json({ ok: true });
-}
-
 /* ================= Platega: оплата через СБП и картой (18-platega.sql, 19-card.sql) ================= */
 // deno-lint-ignore no-explicit-any
 const pl = (path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: any }> => fetch(PL_API + path, { ...init, signal: AbortSignal.timeout(20000),
@@ -394,7 +373,6 @@ Deno.serve(async (req) => {
   let body: any = null;
   try { body = JSON.parse(raw); } catch (_) { /* не JSON */ }
   if (typeof body?.gift_find === 'string') return giftFind(body).catch(() => json({ error: 'server' }, 500));
-  if (typeof body?.backup_send === 'string') return backupSend(body).catch((e) => { console.error('backup', e); return json({ error: 'server' }, 500); });
   if (typeof body?.pl_invoice === 'string') {
     return plInvoice(body).catch((e) => { console.error('pl invoice crash', e); return json({ error: 'crash', detail: String(e?.message ?? e).slice(0, 200) }, 500); });
   }
