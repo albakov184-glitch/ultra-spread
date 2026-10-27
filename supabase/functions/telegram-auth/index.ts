@@ -189,6 +189,12 @@ const tgSend = (chat: number, text: string, markup?: unknown) => fetch(`https://
   body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) }) }).catch(() => null);
 
 // Подарок PRO другу: друг ищется по нику Telegram среди тех, кто уже входил в P2Pro
+// Не больше 5 счетов за 10 минут на аккаунт: защита от спама счетами (платёжная система может счесть это мошенничеством)
+async function tooMany(uid: string) {
+  const { count } = await admin.from('crypto_invoices').select('id', { count: 'exact', head: true })
+    .or(`user_id.eq.${uid},gift_from.eq.${uid}`).gte('created_at', new Date(Date.now() - 10 * 60e3).toISOString());
+  return (count ?? 0) >= 5;
+}
 type Gift = { id: string; name: string; nick: string };
 async function giftTarget(nick: unknown, buyer: string): Promise<Gift | { error: string }> {
   const n = String(nick ?? '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
@@ -218,6 +224,7 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string; gif
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
   if (ue || !ud?.user) return json({ error: 'auth' }, 401);
   if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
+  if (await tooMany(ud.user.id)) return json({ error: 'too_many', detail: 'слишком много счетов подряд — подождите 10 минут' }, 429);
   const { data: cp } = await admin.from('custom_prices').select('rm, ry').eq('user_id', ud.user.id).maybeSingle();
   const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   let gift: Gift | null = null;
@@ -304,6 +311,7 @@ async function plInvoice(body: { pl_invoice?: string; access_token?: string; gif
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
   if (ue || !ud?.user) return json({ error: 'auth' }, 401);
   if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
+  if (await tooMany(ud.user.id)) return json({ error: 'too_many', detail: 'слишком много счетов подряд — подождите 10 минут' }, 429);
   const { data: cp } = await admin.from('custom_prices').select('rm, ry').eq('user_id', ud.user.id).maybeSingle();
   const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   let gift: Gift | null = null;

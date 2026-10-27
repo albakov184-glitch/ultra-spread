@@ -425,7 +425,9 @@ async function paid(msg: Msg & { successful_payment: { currency: string; total_a
 }
 // Сообщение другу о подарке
 async function giftNotify(toId: string, from: AUser | null, period: string, until: string) {
-  const fromName = from ? (from.user_metadata?.tg_username ? '@' + from.user_metadata.tg_username : nameOf(from)) : 'Друг';
+  // Ник дарителя — из tg_users (пишет только сервер): ник в профиле человек может подменить на чужой
+  const nick = from ? await tgNick(from.id) : null;
+  const fromName = from ? (nick ? '@' + nick : nameOf(from)) : 'Друг';
   return notify(toId, `🎁 <b>Вам подарили P2Pro PRO!</b>\n\n${esc(fromName)} подарил вам PRO ${period === 'y' ? 'на год' : 'на месяц'} — действует до <b>${date(until)}</b>.\n\nБезлимитная история, контрагенты, Excel, график и уведомления о курсе уже включены.`, openBtn('🚀 Открыть P2Pro'));
 }
 // Возврат звёзд: /refund НОМЕР_ПЛАТЕЖА (номер приходит в уведомлении об оплате)
