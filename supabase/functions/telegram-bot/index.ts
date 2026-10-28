@@ -1924,7 +1924,16 @@ function dealCardSvg(d: { sum: number; buy: number; sell: number; usdt: number; 
   <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">Без комиссий бирж · точный расчёт в P2Pro</text>
   <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
-async function inlineAnswer(q: { id: string; query?: string }) {
+// Картинку расчёта рисуем не чаще 15 раз за 10 минут на человека — иначе перебором чисел можно нагрузить сервер. Сверх — текстом
+const inlineDraws = new Map<number, number[]>();
+function inlineCanDraw(uid: number) {
+  const now = Date.now(), l = (inlineDraws.get(uid) ?? []).filter((t) => now - t < 10 * 60e3);
+  if (l.length >= 15) return false;
+  l.push(now); inlineDraws.set(uid, l);
+  if (inlineDraws.size > 5000) inlineDraws.clear();
+  return true;
+}
+async function inlineAnswer(q: { id: string; query?: string; from?: { id: number } }) {
   const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]), day = mskDay(Date.now());
   const photo = (id: string, url: string, title: string, description: string, caption: string) =>
     ({ type: 'photo', id, photo_url: url, thumbnail_url: url, photo_width: 1080, photo_height: 1080, title, description, caption, parse_mode: 'HTML', reply_markup: open });
@@ -1937,6 +1946,7 @@ async function inlineAnswer(q: { id: string; query?: string }) {
       const text = `🧮 <b>Расчёт сделки</b>\n\nСумма: <b>${money2(sum)} ₽</b>\nКупил по ${money2(buy)} ₽ → <b>${money2(usdt)} USDT</b>\n` +
         `Продал по ${money2(sell)} ₽ → <b>${money2(out)} ₽</b>\n\nПрибыль: <b>${sg}${money2(Math.abs(profit))} ₽</b> (${sg}${money2(Math.abs(pct))}%)\n<i>Без комиссий бирж — точный расчёт в @P2ProAppBot</i>`;
       try {
+        if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');
         const url = await cardUrl(`cards/${day}/deal-${sum}-${buy}-${sell}.jpg`, () => svgJpeg(dealCardSvg({ sum, buy, sell, usdt, out, profit, pct })));
         results.push(photo('deal', url, title, desc, text));
       } catch (e) {
