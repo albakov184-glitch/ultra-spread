@@ -2339,7 +2339,7 @@ function blDetailHtml(j) {
   return `<div class="bl-warn"><div class="bl-ic">${BLI.alert}</div><div><b>Отмечен как мошенник</b><span>${j.n} ${plural(j.n, 'подтверждённая жалоба', 'подтверждённые жалобы', 'подтверждённых жалоб')} · первая ${fmtDay(dayKey(j.first))}, последняя ${fmtDay(dayKey(j.last))}</span></div></div>
     <div class="bl-tags">${Object.entries(j.kinds).map(([k, n]) => `<span class="bl-tag">${esc(k)}${n > 1 ? `<b>×${n}</b>` : ''}</span>`).join('')}</div>
     <div class="list">${j.items.map(x => `<div class="item" style="cursor:default"><div style="min-width:0"><div class="l1">${fmtDay(dayKey(x.at))} · ${esc(x.kind)}</div>${x.note ? `<div class="l3">«${esc(x.note)}»</div>` : ''}</div></div>`).join('')}</div>
-    <span class="muted small">Кто пожаловался — не показываем. Каждую жалобу проверяет модератор P2Pro по скрину.</span>`;
+    <span class="muted small">Кто пожаловался — не показываем. Каждую жалобу проверяет модератор P2Pro по скрину.<br>Это ваш ник и вас добавили по ошибке? <a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Напишите в поддержку</a> с доказательствами — проверим и уберём из базы.</span>`;
 }
 async function blCheck(nick, into) {
   const n = blKey(nick); if (n.length < 2) return toast('Впишите ник');
@@ -2404,12 +2404,12 @@ async function blMine() {
   const box = $('blMine'); box.innerHTML = '<div class="sk" style="height:90px;border-radius:14px"></div>';
   try {
     const { list } = await blCall('mine');
-    const st = { pending: ['wait', 'На проверке'], approved: ['good', 'Одобрена'], rejected: ['bad', 'Отклонена'] };
+    const st = { pending: ['wait', 'На проверке'], approved: ['good', 'Одобрена'], rejected: ['bad', 'Отклонена'], removed: ['new', 'Снята'] };
     box.innerHTML = list.length ? list.map(r => `<div class="card bl-rep"><div class="card-h"><b>${esc('@' + r.nick)}</b><span class="pill ${st[r.status][0]} bl-pill"><i></i>${st[r.status][1]}</span></div>
       <span class="muted small">${esc(r.kind)} · ${fmtDay(dayKey(r.at))}</span>
       ${r.status === 'pending' ? '<span class="muted small">Обычно проверяем в течение дня</span>' : ''}
       ${r.status === 'approved' && r.reward ? `<div class="note-box good bl-note">${BLI.gift}<span>Спасибо! Вам начислено: ${esc(r.reward)}</span></div>` : r.status === 'approved' ? '<div class="note-box good">Ник добавлен в общую базу. Спасибо!</div>' : ''}
-      ${r.status === 'rejected' ? `<div class="note-box bad">Причина: ${esc(r.reason)}</div>` : ''}</div>`).join('')
+      ${r.status === 'rejected' || r.status === 'removed' ? `<div class="note-box ${r.status === 'removed' ? 'mid' : 'bad'}">${r.status === 'removed' ? '' : 'Причина: '}${esc(r.reason)}</div>` : ''}</div>`).join('')
       : emptyHtml('people', 'Жалоб пока нет', 'Если вас обманули — нажмите «Пожаловаться» и приложите скрин');
   } catch (e) { box.innerHTML = `<div class="note-box bad">${esc(e.message)}</div>`; }
 }

@@ -1459,7 +1459,24 @@ async function usersExport() {
 // Пользователь PRO жалуется на ник со скрином → владельцу приходит жалоба с кнопками (и она же в админке) →
 // одобренные жалобы и есть общая база. Кто пожаловался, другим не показываем. Скрины — в закрытом хранилище bl-proofs
 const BL_KINDS: Record<string, string> = { nopay: 'Не оплатил', cancel: 'Отменил после оплаты', fake: 'Фейковый чек', third: 'Третьи лица', rude: 'Грубость, угрозы', other: 'Другое' };
-const BL_REASONS = ['Нет доказательств на скрине', 'Спор по сделке, не мошенничество', 'Повторная жалоба'];
+const BL_REASONS = ['Нет доказательств на скрине', 'Спор по сделке, не мошенничество', 'Повторная жалоба', 'Ложная жалоба'];
+const BL_FALSE = 'Ложная жалоба';   // такой отказ — это ещё и предупреждение автору
+const BL_WARN_MAX = 3;              // после стольких предупреждений жаловаться больше нельзя (владелец может сбросить в админке)
+// Предупреждения за ложные жалобы и жалобы, которые потом обжаловали — счётчик на человека
+const blWarns = async (uid: string | null) => uid ? (await stGet<{ n: number }>('blw:' + uid, { n: 0 })).n : 0;
+async function blWarn(uid: string, text: string) {
+  const n = await blWarns(uid) + 1;
+  await stSet('blw:' + uid, { n, at: Date.now() });
+  const tail = n >= BL_WARN_MAX ? `
+
+🚫 Это ${n}-е предупреждение — возможность подавать жалобы отключена.` : `
+
+Предупреждение ${n} из ${BL_WARN_MAX}: после ${BL_WARN_MAX}-го подавать жалобы будет нельзя.`;
+  await notify(uid, text + tail + `
+
+Не согласны? Напишите в поддержку ${SUPPORT.replace('https://t.me/', '@')} и приложите доказательства.`, kb([[{ text: '💬 Поддержка', url: SUPPORT }]]));
+  return n;
+}
 const BL_REWARDS: Record<string, string> = { d3: '+3 дня PRO', d7: '+7 дней PRO', d30: '+30 дней PRO', p20: 'скидка 20%', p50: 'скидка 50%', no: 'без награды' };
 type BlRow = { id: number; nick: string; shown: string; kind: string; kind_text: string; note: string; proofs: string[]; reporter: string | null;
   status: string; reason: string; reward: string; created_at: string; decided_at: string | null };
@@ -1543,7 +1560,7 @@ async function blWho(uid: string | null) {
 async function blOwnerCard(r: BlRow) {
   const inBase = (await blApproved([r.nick])).length;
   return `🚩 <b>Новая жалоба</b> · №${r.id}\n\n<b>На кого:</b> ${esc(blAt(r.shown || r.nick))}\n<b>Что случилось:</b> ${esc(blKind(r))}` +
-    (r.note ? `\n«${esc(r.note.slice(0, 500))}»` : '') + `\n\n<b>От:</b> ${await blWho(r.reporter)}\n` +
+    (r.note ? `\n«${esc(r.note.slice(0, 500))}»` : '') + `\n\n<b>От:</b> ${await blWho(r.reporter)}${(await blWarns(r.reporter)) ? ` · ⚠️ предупреждений: ${await blWarns(r.reporter)}` : ''}\n` +
     (inBase ? `В базе уже: ${inBase} ${plural(inBase, 'жалоба', 'жалобы', 'жалоб')} на этот ник` : 'Этого ника в базе ещё нет');
 }
 async function blNotifyOwner(r: BlRow, imgs: { bytes: Uint8Array; type: string; ext: string }[]) {
@@ -1592,6 +1609,10 @@ async function blDecide(id: number, act: 'approve' | 'reject', o: { reason?: str
   if (error) throw error;
   const r = (data as BlRow[])?.[0];
   if (!r) throw new Error('Жалоба уже рассмотрена или не найдена');
+  if (act === 'reject' && r.reason === BL_FALSE && r.reporter) {
+    await blWarn(r.reporter, `⚠️ <b>Предупреждение от P2Pro</b>\nВаша жалоба на ${esc(blAt(r.shown))} признана ложной и отклонена.\nПожалуйста, подавайте жалобы только при реальном мошенничестве и с понятными доказательствами.`);
+    return { r, sent: true, warned: 0, n: 0 };
+  }
   if (act === 'reject') {
     const sent = r.reporter ? await notify(r.reporter, `❌ <b>Жалоба на ${esc(blAt(r.shown))} отклонена</b>\nПричина: ${esc(r.reason)}\n\nЕсли это ошибка — отправьте жалобу заново с более понятным скрином.`, openBtn()) : false;
     return { r, sent, warned: 0, n: 0 };
@@ -1626,11 +1647,19 @@ async function blSetKind(id: number, kind: string, text = '') {
   const { error } = await admin.from('bl_reports').update({ kind, kind_text: kind === 'other' ? text.trim().slice(0, 60) : '' }).eq('id', id);
   if (error) throw error;
 }
-// Снять человека из базы (ошибка, апелляция): его одобренные жалобы становятся «сняты», предупреждение у всех пропадёт
-async function blRemove(nick: string) {
-  const { data, error } = await admin.from('bl_reports').update({ status: 'removed' }).eq('nick', blNick(nick)).eq('status', 'approved').select('id');
+// Снять человека из базы: его одобренные жалобы становятся «сняты», предупреждение у всех пропадёт.
+// appeal — человек обжаловал и доказал, что не обманывал: авторам жалоб приходит предупреждение
+async function blRemove(nick: string, appeal = false) {
+  const { data, error } = await admin.from('bl_reports').update({ status: 'removed', reason: appeal ? 'Обжаловано: человек доказал, что не обманывал' : 'Снято владельцем' })
+    .eq('nick', blNick(nick)).eq('status', 'approved').select(BL_COLS);
   if (error) throw error;
-  return (data ?? []).length;
+  const rows = (data ?? []) as BlRow[];
+  let warned = 0;
+  if (appeal) for (const uid of new Set(rows.map((r) => r.reporter).filter(Boolean) as string[])) {
+    await blWarn(uid, `ℹ️ <b>Жалоба на ${esc(blAt(rows[0].shown || rows[0].nick))} снята</b>\nЧеловек обжаловал её и предоставил доказательства, что не обманывал, поэтому он убран из общей базы.\n\n⚠️ Пожалуйста, подавайте жалобы только при реальном мошенничестве и с понятными доказательствами.`);
+    warned++;
+  }
+  return { n: rows.length, warned };
 }
 async function blCounts() {
   const n = async (s: string) => (await admin.from('bl_reports').select('id', { count: 'exact', head: true }).eq('status', s)).count ?? 0;
@@ -1647,7 +1676,8 @@ function blCardSvg(n: number, week: number) {
     <linearGradient id="sh" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A8A"/><stop offset="1" stop-color="#C23B3B"/></linearGradient></defs>
   <rect width="${W}" height="${H}" fill="#0C0F14"/><rect width="${W}" height="${H}" fill="url(#g1)"/><rect width="${W}" height="${H}" fill="url(#g2)"/>
   <rect x="100" y="100" width="112" height="112" rx="32" fill="url(#sh)"/>
-  <path d="M156 128 l34 13 v26 c0 22 -15 38 -34 45 c-19 -7 -34 -23 -34 -45 v-26 z" fill="none" stroke="#fff" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M156 121 l30 11 v22 c0 19 -13 32 -30 38 c-17 -6 -30 -19 -30 -38 v-22 z" fill="none" stroke="#fff" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M143 156 l9 9 l17 -19" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
   <text x="240" y="150" font-family="Onest" font-weight="600" font-size="30" fill="#FF9A9A" letter-spacing="5">ОБЩАЯ БАЗА P2PRO</text>
   <text x="240" y="192" font-family="Onest" font-size="28" fill="#8691A2">проверенные мошенники P2P</text>
   <text x="96" y="600" font-family="Unbounded" font-weight="800" font-size="${n >= 1000 ? 260 : 330}" fill="#FF6B6B" letter-spacing="-12">${n.toLocaleString('ru-RU')}</text>
@@ -1705,7 +1735,7 @@ async function blCallback(chatId: number, msgId: number | null, act: string, idR
       [{ text: '✏️ Написать свою', callback_data: `bl:jc:${id}` }]]));
     return '';
   }
-  if (act === 'j') { await blDecide(id, 'reject', { reason: BL_REASONS[Number(extra)] }); await clear(); await say(`❌ Жалоба №${id} отклонена: ${esc(BL_REASONS[Number(extra)] ?? '')}. Автор получил уведомление.`); return 'Отклонено'; }
+  if (act === 'j') { await blDecide(id, 'reject', { reason: BL_REASONS[Number(extra)] }); await clear(); await say(`❌ Жалоба №${id} отклонена: ${esc(BL_REASONS[Number(extra)] ?? '')}. ${BL_REASONS[Number(extra)] === BL_FALSE ? 'Автору отправлено предупреждение.' : 'Автор получил уведомление.'}`); return 'Отклонено'; }
   if (act === 'jc') { await stSet('await', { kind: 'blr', id, at: Date.now() }); await say(`✏️ Пришлите причину отказа по жалобе №${id} одним сообщением — её увидит автор.`); return ''; }
   if (act === 't') {
     await say(`✏️ <b>Тип нарушения для жалобы №${id}</b>`, kb([...Object.entries(BL_KINDS).filter(([k]) => k !== 'other').map(([k, t]) => [{ text: t, callback_data: `bl:k:${id}:${k}` }]),
@@ -1747,7 +1777,7 @@ async function blApi(body: Record<string, unknown>) {
     if (act === 'mine') {
       const { data, error } = await admin.from('bl_reports').select(BL_COLS).eq('reporter', u.id).order('created_at', { ascending: false }).limit(50);
       if (error) throw error;
-      return aj({ list: (data as BlRow[]).map((r) => ({ id: r.id, nick: r.shown || r.nick, kind: blKind(r), status: r.status === 'removed' ? 'approved' : r.status,
+      return aj({ list: (data as BlRow[]).map((r) => ({ id: r.id, nick: r.shown || r.nick, kind: blKind(r), status: r.status,
         reason: r.reason, reward: r.reward && r.reward !== 'no' ? BL_REWARDS[r.reward] : '', at: r.created_at })) });
     }
     if (act === 'report') {
@@ -1760,6 +1790,7 @@ async function blApi(body: Record<string, unknown>) {
       const imgs = (Array.isArray(body.images) ? body.images : []).slice(0, 3).map(blImage);
       if (!imgs.length) throw new Error('Приложите хотя бы один скрин');
       if (imgs.some((x) => !x)) throw new Error('Скрин должен быть картинкой JPG или PNG до 2 МБ');
+      if (await blWarns(u.id) >= BL_WARN_MAX) throw new Error('Возможность жаловаться отключена из-за ложных жалоб. Если это ошибка — напишите в поддержку @MVSR_P2P');
       // Без спама: не больше 10 жалоб за сутки и одна жалоба на проверке на один ник
       const { count } = await admin.from('bl_reports').select('id', { count: 'exact', head: true }).eq('reporter', u.id).gte('created_at', new Date(Date.now() - DAY).toISOString());
       if ((count ?? 0) >= 10) throw new Error('Не больше 10 жалоб в сутки — попробуйте завтра');
@@ -1798,7 +1829,7 @@ async function blAdmin(act: string, body: Record<string, unknown>) {
   if (act === 'bl_get') {
     const r = await blGet(Number(body.id)); if (!r) throw new Error('Жалоба не найдена');
     const [x] = await withNicks([r]);
-    return { report: { ...x, images: (await blSigned(r.proofs)).filter(Boolean), who: await blWho(r.reporter) }, kinds: BL_KINDS, reasons: BL_REASONS, rewards: BL_REWARDS };
+    return { report: { ...x, images: (await blSigned(r.proofs)).filter(Boolean), who: await blWho(r.reporter), warns: await blWarns(r.reporter) }, kinds: BL_KINDS, reasons: BL_REASONS, rewards: BL_REWARDS };
   }
   if (act === 'bl_decide') {
     const id = Number(body.id), a = body.act === 'reject' ? 'reject' : 'approve';
@@ -1832,7 +1863,8 @@ async function blAdmin(act: string, body: Record<string, unknown>) {
     const warned = sum.n === 1 ? await blWarnContacts(nick, sum, null) : 0;
     return { ok: true, n: sum.n, warned };
   }
-  if (act === 'bl_remove') return { ok: true, n: await blRemove(String(body.nick ?? '')) };
+  if (act === 'bl_remove') return { ok: true, ...await blRemove(String(body.nick ?? ''), body.appeal === true) };
+  if (act === 'bl_warns_reset') { await stSet('blw:' + String(body.uid ?? ''), { n: 0, at: Date.now() }); return { ok: true }; }
   if (act === 'bl_post') return { ok: await blPost(body.mode === 'channel' ? CHANNEL : ADMIN_ID, body.mode !== 'channel') };
   return null;
 }
