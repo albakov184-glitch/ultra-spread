@@ -550,7 +550,7 @@ async function usdtRate(): Promise<{ rate: number; ch: number } | null> {
 }
 const rub2 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-let rsv: Promise<{ Resvg: new (svg: string, o: unknown) => { render(): { asPng(): Uint8Array } }; fonts: Uint8Array[] }> | null = null;
+let rsv: Promise<{ Resvg: new (svg: string, o: unknown) => { render(): { asPng(): Uint8Array; pixels: Uint8Array; width: number; height: number } }; fonts: Uint8Array[] }> | null = null;
 function renderer() {
   return rsv ??= (async () => {
     const m = await import('npm:@resvg/resvg-wasm@2.6.2');
@@ -1099,7 +1099,7 @@ async function tick() {
   if (rep.on && hourMsk >= 9 && rep.day !== today) { await stSet('report', { ...rep, day: today }); await morningReport().catch((e) => console.error('report', e)); }
   // 8. Возврат ушедших — раз в день после 12:00 МСК
   const wb = await stGet('winback', { day: '' });
-  if (hourMsk >= 12 && wb.day !== today) { await stSet('winback', { day: today }); background(winback().catch((e) => console.error('winback', e))); }
+  if (hourMsk >= 12 && wb.day !== today) { await stSet('winback', { day: today }); background(winback().catch((e) => console.error('winback', e))); background(cardsCleanup().catch((e) => console.error('cards cleanup', e))); }
 }
 
 // Пробный период закончился и PRO не купили — пишем один раз, с итогами недели
@@ -1826,21 +1826,79 @@ async function blAdmin(act: string, body: Record<string, unknown>) {
 }
 
 /* ---------- Курс в любом чате: @P2ProAppBot (инлайн-режим включается в @BotFather → /setinline) ---------- */
-// Пусто или «курс» — карточка курса USDT. «50000 92.1 93.4» — быстрый расчёт сделки: сумма, курс покупки, курс продажи
+// Пусто или «курс» — карточка курса USDT. «50000 92.1 93.4» — карточка расчёта сделки: сумма, курс покупки, курс продажи.
+// В чат уходит картинка: Telegram берёт её по ссылке и только в JPEG, поэтому рисуем PNG → JPEG и кладём в публичное хранилище
+// (папка cards в хранилище avatars). Картинки старше суток удаляются раз в день
 const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const money2 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+async function svgJpeg(svg: string) {
+  const r = await renderer();
+  const img = new r.Resvg(svg, { font: { fontBuffers: r.fonts, defaultFontFamily: 'Onest', loadSystemFonts: false }, fitTo: { mode: 'width', value: 1080 } }).render();
+  const jpeg = (await import('npm:jpeg-js@0.4.4')).default;
+  return new Uint8Array(jpeg.encode({ data: img.pixels, width: img.width, height: img.height }, 88).data);
+}
+async function cardUrl(path: string, make: () => Promise<Uint8Array>) {
+  const url = admin.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+  const head = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(3000) }).catch(() => null);
+  if (head?.ok) return url;   // такую карточку уже рисовали — берём готовую
+  const { error } = await admin.storage.from('avatars').upload(path, await make(), { contentType: 'image/jpeg', upsert: true });
+  if (error) throw error;
+  return url;
+}
+async function cardsCleanup() {
+  const keep = new Set([mskDay(Date.now()), mskDay(Date.now() - DAY)]);
+  const { data } = await admin.storage.from('avatars').list('cards', { limit: 100 });
+  for (const d of (data ?? []) as { name: string }[]) {
+    if (keep.has(d.name)) continue;
+    const { data: files } = await admin.storage.from('avatars').list(`cards/${d.name}`, { limit: 1000 });
+    const paths = ((files ?? []) as { name: string }[]).map((f) => `cards/${d.name}/${f.name}`);
+    if (paths.length) await admin.storage.from('avatars').remove(paths);
+  }
+}
+function dealCardSvg(d: { sum: number; buy: number; sell: number; usdt: number; out: number; profit: number; pct: number }) {
+  const W = 1080, H = 1080, pos = d.profit >= 0, col = pos ? '#3CD38A' : '#FF6B6B', sg = pos ? '+' : '−';
+  const big = `${sg}${money2(Math.abs(d.profit))} ₽`, fs = big.length > 14 ? 92 : big.length > 11 ? 110 : 128;
+  const cell = (i: number, name: string, v: string) => { const cx = 100 + (i % 2) * 450, cy = 560 + Math.floor(i / 2) * 130;
+    return `<rect x="${cx}" y="${cy}" width="430" height="112" rx="24" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".08"/>
+      <text x="${cx + 28}" y="${cy + 44}" font-family="Onest" font-size="26" fill="#8691A2">${name}</text>
+      <text x="${cx + 28}" y="${cy + 88}" font-family="Onest" font-weight="600" font-size="36" fill="#E8ECF2">${v}</text>`; };
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs><radialGradient id="g1" cx="20%" cy="12%" r="60%"><stop offset="0" stop-color="#F2B54B" stop-opacity=".2"/><stop offset="1" stop-color="#F2B54B" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="85%" cy="40%" r="55%"><stop offset="0" stop-color="${col}" stop-opacity=".16"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs>
+  <rect width="${W}" height="${H}" fill="#0C0F14"/><rect width="${W}" height="${H}" fill="url(#g1)"/><rect width="${W}" height="${H}" fill="url(#g2)"/>
+  <rect x="100" y="90" width="100" height="100" rx="28" fill="#F2B54B"/>
+  <text x="150" y="150" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="38" fill="#1B1405">P2</text>
+  <text x="150" y="174" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="13" letter-spacing="4" fill="#1B1405">PRO</text>
+  <text x="226" y="138" font-family="Unbounded" font-weight="800" font-size="40" fill="#E8ECF2">Расчёт сделки</text>
+  <text x="226" y="178" font-family="Onest" font-size="26" fill="#8691A2">USDT · рубли</text>
+  <text x="100" y="300" font-family="Onest" font-weight="600" font-size="28" letter-spacing="8" fill="${col}">${pos ? 'ПРИБЫЛЬ' : 'УБЫТОК'}</text>
+  <text x="94" y="420" font-family="Unbounded" font-weight="800" font-size="${fs}" fill="${col}">${big}</text>
+  <text x="100" y="484" font-family="Onest" font-size="32" fill="#8691A2">${sg}${money2(Math.abs(d.pct))}% к сумме сделки</text>
+  ${cell(0, 'Сумма', `${money2(d.sum)} ₽`)}${cell(1, 'USDT', money2(d.usdt))}
+  ${cell(2, 'Курс покупки', `${money2(d.buy)} ₽`)}${cell(3, 'Курс продажи', `${money2(d.sell)} ₽`)}
+  ${cell(4, 'Получено', `${money2(d.out)} ₽`)}${cell(5, 'Спред', `${money2((d.sell - d.buy) / d.buy * 100)}%`)}
+  <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">Без комиссий бирж · точный расчёт в P2Pro</text>
+  <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
+}
 async function inlineAnswer(q: { id: string; query?: string }) {
-  const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
+  const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]), day = mskDay(Date.now());
+  const photo = (id: string, url: string, title: string, description: string, caption: string) =>
+    ({ type: 'photo', id, photo_url: url, thumbnail_url: url, photo_width: 1080, photo_height: 1080, title, description, caption, parse_mode: 'HTML', reply_markup: open });
   const m = (q.query ?? '').trim().replace(/(\d),(\d)/g, '$1.$2').match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
   if (m) {
     const sum = +m[1], buy = +m[2], sell = +m[3];
-    if (sum > 0 && buy > 0 && sell > 0 && sum < 1e10) {
+    if (sum > 0 && buy > 0 && sell > 0 && sum < 1e10 && buy < 1e6 && sell < 1e6) {
       const usdt = sum / buy, out = usdt * sell, profit = out - sum, pct = profit / sum * 100, sg = profit >= 0 ? '+' : '−';
-      results.push({ type: 'article', id: 'deal', title: `Прибыль ${sg}${money2(Math.abs(profit))} ₽ (${sg}${money2(Math.abs(pct))}%)`,
-        description: `${money2(sum)} ₽ · купил по ${money2(buy)} · продал по ${money2(sell)}`, thumbnail_url: `${APP}icons/icon-192.png`,
-        input_message_content: { parse_mode: 'HTML', message_text: `🧮 <b>Расчёт сделки</b>\n\nСумма: <b>${money2(sum)} ₽</b>\nКупил по ${money2(buy)} ₽ → <b>${money2(usdt)} USDT</b>\n` +
-          `Продал по ${money2(sell)} ₽ → <b>${money2(out)} ₽</b>\n\nПрибыль: <b>${sg}${money2(Math.abs(profit))} ₽</b> (${sg}${money2(Math.abs(pct))}%)\n<i>Без комиссий бирж — точный расчёт в @P2ProAppBot</i>` },
-        reply_markup: open });
+      const title = `Прибыль ${sg}${money2(Math.abs(profit))} ₽ (${sg}${money2(Math.abs(pct))}%)`, desc = `${money2(sum)} ₽ · купил по ${money2(buy)} · продал по ${money2(sell)}`;
+      const text = `🧮 <b>Расчёт сделки</b>\n\nСумма: <b>${money2(sum)} ₽</b>\nКупил по ${money2(buy)} ₽ → <b>${money2(usdt)} USDT</b>\n` +
+        `Продал по ${money2(sell)} ₽ → <b>${money2(out)} ₽</b>\n\nПрибыль: <b>${sg}${money2(Math.abs(profit))} ₽</b> (${sg}${money2(Math.abs(pct))}%)\n<i>Без комиссий бирж — точный расчёт в @P2ProAppBot</i>`;
+      try {
+        const url = await cardUrl(`cards/${day}/deal-${sum}-${buy}-${sell}.jpg`, () => svgJpeg(dealCardSvg({ sum, buy, sell, usdt, out, profit, pct })));
+        results.push(photo('deal', url, title, desc, text));
+      } catch (e) {
+        console.error('inline deal card', e);
+        results.push({ type: 'article', id: 'deal', title, description: desc, thumbnail_url: `${APP}icons/icon-192.png`, input_message_content: { parse_mode: 'HTML', message_text: text }, reply_markup: open });
+      }
     }
   }
   const main = await usdtRate();
@@ -1848,10 +1906,20 @@ async function inlineAnswer(q: { id: string; query?: string }) {
     const vals = await Promise.all(RP_FIATS.map(([c]) => fiatRate(c)));
     const now = new Date(), when = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }) + ', ' + now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
     const ch = `${main.ch >= 0 ? '+' : '−'}${rub2(Math.abs(main.ch))}%`;
-    const fiats = RP_FIATS.map(([, name, sym], i) => vals[i] ? `${name}: ${vals[i] >= 1000 ? Math.round(vals[i]).toLocaleString('ru-RU') : rub2(vals[i])} ${sym}` : '').filter(Boolean).join(' · ');
-    results.push({ type: 'article', id: 'rate', title: `Курс USDT: ${rub2(main.rate)} ₽`, description: `${ch} за сутки · биржа xRocket`, thumbnail_url: `${APP}icons/icon-192.png`,
-      input_message_content: { parse_mode: 'HTML', message_text: `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${ch} за сутки)\n${fiats}\n\nБиржа xRocket · курс через @P2ProAppBot` },
-      reply_markup: open });
+    const fiats = RP_FIATS.map(([, name, sym], i) => ({ name, v: vals[i] ? `${vals[i] >= 1000 ? Math.round(vals[i]).toLocaleString('ru-RU') : rub2(vals[i])} ${sym}` : '—' }));
+    const title = `Курс USDT: ${rub2(main.rate)} ₽`, desc = `${ch} за сутки · биржа xRocket`;
+    const text = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${ch} за сутки)\n${fiats.filter((f) => f.v !== '—').map((f) => `${f.name}: ${f.v}`).join(' · ')}\n\nБиржа xRocket · курс через @P2ProAppBot`;
+    try {
+      // Карточка курса обновляется раз в 10 минут: все, кто шлёт курс в эти 10 минут, получают одну и ту же картинку
+      const url = await cardUrl(`cards/${day}/rate-${Math.floor(Date.now() / 600e3)}.jpg`, async () => {
+        const { data: hist } = await admin.from('rate_history').select('usdt').gte('ts', new Date(Date.now() - DAY).toISOString()).order('ts');
+        return svgJpeg(rateCardSvg({ when, rate: `${rub2(main.rate)} ₽`, ch: main.ch, hist: ((hist ?? []) as { usdt: number }[]).map((h) => +h.usdt), fiats }));
+      });
+      results.push(photo('rate', url, title, desc, text));
+    } catch (e) {
+      console.error('inline rate card', e);
+      results.push({ type: 'article', id: 'rate', title, description: desc, thumbnail_url: `${APP}icons/icon-192.png`, input_message_content: { parse_mode: 'HTML', message_text: text }, reply_markup: open });
+    }
   }
   await tg('answerInlineQuery', { inline_query_id: q.id, results, cache_time: 60, is_personal: false, button: { text: '🚀 Открыть P2Pro', start_parameter: 'inline' } });
 }

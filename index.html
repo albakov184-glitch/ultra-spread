@@ -574,13 +574,24 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 /* общая база мошенников */
 .bl-banner { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, rgba(255,107,107,.15), rgba(242,181,75,.07)); border: 1px solid rgba(255,107,107,.28); }
 .bl-banner b, .bl-warn b { display: block; } .bl-banner span, .bl-warn span { font-size: 13px; color: var(--muted); }
-.bl-ic { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(145deg, #FF8A8A, #C23B3B); display: grid; place-items: center; font-size: 19px; flex: none; box-shadow: 0 8px 18px -8px #FF6B6B; }
+.bl-ic { position: relative; overflow: hidden; width: 40px; height: 40px; border-radius: 12px; color: #fff; background: linear-gradient(145deg, #FF8A8A, #C23B3B); display: grid; place-items: center; flex: none;
+  box-shadow: 0 8px 18px -8px #FF6B6B, inset 0 1px 0 rgba(255,255,255,.35); }
+.bl-ic svg { width: 21px; height: 21px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.bl-ic::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.45) 50%, transparent 65%); transform: translateX(-130%); animation: blShine 5s ease-in-out infinite 1s; }
+@keyframes blShine { 0%, 72% { transform: translateX(-130%); } 88%, 100% { transform: translateX(130%); } }
+.bl-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; } .bl-btn svg { width: 17px; height: 17px; flex: none; }
+.bl-ok { display: flex; align-items: center; gap: 10px; } .bl-ok-ic { width: 26px; height: 26px; border-radius: 50%; background: var(--pos); color: #fff; display: grid; place-items: center; flex: none; } .bl-ok-ic svg { width: 15px; height: 15px; }
+.bl-pill { display: inline-flex; align-items: center; gap: 6px; } .bl-pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.wait.bl-pill i { animation: blPulse 1.4s ease-in-out infinite; } @keyframes blPulse { 50% { opacity: .3; } }
+.bl-note { display: flex; align-items: center; gap: 8px; } .bl-note svg { width: 17px; height: 17px; flex: none; }
+.br-drop svg { width: 20px; height: 20px; margin-right: 8px; flex: none; }
 .bl-warn { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 14px; background: var(--neg-soft); border: 1px solid rgba(255,107,107,.3); }
 .bl-warn b { color: var(--neg); }
 .bl-ok { padding: 12px; border-radius: 14px; background: var(--pos-soft); color: var(--pos); font-weight: 600; }
 .bl-res { display: flex; flex-direction: column; gap: 10px; } .bl-res:empty { display: none; }
 .bl-chip { background: var(--neg-soft); color: var(--neg); border-color: rgba(255,107,107,.35); }
-.bl-hit { grid-column: 1 / -1; font-size: 12.5px; font-weight: 600; color: var(--neg); background: var(--neg-soft); padding: 6px 10px; border-radius: 9px; }
+.bl-hit { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--neg); background: var(--neg-soft); padding: 6px 10px; border-radius: 9px; }
+.bl-hit svg { width: 15px; height: 15px; flex: none; }
 .cp-item.bl-bad { border-color: rgba(255,107,107,.45); background: linear-gradient(135deg, rgba(255,107,107,.09), transparent); }
 .bl-reps { display: flex; flex-direction: column; gap: 12px; }
 .bl-rep { gap: 8px; }
@@ -1343,7 +1354,7 @@ img { max-width: 100%; }
     <!-- Контрагенты (PRO) -->
     <div id="tool-cp" class="pro-wrap" hidden>
       <div id="cpBody" class="app">
-        <div class="bl-banner"><div class="bl-ic">🛡</div><div><b>Общая база P2Pro</b><span id="blTotal">мошенники, проверенные модератором</span></div></div>
+        <div class="bl-banner"><div class="bl-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg></div><div><b>Общая база P2Pro</b><span id="blTotal">мошенники, проверенные модератором</span></div></div>
         <div class="seg sm" id="cpTabs"><button data-cpt="mine" class="on">Мои</button><button data-cpt="check">Проверить ник</button><button data-cpt="reports">Мои жалобы</button></div>
         <div class="card" data-pane="mine">
           <div class="card-h"><span class="card-t">Добавить контрагента</span><button class="info" data-info="cp" aria-label="Зачем контрагенты">i</button></div>
@@ -1362,14 +1373,14 @@ img { max-width: 100%; }
         </div>
         <div class="chips" id="cpFilter" data-pane="mine"></div>
         <div class="list" id="cpListView" data-pane="mine"></div>
-        <button class="btn danger" data-blreport="" data-pane="mine">🚩 Пожаловаться на мошенника</button>
+        <button class="btn danger bl-btn" data-blreport="" data-pane="mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>Пожаловаться на мошенника</button>
         <div class="card" data-pane="check" hidden>
           <div class="card-h"><span class="card-t">Проверить ник по общей базе</span></div>
           <div class="inp text"><input id="blQ" type="text" placeholder="Ник на бирже" aria-label="Ник для проверки" maxlength="40" enterkeyhint="search"></div>
-          <button class="btn primary" id="blGo">🛡 Проверить</button>
+          <button class="btn primary bl-btn" id="blGo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>Проверить</button>
           <div id="blRes" class="bl-res"></div>
         </div>
-        <div data-pane="reports" hidden class="bl-reps"><div id="blMine" class="list"></div><button class="btn danger" data-blreport="">🚩 Новая жалоба</button></div>
+        <div data-pane="reports" hidden class="bl-reps"><div id="blMine" class="list"></div><button class="btn danger bl-btn" data-blreport=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>Новая жалоба</button></div>
       </div>
       <div class="paywall" id="cpPaywall">
         <div class="card">
@@ -2224,7 +2235,7 @@ function renderCp(fromBase) {
     const deals = cpDeals(c.name), turn = curJoin(byCur(deals.map(x => ({ cur: x.t.cur, v: +x.amount || 0 })), x => x.v), (v, cur) => `${hid(nf0.format(v))} ${SYM[cur]}`);
     return `<div class="cp-item${blHit(c.name) ? ' bl-bad' : ''}" role="button" tabindex="0" data-cpopen="${esc(c.name)}" aria-label="Открыть ${esc(c.name)}"><b>${esc(c.name)}</b><span class="pill ${c.status}">${CPS[c.status]}</span>
       <span class="muted small">${deals.length ? `Сделок: ${deals.length} · ${turn}` : 'Сделок пока нет'}${c.note ? ` · ${esc(c.note)}` : ''}</span><button class="icon-btn" data-cpdel="${esc(c.name)}" aria-label="Удалить ${esc(c.name)}">×</button>
-      ${blHit(c.name) ? `<span class="bl-hit">⚠️ В общей базе · ${blHit(c.name).n} ${plural(blHit(c.name).n, 'жалоба', 'жалобы', 'жалоб')}, последняя ${blAgo(blHit(c.name).last)}</span>` : ''}</div>`;
+      ${blHit(c.name) ? `<span class="bl-hit">${BLI.alert}В общей базе · ${blHit(c.name).n} ${plural(blHit(c.name).n, 'жалоба', 'жалобы', 'жалоб')}, последняя ${blAgo(blHit(c.name).last)}</span>` : ''}</div>`;
   }).join('') : S.cps.length ? emptyHtml('search', 'Никого не нашли', 'Попробуйте другой фильтр')
     : emptyHtml('people', 'Список пуст', 'Добавьте первого контрагента выше — или впишите ник в расчёте сделки');
 }
@@ -2252,8 +2263,8 @@ function openCp(name) {
   sheet(`
     <div class="card-h"><h3>${esc(c.name)}</h3><span class="pill ${c.status}">${CPS[c.status]}</span></div>
     <div class="chips" style="flex-wrap:wrap">${['good', 'mid', 'bad', 'new'].map(k => `<button data-cpset="${k}" data-name="${esc(c.name)}" class="chip ${c.status === k ? 'on' : ''}">${{ good: 'Надёжный', mid: 'Осторожно', bad: 'Мошенник', new: 'Без отметки' }[k]}</button>`).join('')}</div>
-    ${blHit(c.name) ? `<div class="bl-warn"><div class="bl-ic">⚠️</div><div><b>В общей базе P2Pro</b><span>${blHit(c.name).n} ${plural(blHit(c.name).n, 'жалоба', 'жалобы', 'жалоб')}: ${esc(blKinds(blHit(c.name)))}</span></div></div>` : ''}
-    <div class="row2"><button class="btn" data-blcheck="${esc(c.name)}">🛡 Проверить в общей базе</button><button class="btn danger" data-blreport="${esc(c.name)}">🚩 Пожаловаться</button></div>
+    ${blHit(c.name) ? `<div class="bl-warn"><div class="bl-ic">${BLI.alert}</div><div><b>В общей базе P2Pro</b><span>${blHit(c.name).n} ${plural(blHit(c.name).n, 'жалоба', 'жалобы', 'жалоб')}: ${esc(blKinds(blHit(c.name)))}</span></div></div>` : ''}
+    <div class="row2"><button class="btn bl-btn" data-blcheck="${esc(c.name)}">${BLI.shield}Проверить в базе</button><button class="btn danger bl-btn" data-blreport="${esc(c.name)}">${BLI.flag}Пожаловаться</button></div>
     <div class="inp text"><input id="cpEditNote" data-name="${esc(c.name)}" type="text" value="${esc(c.note || '')}" placeholder="Общая заметка о человеке" aria-label="Общая заметка"></div>
     <div class="cp-stats">
       <div class="kpi"><span class="label">Сделок</span><span class="v">${deals.length}</span></div>
@@ -2274,6 +2285,8 @@ function openCp(name) {
 // Жалобы пользователей проверяет модератор P2Pro; одобренные попадают в общую базу. Кто пожаловался — не показываем.
 // Данные идут через сервер (функция telegram-bot), он же проверяет, что у человека PRO
 const BL = { total: null, base: {}, at: 0, asked: new Set() };
+// Иконки общей базы — линейные, в стиле приложения
+const BLI = { shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>', alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>', flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>', check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>', gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="5" rx="1.5"/><path d="M5 13v8h14v-8M12 8v13M12 8S10.5 3 7.8 4.2C5.6 5.2 8 8 12 8zm0 0s1.5-5 4.2-3.8C18.4 5.2 16 8 12 8z"/></svg>' };
 const BL_KINDS = { nopay: 'Не оплатил', cancel: 'Отменил после оплаты', fake: 'Фейковый чек', third: 'Третьи лица', rude: 'Грубость, угрозы' };
 let cpTab = 'mine';
 const blKey = n => String(n || '').trim().replace(/^@+/, '').replace(/\s+/g, ' ').slice(0, 40).toLowerCase();
@@ -2310,8 +2323,8 @@ function blAsk(nick) {   // ник вписали в расчёте — спро
 const blHit = name => BL.base[blKey(name)];
 const blKinds = h => Object.entries(h.kinds || {}).map(([k, n]) => k.toLowerCase() + (n > 1 ? ' ×' + n : '')).join(', ');
 function blDetailHtml(j) {
-  if (!j.found) return `<div class="bl-ok">✓ <b>${esc('@' + j.nick)}</b> в общей базе не найден</div><span class="muted small">Это не гарантия честности — база пополняется жалобами пользователей.</span>`;
-  return `<div class="bl-warn"><div class="bl-ic">⚠️</div><div><b>Отмечен как мошенник</b><span>${j.n} ${plural(j.n, 'подтверждённая жалоба', 'подтверждённые жалобы', 'подтверждённых жалоб')} · первая ${fmtDay(dayKey(j.first))}, последняя ${fmtDay(dayKey(j.last))}</span></div></div>
+  if (!j.found) return `<div class="bl-ok"><span class="bl-ok-ic">${BLI.check}</span><span><b>${esc('@' + j.nick)}</b> в общей базе не найден</span></div><span class="muted small">Это не гарантия честности — база пополняется жалобами пользователей.</span>`;
+  return `<div class="bl-warn"><div class="bl-ic">${BLI.alert}</div><div><b>Отмечен как мошенник</b><span>${j.n} ${plural(j.n, 'подтверждённая жалоба', 'подтверждённые жалобы', 'подтверждённых жалоб')} · первая ${fmtDay(dayKey(j.first))}, последняя ${fmtDay(dayKey(j.last))}</span></div></div>
     <div class="chips" style="flex-wrap:wrap">${Object.entries(j.kinds).map(([k, n]) => `<span class="chip bl-chip">${esc(k)} · ${n}</span>`).join('')}</div>
     <div class="list">${j.items.map(x => `<div class="item" style="cursor:default"><div style="min-width:0"><div class="l1">${fmtDay(dayKey(x.at))} · ${esc(x.kind)}</div>${x.note ? `<div class="l3">«${esc(x.note)}»</div>` : ''}</div></div>`).join('')}</div>
     <span class="muted small">Кто пожаловался — не показываем. Каждую жалобу проверяет модератор P2Pro по скрину.</span>`;
@@ -2325,7 +2338,7 @@ async function blCheck(nick, into) {
     const j = await blCall('detail', { nick: n }), html = blDetailHtml(j);
     if (j.found) { BL.base[n] = { n: j.n, last: j.last, kinds: j.kinds }; } else delete BL.base[n];
     BL.asked.add(n);
-    const tail = j.found && !findCp(n) ? `<button class="btn" data-bladd="${esc(n)}">Добавить к себе в «Мошенники»</button>` : `<button class="btn danger" data-blreport="${esc(n)}">🚩 Пожаловаться на ${esc('@' + n)}</button>`;
+    const tail = j.found && !findCp(n) ? `<button class="btn" data-bladd="${esc(n)}">Добавить к себе в «Мошенники»</button>` : `<button class="btn danger bl-btn" data-blreport="${esc(n)}">${BLI.flag}Пожаловаться на ${esc('@' + n)}</button>`;
     if (box) box.innerHTML = html + tail; else if ($('blSheetRes')) $('blSheetRes').innerHTML = html + tail;
   } catch (e) { const t = `<div class="note-box bad">${esc(e.message)}</div>`; if (box) box.innerHTML = t; else if ($('blSheetRes')) $('blSheetRes').innerHTML = t; }
 }
@@ -2349,7 +2362,7 @@ function blReportSheet(nick = '') {
     <textarea class="copy-area" id="brNote" placeholder="Опишите, что произошло: сумма, биржа, как обманул" maxlength="1000" style="min-height:84px;font-family:var(--f-body);font-size:14.5px"></textarea>
     <b style="font-size:14px">Доказательство <span class="muted" style="font-weight:500">· обязательно</span></b>
     <div class="br-shots" id="brShots"></div>
-    <label class="br-drop" id="brAdd">＋ Добавить скрин переписки, чека или ордера<input type="file" id="brFile" accept="image/*" multiple hidden></label>
+    <label class="br-drop" id="brAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>Добавить скрин переписки, чека или ордера<input type="file" id="brFile" accept="image/*" multiple hidden></label>
     <button class="btn primary block" id="brGo">Отправить на проверку</button>
     <span class="muted small" style="text-align:center">Ложные жалобы удаляются. Ваше имя другим не показывается</span>`);
   const drawShots = () => {
@@ -2379,11 +2392,11 @@ async function blMine() {
   const box = $('blMine'); box.innerHTML = '<div class="sk" style="height:90px;border-radius:14px"></div>';
   try {
     const { list } = await blCall('mine');
-    const st = { pending: ['wait', '⏳ На проверке'], approved: ['good', '✓ Одобрена'], rejected: ['bad', '✕ Отклонена'] };
-    box.innerHTML = list.length ? list.map(r => `<div class="card bl-rep"><div class="card-h"><b>${esc('@' + r.nick)}</b><span class="pill ${st[r.status][0]}">${st[r.status][1]}</span></div>
+    const st = { pending: ['wait', 'На проверке'], approved: ['good', 'Одобрена'], rejected: ['bad', 'Отклонена'] };
+    box.innerHTML = list.length ? list.map(r => `<div class="card bl-rep"><div class="card-h"><b>${esc('@' + r.nick)}</b><span class="pill ${st[r.status][0]} bl-pill"><i></i>${st[r.status][1]}</span></div>
       <span class="muted small">${esc(r.kind)} · ${fmtDay(dayKey(r.at))}</span>
       ${r.status === 'pending' ? '<span class="muted small">Обычно проверяем в течение дня</span>' : ''}
-      ${r.status === 'approved' && r.reward ? `<div class="note-box good">🎁 Спасибо! Вам начислено: ${esc(r.reward)}</div>` : r.status === 'approved' ? '<div class="note-box good">Ник добавлен в общую базу. Спасибо!</div>' : ''}
+      ${r.status === 'approved' && r.reward ? `<div class="note-box good bl-note">${BLI.gift}<span>Спасибо! Вам начислено: ${esc(r.reward)}</span></div>` : r.status === 'approved' ? '<div class="note-box good">Ник добавлен в общую базу. Спасибо!</div>' : ''}
       ${r.status === 'rejected' ? `<div class="note-box bad">Причина: ${esc(r.reason)}</div>` : ''}</div>`).join('')
       : emptyHtml('people', 'Жалоб пока нет', 'Если вас обманули — нажмите «Пожаловаться» и приложите скрин');
   } catch (e) { box.innerHTML = `<div class="note-box bad">${esc(e.message)}</div>`; }
