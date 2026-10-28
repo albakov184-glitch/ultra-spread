@@ -703,7 +703,8 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 /* sheet + toast */
 /* Telegram во весь экран: сверху остаются кнопки Telegram («Закрыть», «•••») — сдвигаем всё под них */
 html.tg-fs { --fs-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)); --fs-bot: var(--tg-safe-area-inset-bottom, 0px); }
-html.tg-fs body { padding-top: calc(12px + var(--fs-top)); padding-bottom: calc(104px + var(--fs-bot)); }
+html.tg-fs { padding-top: 0 !important; padding-bottom: 0 !important; }   /* отступ под вырез уже входит в --fs-top — иначе сверху двойная пустота */
+html.tg-fs body { padding-top: calc(4px + var(--fs-top)); padding-bottom: calc(104px + var(--fs-bot)); }
 html.tg-fs .nav { bottom: calc(10px + var(--fs-bot)); }
 html.tg-fs .toast { top: calc(14px + var(--fs-top)); }
 html.tg-fs .ptr { top: calc(8px + var(--fs-top)); }
