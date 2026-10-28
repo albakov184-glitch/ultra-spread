@@ -588,8 +588,10 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .bl-warn { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 14px; background: var(--neg-soft); border: 1px solid rgba(255,107,107,.3); }
 .bl-warn b { color: var(--neg); }
 .bl-ok { padding: 12px; border-radius: 14px; background: var(--pos-soft); color: var(--pos); font-weight: 600; }
-.bl-res { display: flex; flex-direction: column; gap: 10px; } .bl-res:empty { display: none; }
-.bl-chip { background: var(--neg-soft); color: var(--neg); border-color: rgba(255,107,107,.35); }
+.bl-res { display: flex; flex-direction: column; gap: 12px; } .bl-res:empty { display: none; }
+.bl-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.bl-tag { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font-size: 12px; font-weight: 600; line-height: 1.3; color: #FF8A8A; background: rgba(255,107,107,.1); border: 1px solid rgba(255,107,107,.22); }
+.bl-tag b { font-family: var(--f-mono); font-weight: 600; opacity: .8; }
 .bl-hit { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--neg); background: var(--neg-soft); padding: 6px 10px; border-radius: 9px; }
 .bl-hit svg { width: 15px; height: 15px; flex: none; }
 .cp-item.bl-bad { border-color: rgba(255,107,107,.45); background: linear-gradient(135deg, rgba(255,107,107,.09), transparent); }
@@ -699,6 +701,15 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 @keyframes cardUp { from { opacity: 0; transform: translateY(14px) scale(.985); } }
 
 /* sheet + toast */
+/* Telegram во весь экран: сверху остаются кнопки Telegram («Закрыть», «•••») — сдвигаем всё под них */
+html.tg-fs { --fs-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)); --fs-bot: var(--tg-safe-area-inset-bottom, 0px); }
+html.tg-fs body { padding-top: calc(12px + var(--fs-top)); padding-bottom: calc(104px + var(--fs-bot)); }
+html.tg-fs .nav { bottom: calc(10px + var(--fs-bot)); }
+html.tg-fs .toast { top: calc(14px + var(--fs-top)); }
+html.tg-fs .ptr { top: calc(8px + var(--fs-top)); }
+html.tg-fs .pin { padding-top: calc(20px + var(--fs-top)); padding-bottom: calc(16px + var(--fs-bot)); }
+html.tg-fs .auth { padding-top: calc(28px + var(--fs-top)); padding-bottom: calc(24px + var(--fs-bot)); }
+html.tg-fs .sheet { max-height: calc(100vh - var(--fs-top) - 24px); padding-bottom: calc(18px + var(--fs-bot)); }
 .scrim { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; }
 .sheet { width: 100%; max-width: 480px; max-height: 88vh; overflow-y: auto; background: var(--surface); border-radius: 20px 20px 0 0; border: 1px solid var(--line); border-bottom: 0;
   padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
@@ -2325,7 +2336,7 @@ const blKinds = h => Object.entries(h.kinds || {}).map(([k, n]) => k.toLowerCase
 function blDetailHtml(j) {
   if (!j.found) return `<div class="bl-ok"><span class="bl-ok-ic">${BLI.check}</span><span><b>${esc('@' + j.nick)}</b> в общей базе не найден</span></div><span class="muted small">Это не гарантия честности — база пополняется жалобами пользователей.</span>`;
   return `<div class="bl-warn"><div class="bl-ic">${BLI.alert}</div><div><b>Отмечен как мошенник</b><span>${j.n} ${plural(j.n, 'подтверждённая жалоба', 'подтверждённые жалобы', 'подтверждённых жалоб')} · первая ${fmtDay(dayKey(j.first))}, последняя ${fmtDay(dayKey(j.last))}</span></div></div>
-    <div class="chips" style="flex-wrap:wrap">${Object.entries(j.kinds).map(([k, n]) => `<span class="chip bl-chip">${esc(k)} · ${n}</span>`).join('')}</div>
+    <div class="bl-tags">${Object.entries(j.kinds).map(([k, n]) => `<span class="bl-tag">${esc(k)}${n > 1 ? `<b>×${n}</b>` : ''}</span>`).join('')}</div>
     <div class="list">${j.items.map(x => `<div class="item" style="cursor:default"><div style="min-width:0"><div class="l1">${fmtDay(dayKey(x.at))} · ${esc(x.kind)}</div>${x.note ? `<div class="l3">«${esc(x.note)}»</div>` : ''}</div></div>`).join('')}</div>
     <span class="muted small">Кто пожаловался — не показываем. Каждую жалобу проверяет модератор P2Pro по скрину.</span>`;
 }
@@ -2333,7 +2344,7 @@ async function blCheck(nick, into) {
   const n = blKey(nick); if (n.length < 2) return toast('Впишите ник');
   const box = into ? $(into) : null;
   if (box) box.innerHTML = '<div class="sk" style="height:120px;border-radius:14px"></div>';
-  else sheet(`<h3>${esc('@' + n)}</h3><div id="blSheetRes"><div class="sk" style="height:160px;border-radius:14px"></div></div><button class="btn" data-close>Закрыть</button>`);
+  else sheet(`<h3>${esc('@' + n)}</h3><div id="blSheetRes" class="bl-res"><div class="sk" style="height:160px;border-radius:14px"></div></div><button class="btn" data-close>Закрыть</button>`);
   try {
     const j = await blCall('detail', { nick: n }), html = blDetailHtml(j);
     if (j.found) { BL.base[n] = { n: j.n, last: j.last, kinds: j.kinds }; } else delete BL.base[n];
@@ -4351,6 +4362,13 @@ function tgInit() {
   const tg = window.Telegram?.WebApp; if (!tg?.initData) return;
   try {
     tg.ready(); tg.expand(); tg.disableVerticalSwipes?.();
+    // На телефоне — во весь экран, без шапки Telegram (Telegram 8.0+). Отступы сверху под кнопки Telegram задают переменные --tg-*-safe-area-*
+    if (['ios', 'android'].includes(tg.platform) && tg.isVersionAtLeast?.('8.0') && tg.requestFullscreen) {
+      document.documentElement.classList.add('tg-fs');
+      tg.onEvent?.('fullscreenFailed', () => document.documentElement.classList.remove('tg-fs'));
+      tg.onEvent?.('fullscreenChanged', () => document.documentElement.classList.toggle('tg-fs', !!tg.isFullscreen));
+      tg.requestFullscreen();
+    }
     const bg = getComputedStyle(document.body).backgroundColor;
     tg.setHeaderColor?.(bg); tg.setBackgroundColor?.(bg); tg.setBottomBarColor?.(bg);
   } catch (e) {}

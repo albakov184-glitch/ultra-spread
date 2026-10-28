@@ -104,7 +104,7 @@ const MENU = () => kb([
   [{ text: '📢 Канал', callback_data: 'ch' }, { text: '💱 Курс в канал', callback_data: 'rc' }],
   [{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '🌅 Утренний отчёт', callback_data: 'rp' }],
   [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🛡 Чёрный список', callback_data: 'bl:m' }],
-  [{ text: '🖥 Веб-админка', callback_data: 'wa' }],
+  [{ text: '🩺 Сторож', callback_data: 'hw' }, { text: '🖥 Веб-админка', callback_data: 'wa' }],
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
@@ -561,7 +561,7 @@ function renderer() {
   })().catch((e) => { rsv = null; throw e; });
 }
 
-function dayCardSvg(d: { pro: boolean; date: string; rate: string; title: string; big: string; pos: boolean; sub: string; count: string; turnover: string; best: string; goalLabel: string; goal: string; pair: string }) {
+function dayCardSvg(d: { kicker?: string; bestLabel?: string; pairLabel?: string; pro: boolean; date: string; rate: string; title: string; big: string; pos: boolean; sub: string; count: string; turnover: string; best: string; goalLabel: string; goal: string; pair: string }) {
   const W = 1080, H = 1350, x = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
   const col = d.pos ? '#3CD38A' : '#FF6B6B', bw = (W - 220) / 2;
   const box = (bx: number, by: number, w: number, label: string, value: string) => `<rect x="${bx}" y="${by}" width="${w}" height="150" rx="26" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".08"/>
@@ -583,13 +583,13 @@ function dayCardSvg(d: { pro: boolean; date: string; rate: string; title: string
   <text x="250" y="202" font-family="Onest" font-size="28" fill="#8691A2">Учёт P2P-сделок</text>
   <text x="${W - 100}" y="${d.rate ? 152 : 168}" text-anchor="end" font-family="Onest" font-size="28" fill="#8691A2">${x(d.date)}</text>
   ${d.rate ? `<text x="${W - 100}" y="198" text-anchor="end" font-family="JetBrains Mono" font-weight="600" font-size="24" fill="#8691A2">${x(d.rate)}</text>` : ''}
-  <text x="100" y="360" font-family="Onest" font-weight="600" font-size="30" letter-spacing="9" fill="#F2B54B">ИТОГИ ДНЯ</text>
+  <text x="100" y="360" font-family="Onest" font-weight="600" font-size="30" letter-spacing="9" fill="#F2B54B">${x(d.kicker ?? 'ИТОГИ ДНЯ')}</text>
   <text x="100" y="430" font-family="Unbounded" font-weight="800" font-size="46" fill="#E8ECF2">${x(d.title)}</text>
   <text x="96" y="580" font-family="Unbounded" font-weight="800" font-size="${bigSize}" fill="${col}">${x(d.big)}</text>
   <text x="100" y="644" font-family="Onest" font-size="32" fill="#8691A2">${x(d.sub)}</text>
   ${box(100, 700, bw, 'Сделок', d.count)}${box(120 + bw, 700, bw, 'Оборот', d.turnover)}
-  ${box(100, 870, bw, 'Лучшая сделка', d.best)}${box(120 + bw, 870, bw, d.goalLabel, d.goal)}
-  ${box(100, 1040, W - 200, 'Чаще всего', d.pair)}
+  ${box(100, 870, bw, d.bestLabel ?? 'Лучшая сделка', d.best)}${box(120 + bw, 870, bw, d.goalLabel, d.goal)}
+  ${box(100, 1040, W - 200, d.pairLabel ?? 'Чаще всего', d.pair)}
   <line x1="100" y1="${H - 140}" x2="${W - 100}" y2="${H - 140}" stroke="#fff" stroke-opacity=".1"/>
   <text x="100" y="${H - 84}" font-family="Onest" font-size="30" fill="#8691A2">Посчитано в P2Pro</text>
   <text x="${W - 100}" y="${H - 84}" text-anchor="end" font-family="Onest" font-weight="600" font-size="30" fill="#F2B54B">@P2ProAppBot</text>
@@ -839,6 +839,7 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
       toastText = 'Ссылка отправлена';
     }
     else if (k === 'bl') toastText = await blCallback(chatId, msgId, a, b, c);
+    else if (k === 'hw') { toastText = 'Проверяю…'; await show(chatId, msgId, await healthText(), toMenu([{ text: '🔄 Проверить', callback_data: 'hw' }])); }
     else if (k === 'st') await show(chatId, msgId, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (k === 'l') await view(await listView(Number(a) || 0));
     else if (k === 'fs') await show(chatId, msgId, '🔍 Пришлите @ник, почту или Telegram id пользователя.', toMenu());
@@ -999,10 +1000,16 @@ async function adminMessage(msg: Msg): Promise<boolean> {
     const [cmd, a = '', b = ''] = text.split(/\s+/), args = text.split(/\s+/).slice(1);
     const c = cmd.toLowerCase().replace(/@\w+$/, '');
     if (c === '/basepost') { await blPost(chatId, true); return true; }
+    if (c === '/health') { await show(chatId, null, await healthText(), toMenu([{ text: '🔄 Проверить', callback_data: 'hw' }])); return true; }
+    if (c === '/month') {   // свои итоги прошлого месяца — посмотреть, как выглядит рассылка 1-го числа
+      const { data: me } = await admin.from('tg_users').select('user_id').eq('tg_id', ADMIN_ID).maybeSingle();
+      if (me) await monthSend(me.user_id, monthShift(mskDay(Date.now()).slice(0, 7), a === 'now' ? 0 : -1), true);
+      return true;
+    }
     if (c === '/copypack') { await copyPack(chatId, a, args.slice(1).join(' ')); return true; }
     if (c === '/admin') {
       await tg('setMyCommands', { scope: { type: 'chat', chat_id: ADMIN_ID }, commands: [
-        { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' }, { command: 'basepost', description: 'Пост-счётчик базы мошенников' },
+        { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' }, { command: 'basepost', description: 'Пост-счётчик базы мошенников' }, { command: 'health', description: 'Сторож: всё ли работает' }, { command: 'month', description: 'Мои итоги прошлого месяца' },
         { command: 'user', description: 'Карточка: /user @ник' }, { command: 'give', description: 'Выдать PRO: /give @ник 30' },
         { command: 'revoke', description: 'Забрать PRO: /revoke @ник' }, { command: 'promo', description: 'Промокод: /promo КОД ДНИ' },
         { command: 'price', description: 'Цена в ⭐: /price @ник 250 1900' }, { command: 'pricerub', description: 'Цена в ₽: /pricerub @ник 350 2900' }, { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
@@ -1097,7 +1104,12 @@ async function tick() {
   // 7. Утренний отчёт владельцу в 9:00 МСК
   const rep = await stGet('report', { on: true, day: '' });
   if (rep.on && hourMsk >= 9 && rep.day !== today) { await stSet('report', { ...rep, day: today }); await morningReport().catch((e) => console.error('report', e)); }
-  // 8. Возврат ушедших — раз в день после 12:00 МСК
+  // 8. Итоги прошлого месяца — 1-го числа после 11:00 МСК
+  const mo = await stGet('monthly', { m: '' }), lastM = monthShift(today.slice(0, 7), -1);
+  if (today.endsWith('-01') && hourMsk >= 11 && mo.m !== lastM) { await stSet('monthly', { m: lastM }); background(monthlyFanout(lastM).catch((e) => console.error('monthly', e))); }
+  // 9. Сторож: всё ли работает
+  await watchdog().catch((e) => console.error('watchdog', e));
+  // 10. Возврат ушедших — раз в день после 12:00 МСК
   const wb = await stGet('winback', { day: '' });
   if (hourMsk >= 12 && wb.day !== today) { await stSet('winback', { day: today }); background(winback().catch((e) => console.error('winback', e))); background(cardsCleanup().catch((e) => console.error('cards cleanup', e))); }
 }
@@ -1374,7 +1386,7 @@ async function rowsAll<T>(table: string, cols: string, key: string, where?: (q: 
   return out;
 }
 type TgRow = { user_id: string; tg_id: number; username: string | null };
-type PRow = { code: string; name: string; pct: number; note: string; active: boolean; created_at: string };
+type PRow = { code: string; name: string; pct: number; note: string; active: boolean; created_at: string; tg_id?: number | null; tg_name?: string };
 type PRef = { tg_id: number; code: string; name: string; at: string };
 type PPay = { id: number; code: string; amount: number; cur: string; note: string; at: string };
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -1956,6 +1968,174 @@ async function winback() {
   if (n) await tg('sendMessage', { chat_id: ADMIN_ID, text: `👋 Возврат ушедших: напомнили о P2Pro ${n} ${plural(n, 'человеку', 'людям', 'людям')}, кто 10+ дней не записывал сделки.` });
 }
 
+/* ---------- Итоги месяца: 1-го числа после 11:00 МСК каждому, у кого были сделки (карточка рисуется в отдельном запуске) ---------- */
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const MONTHS_PREP = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню', 'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+const MONTHS_CAP = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const monthStart = (m: string) => Date.parse(`${m}-01T00:00:00+03:00`);
+const monthShift = (m: string, k: number) => { const [y, mo] = m.split('-').map(Number), t = y * 12 + (mo - 1) + k; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}`; };
+async function monthTrades(userId: string, from: number, to: number) {
+  const { data } = await admin.from('trades').select('ts, data').eq('user_id', userId).eq('deleted', false)
+    .gte('ts', new Date(from).toISOString()).lt('ts', new Date(to).toISOString()).limit(20000);
+  return ((data ?? []) as DayTrade[]).filter((t) => t.data && isFinite(+t.data.profit!));
+}
+async function monthSummary(userId: string, m: string) {
+  const list = await monthTrades(userId, monthStart(m), monthStart(monthShift(m, 1)));
+  if (!list.length) return null;
+  const byCur = new Map<string, DayTrade[]>();
+  for (const t of list) { const c = t.data.cur || 'RUB'; byCur.set(c, [...(byCur.get(c) ?? []), t]); }
+  const [cur, main] = [...byCur.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+  const profit = main.reduce((a, t) => a + (+t.data.profit! || 0), 0), turnover = main.reduce((a, t) => a + (+t.data.sum! || 0), 0);
+  const days = new Map<string, number>();
+  for (const t of main) { const d = mskDay(Date.parse(t.ts)); days.set(d, (days.get(d) ?? 0) + (+t.data.profit! || 0)); }
+  const [bestDay, bestProfit] = [...days.entries()].sort((a, b) => b[1] - a[1])[0];
+  const count = new Map<string, number>();
+  for (const t of list) { const k = [t.data.ex, t.data.bank].filter(Boolean).join(' · '); if (k) count.set(k, (count.get(k) ?? 0) + 1); }
+  const pair = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
+  const prevList = (await monthTrades(userId, monthStart(monthShift(m, -1)), monthStart(m))).filter((t) => (t.data.cur || 'RUB') === cur);
+  const prev = prevList.length ? prevList.reduce((a, t) => a + (+t.data.profit! || 0), 0) : null;
+  const others = [...byCur.entries()].filter(([c]) => c !== cur).map(([c, l]) => money(l.reduce((a, t) => a + (+t.data.profit! || 0), 0), c));
+  return { n: list.length, cur, profit, turnover, days: [...new Set(list.map((t) => mskDay(Date.parse(t.ts))))].length, bestDay, bestProfit, pair, prev, others };
+}
+async function monthSend(userId: string, m: string, manual = false) {
+  const { data: t } = await admin.from('tg_users').select('tg_id, daily_off').eq('user_id', userId).maybeSingle();
+  if (!t?.tg_id || (t.daily_off && !manual)) return;
+  const mi = +m.slice(5) - 1, y = m.slice(0, 4), pmi = +monthShift(m, -1).slice(5) - 1;
+  const d = await monthSummary(userId, m);
+  if (!d) { if (manual) await tg('sendMessage', { chat_id: t.tg_id, text: `🗓 В ${MONTHS_PREP[mi].replace(/ю$/, 'е').replace(/у$/, 'е')} сделок не было.` }); return; }
+  const pro = isPro(await subOf(userId)), cs = CUR[d.cur] ?? d.cur;
+  const vs = d.prev ? (d.profit - d.prev) / Math.abs(d.prev) * 100 : null, pct = d.turnover ? d.profit / d.turnover * 100 : 0;
+  const pctTxt = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(v >= 100 || v <= -100 ? 0 : 1).replace('.', ',')}%`;
+  const bestDate = new Date(Date.parse(d.bestDay + 'T12:00:00+03:00')).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
+  const text = `🗓 <b>Итоги ${MONTHS_GEN[mi]} ${y}</b>\n\n` +
+    `💰 Прибыль: <b>${money(d.profit, d.cur)}</b>${d.others.length ? ` (и ${d.others.join(', ')})` : ''}\n` +
+    (vs !== null ? `📈 К ${MONTHS_PREP[pmi]}: <b>${pctTxt(vs)}</b>\n` : '') +
+    `🔁 Сделок: ${d.n} · торговых дней: ${d.days} · оборот ${Math.round(d.turnover).toLocaleString('ru-RU')} ${cs}\n` +
+    `🏆 Лучший день: ${bestDate}, ${money(d.bestProfit, d.cur)}\n` +
+    (d.pair ? `🔥 Чаще всего: ${esc(d.pair[0])} (${d.pair[1]})\n` : '') +
+    (pro ? '' : `\n<i>Карточка без водяного знака — в PRO.</i>`);
+  let png: Uint8Array | null = null;
+  try {
+    const r = await renderer();
+    const svg = dayCardSvg({ pro, kicker: 'ИТОГИ МЕСЯЦА', date: `${MONTHS_CAP[mi]} ${y}`, rate: '', title: `${d.n} ${plural(d.n, 'сделка', 'сделки', 'сделок')} · ${d.days} ${plural(d.days, 'день', 'дня', 'дней')}`,
+      big: money(d.profit, d.cur), pos: d.profit >= 0, sub: vs !== null ? `${pctTxt(vs)} к ${MONTHS_PREP[pmi]}` : `${pctTxt(pct)} к обороту`,
+      count: String(d.n), turnover: `${Math.round(d.turnover).toLocaleString('ru-RU')} ${cs}`, bestLabel: `Лучший день · ${bestDate}`, best: money(d.bestProfit, d.cur, 0),
+      goalLabel: 'Торговых дней', goal: String(d.days), pair: d.pair ? `${d.pair[0]} · ${d.pair[1]} ${plural(d.pair[1], 'раз', 'раза', 'раз')}`.slice(0, 40) : '—' });
+    png = new r.Resvg(svg, { font: { fontBuffers: r.fonts, defaultFontFamily: 'Onest', loadSystemFonts: false }, fitTo: { mode: 'width', value: 1080 } }).render().asPng();
+  } catch (e) { console.error('month card', e); }
+  if (png) {
+    const fd = new FormData();
+    fd.append('chat_id', String(t.tg_id)); fd.append('caption', text); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(dayButtons(!!t.daily_off)));
+    fd.append('photo', new Blob([png], { type: 'image/png' }), `P2Pro-${m}.png`);
+    const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+    if (r?.ok) return;
+  }
+  await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: dayButtons(!!t.daily_off) });
+}
+async function monthlyFanout(m: string) {
+  const rows = await rowsAll<{ user_id: string }>('trades', 'user_id', 'ts', (q) => q.eq('deleted', false).gte('ts', new Date(monthStart(m)).toISOString()).lt('ts', new Date(monthStart(monthShift(m, 1))).toISOString()));
+  const withTrades = new Set(rows.map((r) => r.user_id));
+  const tgs = await rowsAll<{ user_id: string; daily_off: boolean | null }>('tg_users', 'user_id, daily_off', 'tg_id');
+  const banned = new Set((await allUsers()).filter(isBanned).map((u) => u.id));
+  const ids = tgs.filter((t) => withTrades.has(t.user_id) && !t.daily_off && !banned.has(t.user_id)).map((t) => t.user_id);
+  for (let i = 0; i < ids.length; i += 5) await Promise.all(ids.slice(i, i + 5).map((uid) => selfCall({ monthly_user: uid, month: m })));
+  await tg('sendMessage', { chat_id: ADMIN_ID, text: `🗓 Итоги ${MONTHS_GEN[+m.slice(5) - 1]} разосланы: ${ids.length} ${plural(ids.length, 'человеку', 'людям', 'людям')}.` });
+}
+
+/* ---------- Кабинет партнёра в боте (23-partner-cabinet.sql) ---------- */
+// Владелец в админке жмёт «Выдать доступ» → получает одноразовую ссылку t.me/P2ProAppBot?start=pc_КОД (7 дней) и отправляет партнёру.
+// Партнёр нажимает «Старт» — его Telegram привязывается к партнёрке, и у него в боте появляется /partner со своей статистикой
+const PC_TTL = 7 * DAY;
+async function partnerInvite(code: string) {
+  const { data: p } = await admin.from('partners').select('code').eq('code', code).maybeSingle();
+  if (!p) throw new Error('Партнёр не найден');
+  const token = [...crypto.getRandomValues(new Uint8Array(16))].map((x) => CODE_ABC[x % 32]).join('');
+  await stSet('pinv:' + token, { code, exp: Date.now() + PC_TTL });
+  return `https://t.me/P2ProAppBot?start=pc_${token}`;
+}
+// У партнёра в меню бота появляется /partner; при отключении меню возвращается к обычному
+const pcCommands = (chat: number, on: boolean) => (on
+  ? tg('setMyCommands', { scope: { type: 'chat', chat_id: chat }, commands: [{ command: 'start', description: 'Открыть P2Pro' }, { command: 'partner', description: 'Кабинет партнёра' }, { command: 'itogi', description: 'Итоги дня прямо сейчас' }] })
+  : tg('deleteMyCommands', { scope: { type: 'chat', chat_id: chat } })).catch(() => null);
+async function partnerUnlink(code: string) {
+  const { error } = await admin.from('partners').update({ tg_id: null, tg_name: '' }).eq('code', code);
+  if (error) throw error;
+}
+async function partnerClaim(from: { id: number; first_name?: string; username?: string }, token: string) {
+  const v = /^[A-Z2-9]{16}$/.test(token) ? await stTake<{ code: string; exp: number }>('pinv:' + token) : null;
+  if (!v || Date.now() > v.exp) return send(from.id, 'Ссылка для кабинета партнёра устарела или уже использована. Попросите новую.', false);
+  const name = (from.username ? '@' + from.username : from.first_name ?? '').slice(0, 64);
+  await admin.from('partners').update({ tg_id: null, tg_name: '' }).eq('tg_id', from.id);   // один Telegram — одна партнёрка
+  const { data, error } = await admin.from('partners').update({ tg_id: from.id, tg_name: name }).eq('code', v.code).select('name, code');
+  if (error || !data?.length) return send(from.id, 'Не получилось подключить кабинет — напишите владельцу P2Pro.', false);
+  await pcCommands(from.id, true);
+  await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `🤝 Партнёр <b>${esc(data[0].name || v.code)}</b> подключил кабинет в боте: ${esc(name) || 'без имени'}` });
+  await partnerCabinet(from.id, null, true);
+}
+async function partnerCabinet(tgId: number, msgId: number | null, hello = false) {
+  const { data: me } = await admin.from('partners').select('code').eq('tg_id', tgId).maybeSingle();
+  if (!me) return false;
+  const d = await partnerData(), p = d.list.find((x) => x.code === me.code);
+  if (!p) return false;
+  const mine = d.people.filter((x) => x.code === p.code), week = mine.filter((x) => Date.now() - Date.parse(x.at) < 7 * DAY).length;
+  const r = (v: number) => Math.round(v).toLocaleString('ru-RU') + ' ₽', st = (v: number) => v ? ` + ${v.toLocaleString('ru-RU')} ⭐` : '';
+  const text = (hello ? `✅ <b>Кабинет партнёра подключён!</b>\nОткрыть его снова — команда /partner.\n\n` : '') +
+    `🤝 <b>Кабинет партнёра P2Pro</b>${p.name ? ' · ' + esc(p.name) : ''}\n\n` +
+    `🔗 Ваша ссылка:\n<code>${p.link}</code>\n💼 Ваш процент: <b>${p.pct.toLocaleString('ru-RU')}%</b> со всех оплат приведённых людей` + (p.active ? '' : '\n⏸ Ссылка сейчас выключена — новые люди не засчитываются') + `\n\n` +
+    `👥 Пришли по ссылке: <b>${p.joined}</b>${week ? ` (+${week} за неделю)` : ''}\n📱 Открыли приложение: ${p.registered}\n` +
+    `💳 Оплатили: <b>${p.payers}</b> · сейчас с PRO: ${p.pro}\n💰 Выручка с ваших людей: ${r(p.rub)}${st(p.stars)}\n\n` +
+    `📈 Ваша доля: <b>${r(p.shareRub)}</b>${st(p.shareStars)}\n✅ Выплачено: ${r(p.paidRub)}${st(p.paidStars)}\n` +
+    `⏳ <b>К выплате: ${r(Math.max(0, p.owedRub))}${st(Math.max(0, p.owedStars))}</b>\n\n<i>Обновлено ${whenText(Date.now())}. Выплаты — по договорённости с владельцем P2Pro.</i>`;
+  const markup = kb([[{ text: '🔄 Обновить', callback_data: 'pc:r' }],
+    [{ text: '📤 Поделиться ссылкой', url: `https://t.me/share/url?url=${encodeURIComponent(p.link)}&text=${encodeURIComponent('P2Pro — калькулятор и журнал P2P-сделок прямо в Telegram')}` }]]);
+  await show(tgId, msgId, text, markup);
+  return true;
+}
+
+/* ---------- Сторож: каждые 10 минут проверяем, что всё работает. Сломалось дважды подряд — пишем владельцу, починилось — тоже ---------- */
+type WatchState = Record<string, { n: number; since: number; alerted: boolean; detail: string }>;
+const WATCH_NAMES: Record<string, string> = { bot: 'Бот не получает сообщения', auth: 'Вход и оплата (функция telegram-auth)', rate: 'Курс USDT (биржа xRocket)', platega: 'Платёжка Platega (СБП и карта)', db: 'База данных' };
+async function watchChecks(): Promise<Record<string, string>> {
+  const bad: Record<string, string> = {};
+  const t = (ms: number) => AbortSignal.timeout(ms);
+  await Promise.all([
+    (async () => { const w = await tg('getWebhookInfo', {});
+      const r = w?.result; if (!w?.ok) bad.bot = 'Telegram не ответил';
+      else if (!r?.url) bad.bot = 'Вебхук бота не настроен';
+      else if (r.last_error_date && Date.now() / 1000 - r.last_error_date < 15 * 60 && (r.pending_update_count ?? 0) > 3) bad.bot = `${r.pending_update_count} сообщений ждут · ${String(r.last_error_message ?? '').slice(0, 120)}`; })(),
+    (async () => { const r = await fetch(`${SB_URL}/functions/v1/telegram-auth`, { method: 'POST', headers: { 'content-type': 'application/json', apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '' }, body: '{}', signal: t(15000) }).catch((e) => e);
+      if (!(r instanceof Response)) bad.auth = 'не отвечает: ' + String((r as Error)?.message ?? r).slice(0, 100);
+      else if (r.status >= 500 || r.status === 404) bad.auth = `ошибка ${r.status}`; })(),
+    (async () => { if (!await usdtRate()) bad.rate = 'курс не получить — не работают итоги дня с курсом и оплата криптой'; })(),
+    (async () => { if (!Deno.env.get('PLATEGA_MERCHANT_ID')) return;
+      const r = await fetch('https://app.platega.io', { method: 'HEAD', signal: t(15000) }).catch((e) => e);
+      if (!(r instanceof Response)) bad.platega = 'сайт Platega не отвечает'; else if (r.status >= 500) bad.platega = `Platega отвечает ошибкой ${r.status}`; })(),
+    (async () => { const { error } = await admin.from('subscriptions').select('user_id', { head: true, count: 'exact' }).limit(1); if (error) bad.db = String(error.message).slice(0, 120); })(),
+  ].map((p) => p.catch((e) => console.error('watch', e))));
+  return bad;
+}
+async function watchdog() {
+  const bad = await watchChecks(), st = await stGet<WatchState>('watch', {}), now = Date.now();
+  for (const k of Object.keys(WATCH_NAMES)) {
+    const s = st[k] ?? { n: 0, since: now, alerted: false, detail: '' };
+    if (bad[k]) {
+      if (!s.n) s.since = now;
+      s.n++; s.detail = bad[k];
+      if (s.n >= 2 && !s.alerted) { s.alerted = true; await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `🚨 <b>Сторож P2Pro: проблема</b>\n\n${WATCH_NAMES[k]}\n<i>${esc(bad[k])}</i>\n\nПроверю снова через 10 минут. Сейчас всё — /health` }); }
+    } else {
+      if (s.alerted) await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `✅ <b>Сторож P2Pro: снова работает</b>\n${WATCH_NAMES[k]} · не работало ~${Math.max(10, Math.round((now - s.since) / 60e3))} мин` });
+      s.n = 0; s.alerted = false; s.detail = '';
+    }
+    st[k] = s;
+  }
+  await stSet('watch', st);
+}
+async function healthText() {
+  const bad = await watchChecks();
+  return `🩺 <b>Сторож P2Pro</b> · ${whenText(Date.now())}\n\n` + Object.entries(WATCH_NAMES).map(([k, n]) => `${bad[k] ? '🔴' : '🟢'} ${n}${bad[k] ? `\n    <i>${esc(bad[k])}</i>` : ''}`).join('\n') +
+    `\n\nПроверяю сам каждые 10 минут. Если что-то сломается — сразу напишу.`;
+}
+
 // Вход по одноразовой ссылке из бота: код забираем одним запросом (второй раз не сработает) и выдаём сессию аккаунта владельца
 // Код из 12 знаков без похожих (0/O, 1/I): ~60 бит — за 5 минут его не подобрать
 const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -2031,6 +2211,13 @@ async function adminApi(body: Record<string, unknown>) {
       return aj({ partner: p, people, payouts: d.pays.filter((x) => x.code === code).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)) });
     }
     if (act === 'partner_save') { await partnerSave(body); return aj({ ok: true }); }
+    if (act === 'partner_invite') return aj({ ok: true, link: await partnerInvite(String(body.code ?? '')) });
+    if (act === 'partner_unlink') {
+      const { data: p } = await admin.from('partners').select('tg_id').eq('code', String(body.code ?? '')).maybeSingle();
+      await partnerUnlink(String(body.code ?? ''));
+      if (p?.tg_id) { await pcCommands(Number(p.tg_id), false); await tg('sendMessage', { chat_id: p.tg_id, text: 'Кабинет партнёра P2Pro отключён владельцем.' }); }
+      return aj({ ok: true });
+    }
     if (act === 'partner_delete') { const { error } = await admin.from('partners').delete().eq('code', String(body.code ?? '')); if (error) throw error; return aj({ ok: true }); }
     if (act === 'partner_payout') {
       const amount = r2(Number(body.amount)), cur = body.cur === 'stars' ? 'stars' : 'rub';
@@ -2072,6 +2259,7 @@ Deno.serve(async (req) => {
       if (!ok && update.rate_post === 'channel') await tg('sendMessage', { chat_id: ADMIN_ID, text: '⚠️ Карточка курса не опубликована: проверьте, что у бота есть право «Публикация сообщений» в канале.' }); }
     return new Response('ok');
   }
+  if (typeof update?.monthly_user === 'string') { if (TOKEN && SERVICE) await monthSend(update.monthly_user, String(update.month ?? '')).catch((e) => console.error('month', e)); return new Response('ok'); }
   if (typeof update?.daily_user === 'string') { if (TOKEN && SERVICE) await dailySend(update.daily_user, String(update.day ?? mskDay(Date.now()))).catch((e) => console.error('daily', e)); return new Response('ok'); }
   const isAdmin = (id?: number) => id === ADMIN_ID && !!SERVICE && !!TOKEN;
   // Курс в любом чате (инлайн-режим)
@@ -2085,6 +2273,7 @@ Deno.serve(async (req) => {
   if (who && !isAdmin(who) && flood(who)) { if (cq) await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Слишком часто — подождите немного' }); return new Response('ok'); }
   if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
   if (cq && /^my:/.test(cq.data ?? '') && SERVICE) { await myCallback(cq).catch((e) => console.error('my', e)); return new Response('ok'); }
+  if (cq && cq.data === 'pc:r' && SERVICE) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Обновляю…' }); await partnerCabinet(cq.from.id, cq.message?.message_id ?? null).catch((e) => console.error('pc', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
   if (cq) {
     if (isAdmin(cq.from?.id)) await adminCallback(cq).catch(() => {});
@@ -2107,6 +2296,10 @@ Deno.serve(async (req) => {
         return new Response('ok');
       }
       if (isAdmin(msg.from?.id) && await adminMessage(msg)) return new Response('ok');
+      // Партнёр подключает свой кабинет по ссылке из админки
+      const pc = text.trim().match(/^\/start pc_([A-Z2-9]{16})$/);
+      if (pc && msg.from && SERVICE) { await partnerClaim(msg.from, pc[1]); return new Response('ok'); }
+      if (/^\/partner(@\w+)?$/i.test(text.trim()) && msg.from && SERVICE) { if (await partnerCabinet(msg.from.id, null)) return new Response('ok'); }
       // Пришёл по ссылке партнёра — запоминаем, затем обычное приветствие
       const pm = text.trim().match(/^\/start p_([A-Za-z0-9_]{2,24})$/);
       if (pm && msg.from && SERVICE) await partnerJoin(msg.from, pm[1]).catch((e) => console.error('partner', e));

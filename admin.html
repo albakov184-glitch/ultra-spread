@@ -817,6 +817,11 @@ function drawPartner(d) {
       <div class="row" ${x.user ? `data-pu="${esc(x.user)}" style="cursor:pointer"` : ''}><div class="ava">${esc(((x.name || x.label || '?').replace('@', '') || '?')[0].toUpperCase())}</div>
         <div class="grow"><div class="t1">${esc(x.nick ? '@' + x.nick : x.name || x.label || 'без имени')}</div><div class="t2">пришёл ${dShort(x.at)} · ${x.registered ? (x.pro ? 'PRO' : 'открыл приложение') : 'ещё не открывал приложение'}</div></div>
         <b class="mono ${x.rub > 0 ? 'pos' : 'muted'}">${x.rub ? rub(x.rub) : x.stars ? stars(x.stars) : '—'}</b></div>`).join('') : '<div class="empty" style="padding:20px">По ссылке ещё никто не пришёл</div>'}</div></div>
+    <div class="sec"><h4>🤖 Кабинет в боте ${p.tg_id ? '<span class="badge ok">подключён</span>' : '<span class="badge">выключен</span>'}</h4>
+      ${p.tg_id ? `<div class="muted small">Партнёр видит свою статистику командой <b class="mono" style="color:var(--fg)">/partner</b> в @P2ProAppBot.<br>Подключён: <b style="color:var(--fg)">${esc(p.tg_name || 'id ' + p.tg_id)}</b></div>
+        <button class="btn danger small" data-pa="unlink" style="align-self:flex-start">Отключить кабинет</button>`
+      : `<div class="muted small">Выдайте доступ — получите ссылку и отправьте её партнёру. Он нажмёт «Старт», и в боте появится команда /partner: сколько людей пришло, кто оплатил, сколько ему начислено и выплачено.</div>
+        <div id="pcInv"></div><button class="btn pri small" data-pa="invite" style="align-self:flex-start">🔗 Выдать доступ</button>`}</div>
     <div class="sec"><h4>⚙️ Настройки</h4>
       <div class="inl"><input class="inp" id="peName" value="${esc(p.name)}" placeholder="Имя" style="flex:1;min-width:150px" maxlength="60"><span class="pct-in"><input class="inp n" id="pePct" type="number" min="0" max="90" step="0.5" value="${p.pct}"><i>%</i></span></div>
       <textarea class="inp" id="peNote" placeholder="Заметка: реквизиты, условия, контакты" style="min-height:70px" maxlength="300">${esc(p.note)}</textarea>
@@ -837,6 +842,15 @@ $('drawer').addEventListener('click', async e => {
   } else if (a === 'undo') { if (!await confirmBox('Удалить выплату?', 'Долг партнёру снова увеличится на эту сумму.', 'Удалить', true)) return; call = ['partner_payout_del', { id: +b.dataset.id }]; }
   else if (a === 'save') call = ['partner_save', { code: p.code, name: $('peName').value, pct: +$('pePct').value, note: $('peNote').value, active: p.active }];
   else if (a === 'toggle') call = ['partner_save', { code: p.code, name: p.name, pct: p.pct, note: p.note, active: !p.active }];
+  else if (a === 'invite') {
+    b.disabled = true;
+    try { const r = await api('partner_invite', { code: p.code });
+      $('pcInv').innerHTML = `<div class="plink big"><span class="mono">${esc(r.link.replace('https://', ''))}</span><button class="btn small pri" data-copy="${esc(r.link)}">Копировать</button></div><p class="hint">Ссылка одноразовая и действует 7 дней. Когда партнёр нажмёт «Старт», вам придёт уведомление.</p>`;
+      b.remove(); copyText(r.link);
+    } catch (err) { toast(err.message, true); b.disabled = false; }
+    return;
+  }
+  else if (a === 'unlink') { if (!await confirmBox('Отключить кабинет?', 'Партнёр больше не увидит статистику в боте. Ссылка партнёра и начисления останутся.', 'Отключить', true)) return; call = ['partner_unlink', { code: p.code }]; }
   else if (a === 'del') { if (!await confirmBox('Удалить партнёра?', 'Ссылка перестанет работать, а вся статистика и выплаты по нему удалятся.', 'Удалить', true)) return; call = ['partner_delete', { code: p.code }]; }
   if (!call) return;
   b.disabled = true;
