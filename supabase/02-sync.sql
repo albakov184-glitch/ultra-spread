@@ -22,6 +22,5 @@ create index if not exists cps_user_upd on public.counterparties (user_id, updat
 -- Функция тест-панели demo_set_sub (только для владельца) создаётся в 03-admin.sql
 
 -- Функции подписки — только для вошедших пользователей
-revoke execute on function public.demo_activate_pro(text, text) from public, anon;
 revoke execute on function public.set_auto_renew(boolean) from public, anon;
 revoke execute on function public.demo_reset_pro() from public, anon;

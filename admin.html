@@ -1024,7 +1024,7 @@ async function openBl(id) {
     let kind = r.kind, rw = 'd3';
     const pend = r.status === 'pending';
     $('drawer').innerHTML = `
-      <div class="dr-head"><div style="min-width:0"><h3>Жалоба №${r.id}</h3><div class="muted small">${esc('@' + (r.shown || r.nick))} · от ${r.who}</div>
+      <div class="dr-head"><div style="min-width:0"><h3>Жалоба №${r.id}</h3><div class="muted small">${esc('@' + (r.shown || r.nick))} · от ${esc(r.who)}</div>
         <div style="margin-top:6px"><span class="badge ${BL_ST[r.status][0]}">${BL_ST[r.status][1]}</span></div></div><button class="x" data-close aria-label="Закрыть">×</button></div>
       ${r.images.length ? r.images.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener" class="proof"><img src="${esc(u)}" alt="Скрин"></a>`).join('') : '<div class="sec muted">Скрина нет</div>'}
       ${r.note ? `<div class="sec"><h4>Описание</h4><div>${esc(r.note)}</div></div>` : ''}

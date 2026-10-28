@@ -343,13 +343,19 @@ async function plWebhook(req: Request, raw: string) {
   try { w = JSON.parse(raw); } catch (_) { return new Response('bad', { status: 400 }); }
   const tx = String(w.id ?? '');
   if (!/^[0-9a-f-]{36}$/i.test(tx)) return new Response('ok');
-  const { data: inv } = await admin.from('crypto_invoices').select('id').eq('pl_id', tx).maybeSingle();
+  const { data: inv } = await admin.from('crypto_invoices').select('id, price_rub').eq('pl_id', tx).maybeSingle();
   if (!inv) return new Response('ok');   // не наш платёж
   const chk = await pl('/transaction/' + tx);
   const live = chk.data?.status as string | undefined;
   if (!chk.ok || !live) { console.error('pl check', chk.status, chk.data); return new Response('retry', { status: 500 }); }   // Platega пришлёт ещё раз
   if (live === 'CONFIRMED') {
     const amt = chk.data?.paymentDetails?.amount, cur = chk.data?.paymentDetails?.currency ?? 'RUB';
+    // Сумма должна покрывать цену счёта: иначе PRO не выдаём и пишем владельцу (счёт создаём мы, так что это сбой или подмена)
+    if (String(cur).toUpperCase() === 'RUB' && Number(amt) + 0.01 < Number(inv.price_rub)) {
+      console.error('pl amount mismatch', inv.id, amt, inv.price_rub);
+      await tgSend(ADMIN_ID, `⚠️ <b>Platega: сумма меньше цены</b>\nСчёт <code>${inv.id}</code>: оплачено ${amt} ${cur}, цена ${inv.price_rub} ₽. PRO не выдан — проверьте вручную.`);
+      return new Response('ok');
+    }
     const { data: g, error } = await admin.rpc('crypto_grant_pro', { p_invoice: inv.id, p_amount: String(amt ?? ''), p_currency: String(cur) });
     if (error) { console.error('pl grant', error); return new Response('retry', { status: 500 }); }
     await grantNotify(g as Grant, inv.id, `${amt ?? ''} ${cur}`, false);

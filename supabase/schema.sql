@@ -71,28 +71,7 @@ end $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();
 
--- ДЕМО-оплата на время тестов: подключает или продлевает PRO без денег.
--- Перед запуском настоящей оплаты удалить: drop function public.demo_activate_pro(text, text);
-create or replace function public.demo_activate_pro(p_period text, p_method text default 'card') returns public.subscriptions
-language plpgsql security definer set search_path = public as $$
-declare
-  s public.subscriptions;
-  add_days int := case when p_period = 'y' then 365 else 30 end;
-  price int := case when p_period = 'y' then 3990 else 490 end;
-begin
-  if auth.uid() is null then raise exception 'not signed in'; end if;
-  insert into public.subscriptions (user_id) values (auth.uid()) on conflict (user_id) do nothing;
-  update public.subscriptions set
-    period = case when p_period = 'y' then 'y' else 'm' end,
-    pro_since = case when pro_until is null or pro_until < now() then now() else pro_since end,
-    pro_until = greatest(coalesce(pro_until, now()), now()) + make_interval(days => add_days),
-    auto_renew = true,
-    pay_method = p_method,
-    payments = jsonb_build_array(jsonb_build_object('ts', now(), 'amount', price, 'period', p_period, 'method', p_method)) || payments,
-    updated_at = now()
-  where user_id = auth.uid() returning * into s;
-  return s;
-end $$;
+-- Демо-оплата из первых версий удалена: PRO выдаёт только сервер после настоящей оплаты (13-security.sql)
 
 -- Включить/выключить автопродление и отменить подписку может сам пользователь
 create or replace function public.set_auto_renew(p_on boolean) returns void
@@ -102,10 +81,11 @@ $$;
 
 -- ДЕМО: вернуть тариф Free (для тест-панели). Перед запуском удалить вместе с demo_activate_pro.
 create or replace function public.demo_reset_pro() returns void
-language sql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'forbidden'; end if;
   update public.subscriptions set pro_until = null, updated_at = now() where user_id = auth.uid();
-$$;
+end $$;
 
-grant execute on function public.demo_activate_pro(text, text) to authenticated;
 grant execute on function public.set_auto_renew(boolean) to authenticated;
 grant execute on function public.demo_reset_pro() to authenticated;

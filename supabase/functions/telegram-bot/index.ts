@@ -1552,10 +1552,11 @@ async function blDownload(path: string) {
 // Жалоба владельцу в бот: скрины + текст + кнопки решения
 const blKb = (id: number) => kb([[{ text: '✅ Одобрить', callback_data: `bl:a:${id}` }, { text: '❌ Отклонить', callback_data: `bl:x:${id}` }],
   [{ text: '✏️ Изменить тип нарушения', callback_data: `bl:t:${id}` }], [{ text: '🖥 Открыть в админке', url: `${APP}admin#bl` }]]);
-async function blWho(uid: string | null) {
+// html = false — обычный текст (админка экранирует сама), true — для сообщений бота с разметкой
+async function blWho(uid: string | null, html = true) {
   if (!uid) return 'владелец (вручную)';
-  const [u, nick, s] = await Promise.all([userById(uid), tgNick(uid), subOf(uid)]);
-  return `${nick ? '@' + esc(nick) : esc(u ? nameOf(u) : 'без имени')}${isPro(s) ? ' (PRO)' : ''}`;
+  const [u, nick, s] = await Promise.all([userById(uid), tgNick(uid), subOf(uid)]), e = html ? esc : (x: string) => x;
+  return `${nick ? '@' + e(nick) : e(u ? nameOf(u) : 'без имени')}${isPro(s) ? ' (PRO)' : ''}`;
 }
 async function blOwnerCard(r: BlRow) {
   const inBase = (await blApproved([r.nick])).length;
@@ -1829,7 +1830,7 @@ async function blAdmin(act: string, body: Record<string, unknown>) {
   if (act === 'bl_get') {
     const r = await blGet(Number(body.id)); if (!r) throw new Error('Жалоба не найдена');
     const [x] = await withNicks([r]);
-    return { report: { ...x, images: (await blSigned(r.proofs)).filter(Boolean), who: await blWho(r.reporter), warns: await blWarns(r.reporter) }, kinds: BL_KINDS, reasons: BL_REASONS, rewards: BL_REWARDS };
+    return { report: { ...x, images: (await blSigned(r.proofs)).filter(Boolean), who: await blWho(r.reporter, false), warns: await blWarns(r.reporter) }, kinds: BL_KINDS, reasons: BL_REASONS, rewards: BL_REWARDS };
   }
   if (act === 'bl_decide') {
     const id = Number(body.id), a = body.act === 'reject' ? 'reject' : 'approve';
