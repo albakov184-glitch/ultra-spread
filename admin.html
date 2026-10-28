@@ -213,6 +213,22 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
 .pct-in i { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); pointer-events: none; }
 .pava { background: linear-gradient(145deg, #F6C164, #B9822A); color: #1B1405; }
 
+/* чёрный список */
+.bl-grid { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+.cq { display: flex; gap: 12px; padding: 12px; border-radius: 16px; background: var(--s1); border: 1px solid var(--line); cursor: pointer; animation: up .4s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 40ms); min-width: 0; }
+.cq > img, .cq .noimg { width: 64px; height: 76px; object-fit: cover; border-radius: 10px; flex: none; border: 1px solid var(--line); background: var(--s2); }
+.cq .noimg { display: grid; place-items: center; font-size: 10.5px; color: var(--dim); text-align: center; padding: 4px; }
+.cq .grow { flex: 1; min-width: 0; }
+.cq-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cq-h b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cq .t2 { font-size: 12.5px; color: var(--muted); }
+.proof { display: block; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); flex: none; }
+.proof img { display: block; width: 100%; max-height: 520px; object-fit: contain; background: #000; }
+.badge.wait { background: var(--blue-s); color: var(--blue); }
+.nav-b, .tabbar button { position: relative; }
+.dot { position: absolute; top: 4px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--neg); color: #fff; font: 700 10.5px/18px Onest, sans-serif; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
+.nav-b .dot { position: static; margin-left: auto; box-shadow: none; }
+.more-menu { display: none; }
 /* мобильная версия */
 .tabbar { display: none; }
 .mtop { display: none; align-items: center; gap: 12px; margin-bottom: 18px; }
@@ -237,7 +253,17 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
   .toast { bottom: 96px; }
   input, select, textarea { font-size: 16px !important; }   /* iPhone приближает экран, если шрифт в поле меньше 16px */
   .search { min-width: 0; }
-  .head [data-ref] { display: none; }   /* на телефоне «Обновить» — в верхней строке */
+  .head [data-ref] { display: none; }
+  .bl-grid { grid-template-columns: 1fr; }
+  .tabbar button .dot { top: 2px; right: calc(50% - 22px); }
+  .more-menu { display: flex; flex-direction: column; gap: 2px; position: fixed; right: 12px; bottom: calc(86px + env(safe-area-inset-bottom) * .6); z-index: 35; padding: 6px; min-width: 200px;
+    border-radius: 18px; background: rgba(22,28,36,.97); backdrop-filter: blur(16px); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.5);
+    opacity: 0; transform: translateY(8px) scale(.97); transform-origin: bottom right; transition: opacity .2s, transform .25s cubic-bezier(.2,.8,.3,1); }
+  .more-menu.on { opacity: 1; transform: none; }
+  .more-menu[hidden] { display: none !important; }
+  .more-menu button { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; font-weight: 600; color: var(--fg); text-align: left; }
+  .more-menu button svg { width: 19px; height: 19px; color: var(--muted); }
+  .more-menu button.on { background: var(--acc-s); color: var(--acc); } .more-menu button.on svg { color: var(--acc); }   /* на телефоне «Обновить» — в верхней строке */
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
@@ -366,7 +392,7 @@ async function boot() {
     const me = await api('me');
     $('meName').textContent = me.name || 'Владелец'; $('meAva').textContent = (me.name || 'P')[0].toUpperCase();
     document.title = 'P2Pro — админ-панель';
-    $('gate').hidden = true; $('codeGate').hidden = true; $('app').hidden = false; go((location.hash.slice(1) || 'dash').replace(/^k=.*/, 'dash'));
+    $('gate').hidden = true; $('codeGate').hidden = true; $('app').hidden = false; blCountsLoad(); go((location.hash.slice(1) || 'dash').replace(/^k=.*/, 'dash'));
   } catch (e) { notFound(); }
 }
 document.addEventListener('click', async e => {
@@ -380,6 +406,8 @@ const IC = {
   pays: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg>',
   promo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V5a2 2 0 0 1 2-2h4l12 12-6 6L3 9z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
   bc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h3l6 5V5L7 10H4a1 1 0 0 0-1 1zM17 8a5 5 0 0 1 0 8M20 5a9 9 0 0 1 0 14"/></svg>',
+  bl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="M12 8v5M12 16.5v.01"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   ref: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>',
 };
 // Иконки для плиток показателей и способов оплаты
@@ -416,12 +444,17 @@ function countUps() {
     requestAnimationFrame(step);
   });
 }
-const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка']];
-const SHORT = { users: 'Люди', promo: 'Промо' };
+const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка']];
+// На телефоне внизу только 4 главные вкладки, остальные — под кнопкой «Ещё»
+const MOB = ['dash', 'users', 'bl', 'pays'], SHORT = { users: 'Люди', bl: 'База' };
 $('nav').innerHTML = PAGES.map(([k, n]) => `<button class="nav-b" data-go="${k}">${IC[k]}${n}</button>`).join('');
-$('tabbar').innerHTML = '<i class="tab-ind" id="tabInd"></i>' + PAGES.map(([k, n]) => `<button data-go="${k}">${IC[k]}${SHORT[k] || n}</button>`).join('');
-// Бегунок под активной вкладкой нижнего меню
-function moveInd() { const b = document.querySelector('#tabbar button.on'), i = $('tabInd'); if (!b || !i) return; i.style.left = b.offsetLeft + 'px'; i.style.width = b.offsetWidth + 'px'; }
+$('tabbar').innerHTML = '<i class="tab-ind" id="tabInd"></i>' + PAGES.filter(([k]) => MOB.includes(k)).map(([k, n]) => `<button data-go="${k}">${IC[k]}${SHORT[k] || n}</button>`).join('') +
+  `<button id="moreB" aria-haspopup="true">${IC.more}Ещё</button>`;
+document.body.insertAdjacentHTML('beforeend', `<div class="more-menu" id="moreM" hidden>${PAGES.filter(([k]) => !MOB.includes(k)).map(([k, n]) => `<button data-go="${k}">${IC[k]}${n}</button>`).join('')}</div>`);
+$('moreB').onclick = e => { e.stopPropagation(); const m = $('moreM'); m.hidden = !m.hidden; if (!m.hidden) requestAnimationFrame(() => m.classList.add('on')); else m.classList.remove('on'); };
+document.addEventListener('click', e => { if (!e.target.closest('#moreM') && !e.target.closest('#moreB')) { $('moreM').hidden = true; $('moreM').classList.remove('on'); } });
+// Бегунок под активной вкладкой нижнего меню («Ещё», если открыта страница из него)
+function moveInd() { const b = document.querySelector('#tabbar button.on') || (MOB.includes(page) ? null : $('moreB')), i = $('tabInd'); if (!b || !i) return; i.style.left = b.offsetLeft + 'px'; i.style.width = b.offsetWidth + 'px'; }
 addEventListener('resize', moveInd);
 let page = 'dash';
 document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b && !e.target.closest('.drawer')) go(b.dataset.go); });
@@ -430,9 +463,10 @@ function go(p, force) {
   if (!PAGES.some(x => x[0] === p)) p = 'dash';
   page = p; history.replaceState(null, '', '#' + p);
   document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('on', b.dataset.go === p));
+  $('moreB').classList.toggle('on', !MOB.includes(p)); $('moreM').hidden = true; $('moreM').classList.remove('on');
   moveInd();
   const v = $('view'); v.classList.remove('vin'); void v.offsetWidth; v.classList.add('vin');
-  ({ dash: renderDash, users: renderUsers, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc })[p](force);
+  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc })[p](force);
   scrollTo(0, 0);
 }
 const skel = () => `<div class="grid kpis">${'<div class="card"><div class="sk" style="height:14px;width:50%"></div><div class="sk" style="height:30px;width:70%;margin-top:16px"></div></div>'.repeat(4)}</div><div class="card" style="margin-top:16px"><div class="sk" style="height:240px"></div></div>`;
@@ -813,6 +847,186 @@ $('drawer').addEventListener('click', async e => {
   } catch (err) { toast(err.message, true); }
   finally { if (b.isConnected) b.disabled = false; }
 });
+
+/* ---------- Чёрный список ---------- */
+// Жалобы пользователей PRO на мошенников. Одобренные — это общая база, её видят все PRO в «Контрагентах».
+// Те же жалобы приходят в бот с кнопками — решать можно и там, и здесь
+let BLF = 'pending', BLC = null;
+const BL_KINDS = { nopay: 'Не оплатил', cancel: 'Отменил после оплаты', fake: 'Фейковый чек', third: 'Третьи лица', rude: 'Грубость, угрозы' };
+const BL_REASONS = ['Нет доказательств на скрине', 'Спор по сделке, не мошенничество', 'Повторная жалоба'];
+const BL_REWARDS = [['d3', '+3 дня PRO'], ['d7', '+7 дней'], ['d30', '+30 дней'], ['p20', '−20%'], ['p50', '−50%'], ['no', 'Без награды']];
+const BL_ST = { pending: ['wait', 'на проверке'], approved: ['ban', 'в базе'], rejected: ['', 'отклонена'], removed: ['', 'снята'] };
+function blBadge(n) {
+  document.querySelectorAll('[data-go="bl"]').forEach(b => { let d = b.querySelector('.dot'); if (!n) return d?.remove(); if (!d) { d = document.createElement('span'); d.className = 'dot'; b.appendChild(d); } d.textContent = n > 99 ? '99+' : n; });
+}
+async function blCountsLoad() { try { BLC = await api('bl_counts'); blBadge(BLC.pending); } catch (e) { /* таблицы ещё нет — молчим */ } return BLC; }
+// Картинку уменьшаем до 1600 px и сжимаем в JPEG — так скрин весит ~200–400 КБ
+function shrink(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', .82)); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Не получилось открыть картинку')); };
+    img.src = url;
+  });
+}
+// Окно выбора: кнопки-варианты и/или своё поле. Ответ — выбранное значение или null
+function pickBox(title, text, opts, { input, okText = 'Готово', danger, def } = {}) {
+  return new Promise(res => {
+    const m = document.createElement('div'); m.className = 'modal'; let val = def ?? null;
+    m.innerHTML = `<div><h3>${esc(title)}</h3>${text ? `<p class="muted" style="margin:0">${text}</p>` : ''}<div class="chips">${opts.map(([k, l]) => `<button class="chip ${k === val ? 'on' : ''}" data-pv="${esc(k)}">${esc(l)}</button>`).join('')}</div>
+      ${input ? `<textarea class="inp" data-pin placeholder="${esc(input)}" style="min-height:70px"></textarea>` : ''}<div class="inl"><button class="btn" data-n>Отмена</button><button class="btn ${danger ? 'danger' : 'pri'}" data-y>${esc(okText)}</button></div></div>`;
+    document.body.appendChild(m);
+    m.onclick = e => {
+      const c = e.target.closest('[data-pv]');
+      if (c) { val = c.dataset.pv; m.querySelectorAll('[data-pv]').forEach(x => x.classList.toggle('on', x === c)); const t = m.querySelector('[data-pin]'); if (t) t.value = ''; return; }
+      if (e.target === m || e.target.closest('[data-n]')) { m.remove(); return res(null); }
+      if (e.target.closest('[data-y]')) { const t = m.querySelector('[data-pin]')?.value.trim(); if (t) val = 'txt:' + t; if (!val) return toast('Выберите вариант', true); m.remove(); res(val); }
+    };
+  });
+}
+async function blDecideUi(id, act, extra = {}) {
+  if (act === 'approve') {
+    const rw = extra.reward ?? (extra.reporter === false ? 'no' : await pickBox('Одобрить жалобу?', 'Ник попадёт в общую базу. Наградить автора?', BL_REWARDS, { okText: '✅ Одобрить', def: 'd3' }));
+    if (!rw) return false;
+    const r = await api('bl_decide', { id, act, reward: rw, kind: extra.kind, kind_text: extra.kind_text });
+    toast(`Одобрено ✓${r.warned ? ` · предупредили ${r.warned}` : ''}${r.sent === false ? ' · автору не дошло' : ''}`);
+  } else {
+    const v = await pickBox('Отклонить жалобу?', 'Причину увидит автор', BL_REASONS.map(t => [t, t]), { input: 'или напишите свою причину', okText: '❌ Отклонить', danger: true });
+    if (!v) return false;
+    await api('bl_decide', { id, act, reason: v.replace(/^txt:/, '') });
+    toast('Отклонено');
+  }
+  blCountsLoad(); return true;
+}
+async function renderBl(force) {
+  killCharts();
+  $('view').innerHTML = head('Чёрный список', 'Жалобы и общая база мошенников') + '<div class="card"><div class="sk" style="height:300px"></div></div>';
+  const c = await blCountsLoad();
+  if (!c) return $('view').innerHTML = head('Чёрный список', '') + '<div class="card"><b>База ещё не создана</b><p class="muted">Запустите в Supabase → SQL Editor файл <span class="mono">22-blacklist.sql</span> и задеплойте функцию telegram-bot.</p></div>';
+  if (page !== 'bl') return;
+  const F = [['pending', 'На проверке', c.pending], ['approved', 'Одобрены', c.approved], ['rejected', 'Отклонены', c.rejected], ['base', 'База', c.base]];
+  $('view').innerHTML = head('Чёрный список', `${c.base} в базе · ${c.pending} ${plural(c.pending, 'ждёт', 'ждут', 'ждут')} проверки`, refBtn('bl')) +
+    `<div class="chips" id="blf" style="margin-bottom:14px">${F.map(([k, n, v]) => `<button class="chip ${k === BLF ? 'on' : ''}" data-blf="${k}">${n}<b>${v}</b></button>`).join('')}</div><div id="blv"></div>`;
+  $('blf').onclick = e => { const b = e.target.closest('[data-blf]'); if (!b) return; BLF = b.dataset.blf; document.querySelectorAll('[data-blf]').forEach(x => x.classList.toggle('on', x === b)); blDraw(); };
+  blDraw();
+}
+const blRow = (r, i) => `<div class="cq" data-blr="${r.id}" style="--i:${i}">${r.thumb ? `<img src="${esc(r.thumb)}" alt="">` : '<div class="noimg">нет скрина</div>'}
+  <div class="grow"><div class="cq-h"><b>${esc('@' + (r.shown || r.nick))}</b>${r.status === 'pending' ? (r.inBase ? `<span class="badge ban">уже ${r.inBase} в базе</span>` : '<span class="badge">новый</span>') : `<span class="badge ${BL_ST[r.status][0]}">${BL_ST[r.status][1]}</span>`}</div>
+    <div class="t1" style="font-weight:500">${esc(r.kindLabel)}</div><div class="t2">${r.manual ? 'добавлено вручную' : 'от ' + (r.from ? '@' + esc(r.from) : 'без ника')} · ${dTime(r.created_at)}${r.status === 'rejected' && r.reason ? ' · ' + esc(r.reason) : ''}</div>
+    ${r.status === 'pending' ? `<div class="inl" style="margin-top:8px"><button class="btn small pri" data-bla="${r.id}" data-rep="${r.manual ? 0 : 1}">✅ Одобрить</button><button class="btn small danger" data-blx="${r.id}">❌ Отклонить</button></div>` : ''}</div></div>`;
+async function blDraw() {
+  const v = $('blv'); v.innerHTML = '<div class="card"><div class="sk" style="height:220px"></div></div>';
+  try {
+    if (BLF === 'base') return blBaseView();
+    const { list } = await api('bl_list', { status: BLF });
+    if (page !== 'bl' || BLF === 'base') return;
+    v.innerHTML = list.length ? `<div class="grid bl-grid">${list.map(blRow).join('')}</div>` : `<div class="card empty">${BLF === 'pending' ? 'Новых жалоб нет 👌' : 'Пока пусто'}</div>`;
+  } catch (e) { v.innerHTML = `<div class="card"><b class="neg">Не получилось загрузить</b><p class="muted">${esc(e.message)}</p></div>`; }
+}
+async function blBaseView(q = '') {
+  const v = $('blv');
+  v.innerHTML = `<div class="grid charts2" style="margin-top:0">
+    <div class="card"><div class="card-t">Поиск по базе</div><label class="search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="blq" placeholder="Ник мошенника" value="${esc(q)}" autocomplete="off"></label><div class="list" id="blres" style="margin-top:10px"></div></div>
+    <div class="grid" style="gap:16px;align-content:start">
+      <div class="card"><div class="card-t">➕ Добавить вручную</div>
+        <input class="inp" id="bnNick" placeholder="Ник мошенника" maxlength="40" style="width:100%">
+        <div class="chips" id="bnKind" style="margin:10px 0">${Object.entries(BL_KINDS).map(([k, l]) => `<button class="chip ${k === 'fake' ? 'on' : ''}" data-bk="${k}">${l}</button>`).join('')}<button class="chip" data-bk="other">✏️ Свой</button></div>
+        <input class="inp" id="bnKindT" placeholder="Свой тип нарушения" maxlength="60" style="width:100%;margin-bottom:10px" hidden>
+        <textarea class="inp" id="bnNote" placeholder="Комментарий: что случилось, откуда известно" style="min-height:70px"></textarea>
+        <label class="btn ghost wide" style="margin-top:10px;border-style:dashed">＋ Скрин (необязательно)<input type="file" id="bnFile" accept="image/*" multiple hidden></label><div class="muted small" id="bnFiles"></div>
+        <button class="btn pri wide" id="bnGo" style="margin-top:10px">Добавить в базу</button></div>
+      <div class="card"><div class="card-t">📣 Пост-счётчик в канал</div><p class="hint" style="margin:0 0 10px">Карточка «В базе уже ${BLC?.base ?? 0} мошенников» — без ников, только цифры. Сначала можно отправить себе тест.</p>
+        <div class="inl"><button class="btn" id="bpTest" style="flex:1">Тест себе</button><button class="btn pri" id="bpGo" style="flex:1">Отправить в канал</button></div></div>
+    </div></div>`;
+  let kind = 'fake', files = [];
+  const search = async () => {
+    const box = $('blres'); if (!box) return;
+    try {
+      const { list } = await api('bl_search', { q: $('blq').value });
+      box.innerHTML = list.length ? list.map(s => `<div class="row" style="align-items:flex-start"><div class="ava" style="color:var(--neg)">!</div><div class="grow">
+        <div class="t1">${esc('@' + s.shown)} <span class="badge ban">${s.n} ${plural(s.n, 'жалоба', 'жалобы', 'жалоб')}</span></div>
+        <div class="t2" style="white-space:normal">${dShort(s.first)} — ${dShort(s.last)} · ${esc(Object.entries(s.kinds).map(([k, n]) => k + (n > 1 ? ' ×' + n : '')).join(', '))}</div>
+        <div class="t2" style="white-space:normal">Жаловались: ${esc(s.from.join(', '))}</div>
+        <div class="inl" style="margin-top:6px"><button class="btn small" data-bln="${esc(s.nick)}">Все жалобы и скрины</button><button class="btn small danger" data-blrm="${esc(s.nick)}">Снять из базы</button></div></div></div>`).join('')
+        : '<div class="empty" style="padding:24px">Никого не нашли</div>';
+    } catch (e) { box.innerHTML = `<p class="neg">${esc(e.message)}</p>`; }
+  };
+  let st; $('blq').oninput = () => { clearTimeout(st); st = setTimeout(search, 300); };
+  search();
+  $('bnKind').onclick = e => { const b = e.target.closest('[data-bk]'); if (!b) return; kind = b.dataset.bk; document.querySelectorAll('[data-bk]').forEach(x => x.classList.toggle('on', x === b)); $('bnKindT').hidden = kind !== 'other'; };
+  $('bnFile').onchange = async e => { try { files = await Promise.all([...e.target.files].slice(0, 3).map(shrink)); $('bnFiles').textContent = files.length ? `Скринов: ${files.length}` : ''; } catch (er) { toast(er.message, true); } };
+  $('bnGo').onclick = async () => {
+    const nick = $('bnNick').value.trim(); if (nick.replace(/^@/, '').length < 2) return toast('Впишите ник', true);
+    if (kind === 'other' && !$('bnKindT').value.trim()) return toast('Напишите тип нарушения', true);
+    if (!await confirmBox('Добавить в базу?', `${esc(nick)} сразу попадёт в общую базу. Если ник новый — PRO-пользователи, у кого он в контрагентах, получат предупреждение.`, 'Добавить')) return;
+    $('bnGo').disabled = true;
+    try { const r = await api('bl_add', { nick, kind, kind_text: $('bnKindT').value, note: $('bnNote').value, images: files }); toast(`Добавлено ✓${r.warned ? ` · предупредили ${r.warned}` : ''}`); blCountsLoad(); blBaseView(nick); }
+    catch (e) { toast(e.message, true); $('bnGo').disabled = false; }
+  };
+  $('bpTest').onclick = async () => { $('bpTest').disabled = true; try { await api('bl_post', { mode: 'test' }); toast('Тест отправлен тебе в бот'); } catch (e) { toast(e.message, true); } $('bpTest').disabled = false; };
+  $('bpGo').onclick = async () => { if (!await confirmBox('Опубликовать в канал?', 'Карточка со счётчиком базы уйдёт в @P2ProChannel.', 'Опубликовать')) return; $('bpGo').disabled = true;
+    try { const r = await api('bl_post', { mode: 'channel' }); toast(r.ok ? 'Опубликовано в канале ✓' : 'Не получилось — проверьте права бота в канале', !r.ok); } catch (e) { toast(e.message, true); } $('bpGo').disabled = false; };
+}
+document.addEventListener('click', async e => {
+  const a = e.target.closest('[data-bla]'), x = e.target.closest('[data-blx]'), n = e.target.closest('[data-bln]'), rm = e.target.closest('[data-blrm]'), card = e.target.closest('[data-blr]');
+  if (a || x) {
+    e.stopPropagation(); const b = a || x; b.disabled = true;
+    try { if (await blDecideUi(+(a ? a.dataset.bla : x.dataset.blx), a ? 'approve' : 'reject', a ? { reporter: a.dataset.rep === '1' } : {})) { if ($('drawer').classList.contains('on')) closeUser(); if (page === 'bl') renderBl(); } }
+    catch (er) { toast(er.message, true); }
+    finally { if (b.isConnected) b.disabled = false; }
+    return;
+  }
+  if (rm) {
+    if (!await confirmBox('Снять из базы?', `${esc('@' + rm.dataset.blrm)} исчезнет из общей базы, у пользователей пропадёт предупреждение. Жалобы сохранятся со статусом «снята».`, 'Снять', true)) return;
+    try { await api('bl_remove', { nick: rm.dataset.blrm }); toast('Снято из базы'); blCountsLoad(); blBaseView($('blq')?.value || ''); } catch (er) { toast(er.message, true); }
+    return;
+  }
+  if (n) return openBlNick(n.dataset.bln);
+  if (card && !e.target.closest('button')) openBl(+card.dataset.blr);
+});
+function drawerOpen(html) {
+  CUR = null; CURP = null; $('scrim').hidden = false; $('drawer').setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => { $('scrim').classList.add('on'); $('drawer').classList.add('on'); });
+  $('drawer').innerHTML = html ?? '<div class="sk" style="height:60px;flex:none"></div><div class="sk" style="height:260px;flex:none"></div><div class="sk" style="height:160px;flex:none"></div>';
+}
+async function openBlNick(nick) {
+  drawerOpen();
+  try {
+    const { list } = await api('bl_list', { status: 'all', nick });
+    $('drawer').innerHTML = `<div class="dr-head"><div class="ava" style="color:var(--neg)">!</div><div style="min-width:0"><h3>${esc('@' + (list[0]?.shown || nick))}</h3><div class="muted small">${list.length} ${plural(list.length, 'жалоба', 'жалобы', 'жалоб')} всего</div></div><button class="x" data-close aria-label="Закрыть">×</button></div>
+      <div class="grid" style="gap:10px">${list.map(blRow).join('')}</div>`;
+  } catch (e) { $('drawer').innerHTML = `<div class="dr-head"><button class="x" data-close>×</button></div><p class="neg">${esc(e.message)}</p>`; }
+}
+async function openBl(id) {
+  drawerOpen();
+  try {
+    const { report: r } = await api('bl_get', { id });
+    let kind = r.kind, rw = 'd3';
+    const pend = r.status === 'pending';
+    $('drawer').innerHTML = `
+      <div class="dr-head"><div style="min-width:0"><h3>Жалоба №${r.id}</h3><div class="muted small">${esc('@' + (r.shown || r.nick))} · от ${r.who}</div>
+        <div style="margin-top:6px"><span class="badge ${BL_ST[r.status][0]}">${BL_ST[r.status][1]}</span></div></div><button class="x" data-close aria-label="Закрыть">×</button></div>
+      ${r.images.length ? r.images.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener" class="proof"><img src="${esc(u)}" alt="Скрин"></a>`).join('') : '<div class="sec muted">Скрина нет</div>'}
+      ${r.note ? `<div class="sec"><h4>Описание</h4><div>${esc(r.note)}</div></div>` : ''}
+      <div class="facts"><div class="fact"><div class="lb">Тип</div><div class="v">${esc(r.kindLabel)}</div></div><div class="fact"><div class="lb">В базе на этот ник</div><div class="v">${r.inBase} ${plural(r.inBase, 'жалоба', 'жалобы', 'жалоб')}</div></div>
+        <div class="fact"><div class="lb">Подана</div><div class="v">${dTime(r.created_at)}</div></div><div class="fact"><div class="lb">${r.status === 'rejected' ? 'Причина отказа' : 'Награда'}</div><div class="v">${esc(r.status === 'rejected' ? r.reason : ({ d3: '+3 дня PRO', d7: '+7 дней PRO', d30: '+30 дней PRO', p20: 'скидка 20%', p50: 'скидка 50%', no: 'без награды' }[r.reward] || '—'))}</div></div></div>
+      ${pend ? `<div class="sec"><h4>Тип нарушения — можно поправить</h4><div class="chips" id="bdK">${Object.entries(BL_KINDS).map(([k, l]) => `<button class="chip ${k === kind ? 'on' : ''}" data-dk="${k}">${l}</button>`).join('')}<button class="chip ${kind === 'other' ? 'on' : ''}" data-dk="other">✏️ Свой</button></div>
+          <input class="inp" id="bdKT" placeholder="Свой тип нарушения" maxlength="60" value="${esc(r.kind === 'other' ? r.kind_text : '')}" ${kind === 'other' ? '' : 'hidden'}></div>
+        ${r.manual ? '' : `<div class="sec"><h4>Награда автору при одобрении</h4><div class="chips" id="bdR">${BL_REWARDS.map(([k, l]) => `<button class="chip ${k === rw ? 'on' : ''}" data-dr="${k}">${l}</button>`).join('')}</div></div>`}
+        <div class="inl"><button class="btn pri" id="bdA" style="flex:1">✅ Одобрить</button><button class="btn danger" data-blx="${r.id}" style="flex:1">❌ Отклонить</button></div>`
+      : r.status === 'approved' ? `<button class="btn danger wide" data-blrm="${esc(r.nick)}">Снять ник из базы</button>` : ''}`;
+    if (!pend) return;
+    $('bdK').onclick = e => { const b = e.target.closest('[data-dk]'); if (!b) return; kind = b.dataset.dk; document.querySelectorAll('[data-dk]').forEach(x => x.classList.toggle('on', x === b)); $('bdKT').hidden = kind !== 'other'; };
+    $('bdR')?.addEventListener('click', e => { const b = e.target.closest('[data-dr]'); if (!b) return; rw = b.dataset.dr; document.querySelectorAll('[data-dr]').forEach(x => x.classList.toggle('on', x === b)); });
+    $('bdA').onclick = async () => {
+      if (kind === 'other' && !$('bdKT').value.trim()) return toast('Напишите свой тип', true);
+      $('bdA').disabled = true;
+      try { if (await blDecideUi(r.id, 'approve', { reward: r.manual ? 'no' : rw, kind, kind_text: $('bdKT').value })) { closeUser(); if (page === 'bl') renderBl(); } }
+      catch (e) { toast(e.message, true); } finally { if ($('bdA')?.isConnected) $('bdA').disabled = false; }
+    };
+  } catch (e) { $('drawer').innerHTML = `<div class="dr-head"><button class="x" data-close>×</button></div><p class="neg">${esc(e.message)}</p>`; }
+}
 
 /* ---------- Рассылка ---------- */
 let BC = { aud: 'all', text: '' };

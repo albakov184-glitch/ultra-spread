@@ -571,6 +571,26 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .info:hover { color: var(--accent); border-color: var(--accent); }
 .lrow { display: flex; align-items: center; gap: 6px; }
 .note-box { padding: 10px 12px; border-radius: 10px; font-size: 13px; }
+/* общая база мошенников */
+.bl-banner { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, rgba(255,107,107,.15), rgba(242,181,75,.07)); border: 1px solid rgba(255,107,107,.28); }
+.bl-banner b, .bl-warn b { display: block; } .bl-banner span, .bl-warn span { font-size: 13px; color: var(--muted); }
+.bl-ic { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(145deg, #FF8A8A, #C23B3B); display: grid; place-items: center; font-size: 19px; flex: none; box-shadow: 0 8px 18px -8px #FF6B6B; }
+.bl-warn { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 14px; background: var(--neg-soft); border: 1px solid rgba(255,107,107,.3); }
+.bl-warn b { color: var(--neg); }
+.bl-ok { padding: 12px; border-radius: 14px; background: var(--pos-soft); color: var(--pos); font-weight: 600; }
+.bl-res { display: flex; flex-direction: column; gap: 10px; } .bl-res:empty { display: none; }
+.bl-chip { background: var(--neg-soft); color: var(--neg); border-color: rgba(255,107,107,.35); }
+.bl-hit { grid-column: 1 / -1; font-size: 12.5px; font-weight: 600; color: var(--neg); background: var(--neg-soft); padding: 6px 10px; border-radius: 9px; }
+.cp-item.bl-bad { border-color: rgba(255,107,107,.45); background: linear-gradient(135deg, rgba(255,107,107,.09), transparent); }
+.bl-reps { display: flex; flex-direction: column; gap: 12px; }
+.bl-rep { gap: 8px; }
+.pill.wait { background: rgba(90,169,255,.14); color: #5AA9FF; }
+.br-shots { display: flex; gap: 8px; flex-wrap: wrap; } .br-shots:empty { display: none; }
+.br-shot { position: relative; width: 74px; height: 88px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.br-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.br-shot button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; font-size: 14px; line-height: 1; }
+.br-drop { display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; border-radius: 14px; border: 1.5px dashed var(--line); color: var(--muted); font-weight: 600; font-size: 14px; cursor: pointer; }
+.br-drop[hidden] { display: none; }
 .note-box.bad { background: var(--neg-soft); color: var(--neg); }
 .note-box.mid { background: var(--accent-soft); color: var(--fee); }
 .note-box.good { background: var(--pos-soft); color: var(--pos); }
@@ -1323,7 +1343,9 @@ img { max-width: 100%; }
     <!-- Контрагенты (PRO) -->
     <div id="tool-cp" class="pro-wrap" hidden>
       <div id="cpBody" class="app">
-        <div class="card">
+        <div class="bl-banner"><div class="bl-ic">🛡</div><div><b>Общая база P2Pro</b><span id="blTotal">мошенники, проверенные модератором</span></div></div>
+        <div class="seg sm" id="cpTabs"><button data-cpt="mine" class="on">Мои</button><button data-cpt="check">Проверить ник</button><button data-cpt="reports">Мои жалобы</button></div>
+        <div class="card" data-pane="mine">
           <div class="card-h"><span class="card-t">Добавить контрагента</span><button class="info" data-info="cp" aria-label="Зачем контрагенты">i</button></div>
           <div class="inp text"><input id="cpName" type="text" placeholder="Ник на бирже" aria-label="Ник контрагента"></div>
           <div class="seg sm" id="cpStatusSeg">
@@ -1334,12 +1356,20 @@ img { max-width: 100%; }
           <div class="inp text"><input id="cpAddNote" type="text" placeholder="Что случилось: тянул с оплатой, третьи лица…" aria-label="Заметка о контрагенте"></div>
           <button class="btn primary" id="cpAdd">Сохранить</button>
         </div>
-        <div class="search">
+        <div class="search" data-pane="mine">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="cpQ" type="search" placeholder="Найти по нику" aria-label="Поиск контрагента">
         </div>
-        <div class="chips" id="cpFilter"></div>
-        <div class="list" id="cpListView"></div>
+        <div class="chips" id="cpFilter" data-pane="mine"></div>
+        <div class="list" id="cpListView" data-pane="mine"></div>
+        <button class="btn danger" data-blreport="" data-pane="mine">🚩 Пожаловаться на мошенника</button>
+        <div class="card" data-pane="check" hidden>
+          <div class="card-h"><span class="card-t">Проверить ник по общей базе</span></div>
+          <div class="inp text"><input id="blQ" type="text" placeholder="Ник на бирже" aria-label="Ник для проверки" maxlength="40" enterkeyhint="search"></div>
+          <button class="btn primary" id="blGo">🛡 Проверить</button>
+          <div id="blRes" class="bl-res"></div>
+        </div>
+        <div data-pane="reports" hidden class="bl-reps"><div id="blMine" class="list"></div><button class="btn danger" data-blreport="">🚩 Новая жалоба</button></div>
       </div>
       <div class="paywall" id="cpPaywall">
         <div class="card">
@@ -2162,17 +2192,27 @@ function renderCpWarn() {
   const d = S.draft, tri = d.mode === 'tri';
   const names = [d.cp, ...(tri ? (d.triParts ? d.sellers.map(x => x.cp) : [d.cp2]) : [])];
   const found = names.map(findCp).filter(c => c && c.status !== 'new');
+  // Общая база (PRO): ник проверяется на сервере, пока человек вписывает его в расчёт
+  if (S.settings.pro) names.forEach(n => n && blAsk(n));
+  const hits = S.settings.pro ? [...new Set(names.filter(Boolean).map(blKey))].filter(n => BL.base[n]) : [];
   const box = $('cpWarn');
-  if (!found.length) { box.hidden = true; return; }
+  if (!found.length && !hits.length) { box.hidden = true; return; }
   // Цвет блока — по самому тревожному статусу среди введённых ников
-  const worst = found.some(c => c.status === 'bad') ? 'bad' : found.some(c => c.status === 'mid') ? 'mid' : 'good';
+  const worst = hits.length || found.some(c => c.status === 'bad') ? 'bad' : found.some(c => c.status === 'mid') ? 'mid' : 'good';
   const line = c => `${c.status === 'bad' ? '⚠ В чёрном списке' : c.status === 'mid' ? 'Осторожно' : 'Надёжный'}: ${c.name}${c.note ? ` — ${c.note}` : ''}`;
   box.hidden = false; box.className = 'note-box ' + worst;
-  box.innerHTML = found.map(c => esc(line(c))).join('<br>');
+  box.innerHTML = [...hits.map(n => `⚠ Общая база P2Pro: ${esc(n)} — ${BL.base[n].n} ${plural(BL.base[n].n, 'жалоба', 'жалобы', 'жалоб')} (${esc(blKinds(BL.base[n]))})`),
+    ...found.map(c => esc(line(c)))].join('<br>');
 }
-function renderCp() {
+function renderCp(fromBase) {
   const pro = S.settings.pro;
   $('cpBody').classList.toggle('locked', !pro); $('cpBody').inert = !pro; $('cpPaywall').hidden = pro;
+  // Вкладки: свои контрагенты, проверка ника по общей базе, свои жалобы
+  document.querySelectorAll('[data-cpt]').forEach(b => b.classList.toggle('on', b.dataset.cpt === cpTab));
+  document.querySelectorAll('#cpBody [data-pane]').forEach(x => x.hidden = x.dataset.pane !== cpTab);
+  $('blTotal').textContent = BL.total != null ? `${BL.total} ${plural(BL.total, 'мошенник', 'мошенника', 'мошенников')} · проверено модератором` : 'мошенники, проверенные модератором';
+  if (pro && !fromBase) blRefresh();
+  if (pro && cpTab === 'reports' && !fromBase) blMine();
   document.querySelectorAll('[data-cps]').forEach(b => b.classList.toggle('on', b.dataset.cps === cpStatus));
   const q = $('cpQ').value.trim().toLowerCase();
   const base = S.cps;
@@ -2182,12 +2222,15 @@ function renderCp() {
   const list = base.filter(c => (cpF === 'all' || c.status === cpF) && (!q || c.name.toLowerCase().includes(q)));
   $('cpListView').innerHTML = list.length ? list.map(c => {
     const deals = cpDeals(c.name), turn = curJoin(byCur(deals.map(x => ({ cur: x.t.cur, v: +x.amount || 0 })), x => x.v), (v, cur) => `${hid(nf0.format(v))} ${SYM[cur]}`);
-    return `<div class="cp-item" role="button" tabindex="0" data-cpopen="${esc(c.name)}" aria-label="Открыть ${esc(c.name)}"><b>${esc(c.name)}</b><span class="pill ${c.status}">${CPS[c.status]}</span>
-      <span class="muted small">${deals.length ? `Сделок: ${deals.length} · ${turn}` : 'Сделок пока нет'}${c.note ? ` · ${esc(c.note)}` : ''}</span><button class="icon-btn" data-cpdel="${esc(c.name)}" aria-label="Удалить ${esc(c.name)}">×</button></div>`;
+    return `<div class="cp-item${blHit(c.name) ? ' bl-bad' : ''}" role="button" tabindex="0" data-cpopen="${esc(c.name)}" aria-label="Открыть ${esc(c.name)}"><b>${esc(c.name)}</b><span class="pill ${c.status}">${CPS[c.status]}</span>
+      <span class="muted small">${deals.length ? `Сделок: ${deals.length} · ${turn}` : 'Сделок пока нет'}${c.note ? ` · ${esc(c.note)}` : ''}</span><button class="icon-btn" data-cpdel="${esc(c.name)}" aria-label="Удалить ${esc(c.name)}">×</button>
+      ${blHit(c.name) ? `<span class="bl-hit">⚠️ В общей базе · ${blHit(c.name).n} ${plural(blHit(c.name).n, 'жалоба', 'жалобы', 'жалоб')}, последняя ${blAgo(blHit(c.name).last)}</span>` : ''}</div>`;
   }).join('') : S.cps.length ? emptyHtml('search', 'Никого не нашли', 'Попробуйте другой фильтр')
     : emptyHtml('people', 'Список пуст', 'Добавьте первого контрагента выше — или впишите ник в расчёте сделки');
 }
 let cpF = 'all';
+document.addEventListener('click', e => { if (e.target.closest('#blGo')) blCheck($('blQ').value, 'blRes'); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'blQ') blCheck($('blQ').value, 'blRes'); });
 // Все сделки, где участвовал человек: роль, сумма именно его части и заметка о нём
 const byCur = (items, val) => { const m = {}; items.forEach(x => m[x.cur] = (m[x.cur] || 0) + val(x)); return m; };
 const curJoin = (m, f) => Object.entries(m).map(([c, v]) => f(v, c)).join(' + ') || '0 ₽';
@@ -2209,6 +2252,8 @@ function openCp(name) {
   sheet(`
     <div class="card-h"><h3>${esc(c.name)}</h3><span class="pill ${c.status}">${CPS[c.status]}</span></div>
     <div class="chips" style="flex-wrap:wrap">${['good', 'mid', 'bad', 'new'].map(k => `<button data-cpset="${k}" data-name="${esc(c.name)}" class="chip ${c.status === k ? 'on' : ''}">${{ good: 'Надёжный', mid: 'Осторожно', bad: 'Мошенник', new: 'Без отметки' }[k]}</button>`).join('')}</div>
+    ${blHit(c.name) ? `<div class="bl-warn"><div class="bl-ic">⚠️</div><div><b>В общей базе P2Pro</b><span>${blHit(c.name).n} ${plural(blHit(c.name).n, 'жалоба', 'жалобы', 'жалоб')}: ${esc(blKinds(blHit(c.name)))}</span></div></div>` : ''}
+    <div class="row2"><button class="btn" data-blcheck="${esc(c.name)}">🛡 Проверить в общей базе</button><button class="btn danger" data-blreport="${esc(c.name)}">🚩 Пожаловаться</button></div>
     <div class="inp text"><input id="cpEditNote" data-name="${esc(c.name)}" type="text" value="${esc(c.note || '')}" placeholder="Общая заметка о человеке" aria-label="Общая заметка"></div>
     <div class="cp-stats">
       <div class="kpi"><span class="label">Сделок</span><span class="v">${deals.length}</span></div>
@@ -2224,6 +2269,136 @@ function openCp(name) {
       </button>`).join('') : '<div class="empty"><b>Сделок пока нет</b><span>Впишите этот ник в расчёте — сделка появится здесь</span></div>'}</div>
     <button class="btn" data-close>Закрыть</button>`);
 }
+
+/* ================= ОБЩАЯ БАЗА МОШЕННИКОВ (PRO) ================= */
+// Жалобы пользователей проверяет модератор P2Pro; одобренные попадают в общую базу. Кто пожаловался — не показываем.
+// Данные идут через сервер (функция telegram-bot), он же проверяет, что у человека PRO
+const BL = { total: null, base: {}, at: 0, asked: new Set() };
+const BL_KINDS = { nopay: 'Не оплатил', cancel: 'Отменил после оплаты', fake: 'Фейковый чек', third: 'Третьи лица', rude: 'Грубость, угрозы' };
+let cpTab = 'mine';
+const blKey = n => String(n || '').trim().replace(/^@+/, '').replace(/\s+/g, ' ').slice(0, 40).toLowerCase();
+const blAgo = ts => { const d = Math.floor((Date.now() - Date.parse(ts)) / 864e5); return d < 1 ? 'сегодня' : d === 1 ? 'вчера' : `${d} ${plural(d, 'день', 'дня', 'дней')} назад`; };
+async function blCall(action, extra = {}) {
+  const token = sb && (await sb.auth.getSession()).data?.session?.access_token;
+  if (!token) throw new Error('Войдите в аккаунт, чтобы пользоваться общей базой');
+  const r = await fetch(SB_URL + '/functions/v1/telegram-bot', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SB_KEY },
+    body: JSON.stringify({ bl_api: action, access_token: token, ...extra }), signal: AbortSignal.timeout?.(60000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error === 'pro' ? 'Общая база доступна в PRO' : j.error === 'auth' ? 'Войдите в аккаунт заново' : j.error === 'server' ? 'Сервер не ответил — попробуйте позже' : j.error || 'Ошибка ' + r.status);
+  return j;
+}
+// Проверяем ники по общей базе: свои контрагенты — раз в 5 минут, новые ники — сразу
+let blAskT, blWant = new Set();
+async function blLookup(nicks) {
+  nicks = [...new Set(nicks.map(blKey).filter(n => n.length >= 2))];
+  if (!S.settings.pro || !sb || !me()) return;
+  try {
+    const j = await blCall('lookup', { nicks });
+    BL.total = j.total; nicks.forEach(n => { delete BL.base[n]; BL.asked.add(n); }); Object.assign(BL.base, j.base);
+    if (!$('tool-cp').hidden) renderCp(true); renderCpWarn();
+  } catch (e) { /* сервер недоступен — просто без отметок */ }
+}
+function blRefresh() {
+  const nicks = S.cps.map(c => blKey(c.name)), stale = Date.now() - BL.at > 5 * 60e3, miss = nicks.some(n => n.length >= 2 && !BL.asked.has(n));
+  if (!stale && !miss) return;
+  BL.at = Date.now(); blLookup(nicks);
+}
+function blAsk(nick) {   // ник вписали в расчёте — спросим через секунду, когда допишут
+  const n = blKey(nick); if (n.length < 2 || BL.asked.has(n)) return;
+  blWant.add(n); clearTimeout(blAskT); blAskT = setTimeout(() => { const l = [...blWant]; blWant.clear(); blLookup(l); }, 900);
+}
+const blHit = name => BL.base[blKey(name)];
+const blKinds = h => Object.entries(h.kinds || {}).map(([k, n]) => k.toLowerCase() + (n > 1 ? ' ×' + n : '')).join(', ');
+function blDetailHtml(j) {
+  if (!j.found) return `<div class="bl-ok">✓ <b>${esc('@' + j.nick)}</b> в общей базе не найден</div><span class="muted small">Это не гарантия честности — база пополняется жалобами пользователей.</span>`;
+  return `<div class="bl-warn"><div class="bl-ic">⚠️</div><div><b>Отмечен как мошенник</b><span>${j.n} ${plural(j.n, 'подтверждённая жалоба', 'подтверждённые жалобы', 'подтверждённых жалоб')} · первая ${fmtDay(dayKey(j.first))}, последняя ${fmtDay(dayKey(j.last))}</span></div></div>
+    <div class="chips" style="flex-wrap:wrap">${Object.entries(j.kinds).map(([k, n]) => `<span class="chip bl-chip">${esc(k)} · ${n}</span>`).join('')}</div>
+    <div class="list">${j.items.map(x => `<div class="item" style="cursor:default"><div style="min-width:0"><div class="l1">${fmtDay(dayKey(x.at))} · ${esc(x.kind)}</div>${x.note ? `<div class="l3">«${esc(x.note)}»</div>` : ''}</div></div>`).join('')}</div>
+    <span class="muted small">Кто пожаловался — не показываем. Каждую жалобу проверяет модератор P2Pro по скрину.</span>`;
+}
+async function blCheck(nick, into) {
+  const n = blKey(nick); if (n.length < 2) return toast('Впишите ник');
+  const box = into ? $(into) : null;
+  if (box) box.innerHTML = '<div class="sk" style="height:120px;border-radius:14px"></div>';
+  else sheet(`<h3>${esc('@' + n)}</h3><div id="blSheetRes"><div class="sk" style="height:160px;border-radius:14px"></div></div><button class="btn" data-close>Закрыть</button>`);
+  try {
+    const j = await blCall('detail', { nick: n }), html = blDetailHtml(j);
+    if (j.found) { BL.base[n] = { n: j.n, last: j.last, kinds: j.kinds }; } else delete BL.base[n];
+    BL.asked.add(n);
+    const tail = j.found && !findCp(n) ? `<button class="btn" data-bladd="${esc(n)}">Добавить к себе в «Мошенники»</button>` : `<button class="btn danger" data-blreport="${esc(n)}">🚩 Пожаловаться на ${esc('@' + n)}</button>`;
+    if (box) box.innerHTML = html + tail; else if ($('blSheetRes')) $('blSheetRes').innerHTML = html + tail;
+  } catch (e) { const t = `<div class="note-box bad">${esc(e.message)}</div>`; if (box) box.innerHTML = t; else if ($('blSheetRes')) $('blSheetRes').innerHTML = t; }
+}
+// Жалоба: ник, что случилось, описание и обязательно скрин (до 3). Скрины ужимаем до 1600 px в JPEG
+function shrinkImg(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', .82)); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Не получилось открыть картинку')); };
+    img.src = url;
+  });
+}
+function blReportSheet(nick = '') {
+  let kind = 'fake', shots = [], busy = false;
+  sheet(`<h3>Пожаловаться</h3><span class="muted small">После проверки ник попадёт в общую базу, и его увидят все пользователи PRO</span>
+    <div class="inp text"><input id="brNick" type="text" placeholder="Ник мошенника на бирже" value="${esc(nick)}" aria-label="Ник мошенника" maxlength="40"></div>
+    <b style="font-size:14px">Что случилось</b>
+    <div class="chips" id="brKind" style="flex-wrap:wrap">${Object.entries(BL_KINDS).map(([k, l]) => `<button class="chip ${k === kind ? 'on' : ''}" data-brk="${k}">${l}</button>`).join('')}<button class="chip" data-brk="other">Другое…</button></div>
+    <div class="inp text" id="brOtherW" hidden><input id="brOther" type="text" placeholder="Коротко: что сделал" maxlength="60" aria-label="Своё нарушение"></div>
+    <textarea class="copy-area" id="brNote" placeholder="Опишите, что произошло: сумма, биржа, как обманул" maxlength="1000" style="min-height:84px;font-family:var(--f-body);font-size:14.5px"></textarea>
+    <b style="font-size:14px">Доказательство <span class="muted" style="font-weight:500">· обязательно</span></b>
+    <div class="br-shots" id="brShots"></div>
+    <label class="br-drop" id="brAdd">＋ Добавить скрин переписки, чека или ордера<input type="file" id="brFile" accept="image/*" multiple hidden></label>
+    <button class="btn primary block" id="brGo">Отправить на проверку</button>
+    <span class="muted small" style="text-align:center">Ложные жалобы удаляются. Ваше имя другим не показывается</span>`);
+  const drawShots = () => {
+    $('brShots').innerHTML = shots.map((s, i) => `<div class="br-shot"><img src="${s}" alt=""><button data-brdel="${i}" aria-label="Убрать скрин">×</button></div>`).join('');
+    $('brAdd').hidden = shots.length >= 3;
+  };
+  $('brKind').onclick = e => { const b = e.target.closest('[data-brk]'); if (!b) return; kind = b.dataset.brk; $('brKind').querySelectorAll('[data-brk]').forEach(x => x.classList.toggle('on', x === b)); $('brOtherW').hidden = kind !== 'other'; };
+  $('brFile').onchange = async e => {
+    try { for (const f of [...e.target.files].slice(0, 3 - shots.length)) shots.push(await shrinkImg(f)); drawShots(); } catch (er) { toast(er.message); }
+    e.target.value = '';
+  };
+  $('brShots').onclick = e => { const b = e.target.closest('[data-brdel]'); if (b) { shots.splice(+b.dataset.brdel, 1); drawShots(); } };
+  $('brGo').onclick = async () => {
+    if (busy) return;
+    const n = $('brNick').value.trim();
+    if (blKey(n).length < 2) return toast('Впишите ник мошенника');
+    if (kind === 'other' && !$('brOther').value.trim()) return toast('Напишите, что случилось');
+    if (!shots.length) return toast('Приложите хотя бы один скрин');
+    busy = true; $('brGo').disabled = true; $('brGo').textContent = 'Отправляем…';
+    try {
+      await blCall('report', { nick: n, kind, kind_text: $('brOther').value, note: $('brNote').value, images: shots });
+      closeSheet(); toast('Жалоба отправлена на проверку ✓'); cpTab = 'reports'; renderCp();
+    } catch (er) { toast(er.message); busy = false; if ($('brGo')) { $('brGo').disabled = false; $('brGo').textContent = 'Отправить на проверку'; } }
+  };
+}
+async function blMine() {
+  const box = $('blMine'); box.innerHTML = '<div class="sk" style="height:90px;border-radius:14px"></div>';
+  try {
+    const { list } = await blCall('mine');
+    const st = { pending: ['wait', '⏳ На проверке'], approved: ['good', '✓ Одобрена'], rejected: ['bad', '✕ Отклонена'] };
+    box.innerHTML = list.length ? list.map(r => `<div class="card bl-rep"><div class="card-h"><b>${esc('@' + r.nick)}</b><span class="pill ${st[r.status][0]}">${st[r.status][1]}</span></div>
+      <span class="muted small">${esc(r.kind)} · ${fmtDay(dayKey(r.at))}</span>
+      ${r.status === 'pending' ? '<span class="muted small">Обычно проверяем в течение дня</span>' : ''}
+      ${r.status === 'approved' && r.reward ? `<div class="note-box good">🎁 Спасибо! Вам начислено: ${esc(r.reward)}</div>` : r.status === 'approved' ? '<div class="note-box good">Ник добавлен в общую базу. Спасибо!</div>' : ''}
+      ${r.status === 'rejected' ? `<div class="note-box bad">Причина: ${esc(r.reason)}</div>` : ''}</div>`).join('')
+      : emptyHtml('people', 'Жалоб пока нет', 'Если вас обманули — нажмите «Пожаловаться» и приложите скрин');
+  } catch (e) { box.innerHTML = `<div class="note-box bad">${esc(e.message)}</div>`; }
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-cpt]'), r = e.target.closest('[data-blreport]'), c = e.target.closest('[data-blcheck]'), a = e.target.closest('[data-bladd]');
+  if (t) { cpTab = t.dataset.cpt; return renderCp(); }
+  if (r) { e.stopPropagation(); return blReportSheet(r.dataset.blreport || ''); }
+  if (c) { e.stopPropagation(); return blCheck(c.dataset.blcheck); }
+  if (a) {
+    const name = a.dataset.bladd, h = blHit(name);
+    if (!findCp(name)) { S.cps.unshift({ name, status: 'bad', note: h ? 'Общая база P2Pro: ' + blKinds(h) : '', ts: Date.now() }); persist(); }
+    closeSheet(); toast('Добавлен в ваш список «Мошенники»'); renderCp();
+  }
+}, true);
 
 /* ================= ПОДСКАЗКИ ================= */
 const INFO = {

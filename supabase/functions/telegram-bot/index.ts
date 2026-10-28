@@ -103,7 +103,8 @@ const MENU = () => kb([
   [{ text: '📣 Рассылка', callback_data: 'bc' }, { text: '🎟 Промокоды', callback_data: 'pl' }],
   [{ text: '📢 Канал', callback_data: 'ch' }, { text: '💱 Курс в канал', callback_data: 'rc' }],
   [{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '🌅 Утренний отчёт', callback_data: 'rp' }],
-  [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🖥 Веб-админка', callback_data: 'wa' }],
+  [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🛡 Чёрный список', callback_data: 'bl:m' }],
+  [{ text: '🖥 Веб-админка', callback_data: 'wa' }],
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
@@ -837,6 +838,7 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
         reply_markup: kb([[{ text: '🖥 Открыть на сайте', url: `${APP}admin#k=${code}` }]]) });
       toastText = 'Ссылка отправлена';
     }
+    else if (k === 'bl') toastText = await blCallback(chatId, msgId, a, b, c);
     else if (k === 'st') await show(chatId, msgId, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (k === 'l') await view(await listView(Number(a) || 0));
     else if (k === 'fs') await show(chatId, msgId, '🔍 Пришлите @ник, почту или Telegram id пользователя.', toMenu());
@@ -964,7 +966,14 @@ async function adminMessage(msg: Msg): Promise<boolean> {
   const view0 = (v: { text: string; markup: unknown }) => show(chatId, null, v.text, v.markup);
   if (text.startsWith('/start')) return false;
   try {
-    const aw = await stGet<{ kind: string; aud?: Aud; at: number } | null>('await', null);
+    const aw = await stGet<{ kind: string; aud?: Aud; at: number; id?: number } | null>('await', null);
+    // Чёрный список: своя причина отказа или свой тип нарушения — текстом
+    if ((aw?.kind === 'blr' || aw?.kind === 'blk') && aw.id && Date.now() - aw.at < 60 * 60e3 && text && !text.startsWith('/')) {
+      await stSet('await', null);
+      if (aw.kind === 'blr') { await blDecide(aw.id, 'reject', { reason: text }); await show(chatId, null, `❌ Жалоба №${aw.id} отклонена: ${esc(text.slice(0, 300))}. Автор получил уведомление.`, toMenu()); }
+      else { await blSetKind(aw.id, 'other', text); await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `✏️ Жалоба №${aw.id}: тип — «${esc(text.slice(0, 60))}». Теперь одобрите или отклоните её:`, reply_markup: blKb(aw.id) }); }
+      return true;
+    }
     // Время для отложенной рассылки/поста
     if (aw?.kind === 'when' && Date.now() - aw.at < 60 * 60e3 && !text.startsWith('/')) {
       const at = parseWhen(text);
@@ -989,10 +998,11 @@ async function adminMessage(msg: Msg): Promise<boolean> {
     if (!text) return false;
     const [cmd, a = '', b = ''] = text.split(/\s+/), args = text.split(/\s+/).slice(1);
     const c = cmd.toLowerCase().replace(/@\w+$/, '');
+    if (c === '/basepost') { await blPost(chatId, true); return true; }
     if (c === '/copypack') { await copyPack(chatId, a, args.slice(1).join(' ')); return true; }
     if (c === '/admin') {
       await tg('setMyCommands', { scope: { type: 'chat', chat_id: ADMIN_ID }, commands: [
-        { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' },
+        { command: 'admin', description: 'Админ-панель' }, { command: 'stats', description: 'Статистика' }, { command: 'basepost', description: 'Пост-счётчик базы мошенников' },
         { command: 'user', description: 'Карточка: /user @ник' }, { command: 'give', description: 'Выдать PRO: /give @ник 30' },
         { command: 'revoke', description: 'Забрать PRO: /revoke @ник' }, { command: 'promo', description: 'Промокод: /promo КОД ДНИ' },
         { command: 'price', description: 'Цена в ⭐: /price @ник 250 1900' }, { command: 'pricerub', description: 'Цена в ₽: /pricerub @ник 350 2900' }, { command: 'refund', description: 'Возврат звёзд: /refund НОМЕР' }, { command: 'cancel', description: 'Отменить рассылку/пост' }, { command: 'start', description: 'Открыть P2Pro' } ] });
@@ -1087,6 +1097,9 @@ async function tick() {
   // 7. Утренний отчёт владельцу в 9:00 МСК
   const rep = await stGet('report', { on: true, day: '' });
   if (rep.on && hourMsk >= 9 && rep.day !== today) { await stSet('report', { ...rep, day: today }); await morningReport().catch((e) => console.error('report', e)); }
+  // 8. Возврат ушедших — раз в день после 12:00 МСК
+  const wb = await stGet('winback', { day: '' });
+  if (hourMsk >= 12 && wb.day !== today) { await stSet('winback', { day: today }); background(winback().catch((e) => console.error('winback', e))); }
 }
 
 // Пробный период закончился и PRO не купили — пишем один раз, с итогами недели
@@ -1348,10 +1361,12 @@ async function partnerJoin(from: { id: number; first_name?: string; username?: s
 }
 // Таблица целиком (Supabase отдаёт по 1000 строк)
 // Сортировка по ключу обязательна: без неё страницы могут повторять или терять строки
-async function rowsAll<T>(table: string, cols: string, key: string): Promise<T[]> {
+// deno-lint-ignore no-explicit-any
+async function rowsAll<T>(table: string, cols: string, key: string, where?: (q: any) => any): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; from < 1e6; from += 1000) {
-    const { data, error } = await admin.from(table).select(cols).order(key).range(from, from + 999);
+    const base = admin.from(table).select(cols);
+    const { data, error } = await (where ? where(base) : base).order(key).range(from, from + 999);
     if (error) throw error;
     out.push(...(data as unknown as T[]));
     if ((data ?? []).length < 1000) break;
@@ -1426,6 +1441,451 @@ async function usersExport() {
   fd.append('document', new Blob([csv], { type: 'text/csv' }), name);
   const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendDocument`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
   return { ok: true, n: users.length, sent: !!r?.ok, csv, name };
+}
+
+/* ---------- Общий чёрный список мошенников (22-blacklist.sql) ---------- */
+// Пользователь PRO жалуется на ник со скрином → владельцу приходит жалоба с кнопками (и она же в админке) →
+// одобренные жалобы и есть общая база. Кто пожаловался, другим не показываем. Скрины — в закрытом хранилище bl-proofs
+const BL_KINDS: Record<string, string> = { nopay: 'Не оплатил', cancel: 'Отменил после оплаты', fake: 'Фейковый чек', third: 'Третьи лица', rude: 'Грубость, угрозы', other: 'Другое' };
+const BL_REASONS = ['Нет доказательств на скрине', 'Спор по сделке, не мошенничество', 'Повторная жалоба'];
+const BL_REWARDS: Record<string, string> = { d3: '+3 дня PRO', d7: '+7 дней PRO', d30: '+30 дней PRO', p20: 'скидка 20%', p50: 'скидка 50%', no: 'без награды' };
+type BlRow = { id: number; nick: string; shown: string; kind: string; kind_text: string; note: string; proofs: string[]; reporter: string | null;
+  status: string; reason: string; reward: string; created_at: string; decided_at: string | null };
+type BlSum = { nick: string; shown: string; n: number; first: string; last: string; added: string; kinds: Record<string, number> };
+// Ник для поиска: без @, без лишних пробелов, в нижнем регистре. Так же ник ищется у контрагентов в приложении
+const blNick = (v: unknown) => String(v ?? '').trim().replace(/^@+/, '').replace(/\s+/g, ' ').slice(0, 40).toLowerCase();
+const blOkNick = (n: string) => n.length >= 2 && !/[\u0000-\u001f<>]/.test(n);
+const blKind = (r: { kind: string; kind_text: string }) => (r.kind === 'other' && r.kind_text) ? r.kind_text : BL_KINDS[r.kind] ?? 'Другое';
+const blAt = (n: string) => '@' + n;
+
+// Сводка по одобренным жалобам: сколько, когда первая и последняя, какие нарушения
+function blSummary(rows: BlRow[]) {
+  const m = new Map<string, BlSum>();
+  for (const r of rows) {
+    const s = m.get(r.nick) ?? { nick: r.nick, shown: r.shown || r.nick, n: 0, first: r.created_at, last: r.created_at, added: r.decided_at ?? r.created_at, kinds: {} };
+    s.n++; if (r.created_at < s.first) s.first = r.created_at; if (r.created_at > s.last) s.last = r.created_at;
+    const d = r.decided_at ?? r.created_at; if (d < s.added) s.added = d;
+    const k = blKind(r); s.kinds[k] = (s.kinds[k] ?? 0) + 1;
+    m.set(r.nick, s);
+  }
+  return m;
+}
+const BL_COLS = 'id, nick, shown, kind, kind_text, note, proofs, reporter, status, reason, reward, created_at, decided_at';
+async function blApproved(nicks?: string[]): Promise<BlRow[]> {
+  if (nicks && !nicks.length) return [];
+  if (nicks) {   // частями по 100: длинный список ников не влезет в один адрес запроса
+    const out: BlRow[] = [];
+    for (let i = 0; i < Math.min(nicks.length, 500); i += 100) {
+      const { data, error } = await admin.from('bl_reports').select(BL_COLS).eq('status', 'approved').in('nick', nicks.slice(i, i + 100));
+      if (error) throw error; out.push(...(data as BlRow[]));
+    }
+    return out;
+  }
+  return rowsAll<BlRow>('bl_reports', BL_COLS, 'id', (q) => q.eq('status', 'approved'));
+}
+async function blGet(id: number): Promise<BlRow | null> {
+  const { data } = await admin.from('bl_reports').select(BL_COLS).eq('id', id).maybeSingle();
+  return data as BlRow | null;
+}
+// Картинка из base64: только JPEG / PNG / WebP и не больше 2 МБ (проверяем по первым байтам, а не по названию)
+function blImage(b64: unknown): { bytes: Uint8Array; type: string; ext: string } | null {
+  if (typeof b64 !== 'string' || b64.length > 2.8e6) return null;
+  let bytes: Uint8Array;
+  try { bytes = Uint8Array.from(atob(b64.replace(/^data:[^,]*,/, '')), (c) => c.charCodeAt(0)); } catch (_) { return null; }
+  if (bytes.length < 100 || bytes.length > 2097152) return null;
+  const h = (i: number) => bytes[i];
+  if (h(0) === 0xFF && h(1) === 0xD8 && h(2) === 0xFF) return { bytes, type: 'image/jpeg', ext: 'jpg' };
+  if (h(0) === 0x89 && h(1) === 0x50 && h(2) === 0x4E && h(3) === 0x47) return { bytes, type: 'image/png', ext: 'png' };
+  if (String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP') return { bytes, type: 'image/webp', ext: 'webp' };
+  return null;
+}
+async function blUpload(dir: string, id: number, imgs: { bytes: Uint8Array; type: string; ext: string }[]) {
+  const paths: string[] = [];
+  for (const [i, im] of imgs.entries()) {
+    const path = `${dir}/${id}-${i + 1}.${im.ext}`;
+    const { error } = await admin.storage.from('bl-proofs').upload(path, im.bytes, { contentType: im.type, upsert: true });
+    if (error) throw new Error('Не удалось сохранить скрин: ' + error.message);
+    paths.push(path);
+  }
+  if (paths.length) await admin.from('bl_reports').update({ proofs: paths }).eq('id', id);
+  return paths;
+}
+async function blSigned(paths: string[]) {
+  if (!paths.length) return [];
+  const { data } = await admin.storage.from('bl-proofs').createSignedUrls(paths, 3600);
+  return (data ?? []).map((x: { signedUrl: string | null }) => x.signedUrl ?? null);   // порядок как у paths: пропуск — null
+}
+async function blDownload(path: string) {
+  const { data } = await admin.storage.from('bl-proofs').download(path);
+  return data ? new Uint8Array(await data.arrayBuffer()) : null;
+}
+
+// Жалоба владельцу в бот: скрины + текст + кнопки решения
+const blKb = (id: number) => kb([[{ text: '✅ Одобрить', callback_data: `bl:a:${id}` }, { text: '❌ Отклонить', callback_data: `bl:x:${id}` }],
+  [{ text: '✏️ Изменить тип нарушения', callback_data: `bl:t:${id}` }], [{ text: '🖥 Открыть в админке', url: `${APP}admin#bl` }]]);
+async function blWho(uid: string | null) {
+  if (!uid) return 'владелец (вручную)';
+  const [u, nick, s] = await Promise.all([userById(uid), tgNick(uid), subOf(uid)]);
+  return `${nick ? '@' + esc(nick) : esc(u ? nameOf(u) : 'без имени')}${isPro(s) ? ' (PRO)' : ''}`;
+}
+async function blOwnerCard(r: BlRow) {
+  const inBase = (await blApproved([r.nick])).length;
+  return `🚩 <b>Новая жалоба</b> · №${r.id}\n\n<b>На кого:</b> ${esc(blAt(r.shown || r.nick))}\n<b>Что случилось:</b> ${esc(blKind(r))}` +
+    (r.note ? `\n«${esc(r.note.slice(0, 500))}»` : '') + `\n\n<b>От:</b> ${await blWho(r.reporter)}\n` +
+    (inBase ? `В базе уже: ${inBase} ${plural(inBase, 'жалоба', 'жалобы', 'жалоб')} на этот ник` : 'Этого ника в базе ещё нет');
+}
+async function blNotifyOwner(r: BlRow, imgs: { bytes: Uint8Array; type: string; ext: string }[]) {
+  const text = await blOwnerCard(r);
+  if (imgs.length > 1) {   // несколько скринов — альбомом, кнопки отдельным сообщением
+    const fd = new FormData();
+    fd.append('chat_id', String(ADMIN_ID));
+    fd.append('media', JSON.stringify(imgs.map((_, i) => ({ type: 'photo', media: `attach://p${i}` }))));
+    imgs.forEach((im, i) => fd.append(`p${i}`, new Blob([im.bytes], { type: im.type }), `proof-${i + 1}.${im.ext}`));
+    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMediaGroup`, { method: 'POST', body: fd }).catch(() => null);
+  } else if (imgs.length === 1 && text.length <= 1000) {
+    const fd = new FormData();
+    fd.append('chat_id', String(ADMIN_ID)); fd.append('caption', text); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(blKb(r.id)));
+    fd.append('photo', new Blob([imgs[0].bytes], { type: imgs[0].type }), `proof.${imgs[0].ext}`);
+    const res = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+    if (res?.ok) return;
+  }
+  await tg('sendMessage', { chat_id: ADMIN_ID, text, parse_mode: 'HTML', reply_markup: blKb(r.id) });
+}
+
+// Предупреждение всем PRO, у кого этот ник в контрагентах (кроме автора жалобы). Шлём один раз — когда ник впервые попал в базу
+async function blWarnContacts(nick: string, sum: BlSum, skip: string | null) {
+  const rows = await rowsAll<{ user_id: string }>('counterparties', 'user_id, name_key', 'user_id', (q) => q.in('name_key', [nick, '@' + nick]).eq('deleted', false));
+  const users = [...new Set(rows.map((x) => x.user_id))].filter((u) => u !== skip);
+  if (!users.length) return 0;
+  const subs = new Map((await allSubs()).map((s) => [s.user_id, s]));
+  const kinds = Object.keys(sum.kinds).map((k) => k.toLowerCase()).join(', ');
+  let n = 0;
+  for (const uid of users) {
+    if (!isPro(subs.get(uid) ?? null)) continue;
+    const ok = await notify(uid, `⚠️ <b>Ваш контрагент ${esc(blAt(sum.shown))} отмечен как мошенник</b>\n` +
+      `По нему ${sum.n} ${plural(sum.n, 'подтверждённая жалоба', 'подтверждённые жалобы', 'подтверждённых жалоб')}: ${esc(kinds)}.\n` +
+      `Будьте осторожны и проверяйте поступление денег в банке, а не по чеку.`, kb([[{ text: '🛡 Подробнее в P2Pro', web_app: { url: APP } }]]));
+    if (ok) n++;
+    await sleep(40);
+  }
+  return n;
+}
+
+// Одобрить или отклонить. Меняем только жалобу «на проверке» — двойное нажатие не сработает дважды
+async function blDecide(id: number, act: 'approve' | 'reject', o: { reason?: string; kind?: string; kindText?: string } = {}) {
+  const patch: Record<string, unknown> = { status: act === 'approve' ? 'approved' : 'rejected', decided_at: new Date().toISOString() };
+  if (act === 'reject') patch.reason = (o.reason ?? '').trim().slice(0, 300) || BL_REASONS[0];
+  if (o.kind && o.kind in BL_KINDS) { patch.kind = o.kind; patch.kind_text = o.kind === 'other' ? (o.kindText ?? '').trim().slice(0, 60) : ''; }
+  const { data, error } = await admin.from('bl_reports').update(patch).eq('id', id).eq('status', 'pending').select(BL_COLS);
+  if (error) throw error;
+  const r = (data as BlRow[])?.[0];
+  if (!r) throw new Error('Жалоба уже рассмотрена или не найдена');
+  if (act === 'reject') {
+    const sent = r.reporter ? await notify(r.reporter, `❌ <b>Жалоба на ${esc(blAt(r.shown))} отклонена</b>\nПричина: ${esc(r.reason)}\n\nЕсли это ошибка — отправьте жалобу заново с более понятным скрином.`, openBtn()) : false;
+    return { r, sent, warned: 0, n: 0 };
+  }
+  const sum = blSummary(await blApproved([r.nick])).get(r.nick)!;
+  const sent = r.reporter ? await notify(r.reporter, `✅ <b>Ваша жалоба одобрена</b>\n${esc(blAt(r.shown))} добавлен в общую базу мошенников P2Pro. Спасибо, что помогаете другим!`, openBtn()) : false;
+  const warned = sum.n === 1 ? await blWarnContacts(r.nick, sum, r.reporter) : 0;
+  return { r, sent, warned, n: sum.n };
+}
+// Награда автору одобренной жалобы — один раз
+async function blReward(id: number, reward: string) {
+  if (!(reward in BL_REWARDS)) throw new Error('Неизвестная награда');
+  const { data, error } = await admin.from('bl_reports').update({ reward }).eq('id', id).eq('status', 'approved').eq('reward', '').select(BL_COLS);
+  if (error) throw error;
+  const r = (data as BlRow[])?.[0];
+  if (!r) throw new Error('Награда уже выбрана или жалоба не одобрена');
+  if (!r.reporter || reward === 'no') return { r, sent: false };
+  const u = await userById(r.reporter); if (!u) return { r, sent: false };
+  if (reward.startsWith('d')) {
+    const days = Number(reward.slice(1));
+    const { data: g, error: ge } = await admin.rpc('admin_gift_pro', { p_user: u.id, p_days: days });
+    if (ge) throw ge;
+    const sent = await notify(u.id, `🎁 <b>Спасибо за жалобу на ${esc(blAt(r.shown))}!</b>\nВ благодарность — <b>+${days} ${plural(days, 'день', 'дня', 'дней')} PRO</b>. PRO действует до ${date((g as { pro_until: string }).pro_until)}.`, openBtn());
+    return { r, sent };
+  }
+  await notify(u.id, `🎁 <b>Спасибо за жалобу на ${esc(blAt(r.shown))}!</b>\nВ благодарность — персональная скидка на PRO, подробности ниже.`, openBtn());
+  const d = await setDiscount(u, Number(reward.slice(1)));
+  return { r, sent: d.notified };
+}
+async function blSetKind(id: number, kind: string, text = '') {
+  if (!(kind in BL_KINDS)) throw new Error('Неизвестный тип');
+  const { error } = await admin.from('bl_reports').update({ kind, kind_text: kind === 'other' ? text.trim().slice(0, 60) : '' }).eq('id', id);
+  if (error) throw error;
+}
+// Снять человека из базы (ошибка, апелляция): его одобренные жалобы становятся «сняты», предупреждение у всех пропадёт
+async function blRemove(nick: string) {
+  const { data, error } = await admin.from('bl_reports').update({ status: 'removed' }).eq('nick', blNick(nick)).eq('status', 'approved').select('id');
+  if (error) throw error;
+  return (data ?? []).length;
+}
+async function blCounts() {
+  const n = async (s: string) => (await admin.from('bl_reports').select('id', { count: 'exact', head: true }).eq('status', s)).count ?? 0;
+  const [pending, approved, rejected, base] = await Promise.all([n('pending'), n('approved'), n('rejected'), blApproved().then((r) => blSummary(r).size)]);
+  return { pending, approved, rejected, base };
+}
+
+// Пост-счётчик для канала: карточка «В базе уже N мошенников» — без ников, только цифры
+function blCardSvg(n: number, week: number) {
+  const W = 1080, H = 1080;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs><radialGradient id="g1" cx="18%" cy="10%" r="70%"><stop offset="0" stop-color="#FF6B6B" stop-opacity=".30"/><stop offset="1" stop-color="#FF6B6B" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="90%" cy="90%" r="60%"><stop offset="0" stop-color="#F2B54B" stop-opacity=".14"/><stop offset="1" stop-color="#F2B54B" stop-opacity="0"/></radialGradient>
+    <linearGradient id="sh" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A8A"/><stop offset="1" stop-color="#C23B3B"/></linearGradient></defs>
+  <rect width="${W}" height="${H}" fill="#0C0F14"/><rect width="${W}" height="${H}" fill="url(#g1)"/><rect width="${W}" height="${H}" fill="url(#g2)"/>
+  <rect x="100" y="100" width="112" height="112" rx="32" fill="url(#sh)"/>
+  <path d="M156 128 l34 13 v26 c0 22 -15 38 -34 45 c-19 -7 -34 -23 -34 -45 v-26 z" fill="none" stroke="#fff" stroke-width="7" stroke-linejoin="round"/>
+  <text x="240" y="150" font-family="Onest" font-weight="600" font-size="30" fill="#FF9A9A" letter-spacing="5">ОБЩАЯ БАЗА P2PRO</text>
+  <text x="240" y="192" font-family="Onest" font-size="28" fill="#8691A2">проверенные мошенники P2P</text>
+  <text x="96" y="600" font-family="Unbounded" font-weight="800" font-size="${n >= 1000 ? 260 : 330}" fill="#FF6B6B" letter-spacing="-12">${n.toLocaleString('ru-RU')}</text>
+  <text x="100" y="700" font-family="Unbounded" font-weight="800" font-size="62" fill="#E8ECF2">${plural(n, 'мошенник', 'мошенника', 'мошенников')} в базе</text>
+  ${week ? `<rect x="100" y="760" width="${250 + String(week).length * 20}" height="72" rx="36" fill="#3CD38A" fill-opacity=".14"/><text x="132" y="808" font-family="Onest" font-weight="600" font-size="32" fill="#3CD38A">+${week} за неделю</text>` : ''}
+  <text x="100" y="960" font-family="Onest" font-size="30" fill="#8691A2">Каждая жалоба проверена по скрину · раздел «Контрагенты»</text>
+  <text x="${W - 100}" y="1010" text-anchor="end" font-family="Onest" font-weight="600" font-size="30" fill="#F2B54B">@P2ProAppBot</text></svg>`;
+}
+async function blPost(chat: number | string, preview = false) {
+  const sum = blSummary(await blApproved()), n = sum.size;
+  const week = [...sum.values()].filter((s) => Date.now() - Date.parse(s.added) < 7 * DAY).length;
+  const caption = `🛡 <b>В общей базе P2Pro уже ${n} ${plural(n, 'мошенник', 'мошенника', 'мошенников')}</b>\n` +
+    (week ? `За неделю добавили ${week}. ` : '') + `Проверяйте контрагентов перед сделкой — раздел «Контрагенты» в @P2ProAppBot.`;
+  const markup = preview ? kb([[{ text: `📤 Отправить в ${CHANNEL}`, callback_data: 'bl:pg' }]]) : kb([[{ text: '🚀 Открыть P2Pro', url: BOT_LINK }]]);
+  try {
+    const r = await renderer();
+    const png = new r.Resvg(blCardSvg(n, week), { font: { fontBuffers: r.fonts, defaultFontFamily: 'Onest', loadSystemFonts: false }, fitTo: { mode: 'width', value: 1080 } }).render().asPng();
+    const fd = new FormData();
+    fd.append('chat_id', String(chat)); fd.append('caption', caption); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(markup));
+    fd.append('photo', new Blob([png], { type: 'image/png' }), 'P2Pro-base.png');
+    const res = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+    if (res?.ok) return true;
+    console.error('bl post', res);
+  } catch (e) { console.error('bl card', e); }
+  const t = await tg('sendMessage', { chat_id: chat, text: caption, parse_mode: 'HTML', reply_markup: markup });
+  return !!t?.ok;
+}
+// Меню в боте владельца
+async function blMenu() {
+  const c = await blCounts();
+  return { text: `<b>🛡 Общий чёрный список</b>\n\nВ базе: <b>${c.base}</b> ${plural(c.base, 'ник', 'ника', 'ников')}\nЖдут проверки: <b>${c.pending}</b>\nОдобрено: ${c.approved} · отклонено: ${c.rejected}\n\n` +
+    `Новые жалобы приходят сюда сами. Поиск, ручное добавление и снятие из базы — в веб-админке, вкладка «База».`,
+    markup: kb([[{ text: '📣 Пост-счётчик в канал', callback_data: 'bl:pp' }], [{ text: '🖥 Открыть в админке', url: `${APP}admin#bl` }], [{ text: '‹ Меню', callback_data: 'm' }]]) };
+}
+// Кнопки под жалобой в боте владельца
+async function blCallback(chatId: number, msgId: number | null, act: string, idRaw: string, extra: string): Promise<string> {
+  const id = Number(idRaw);
+  const clear = () => msgId ? tg('editMessageReplyMarkup', { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } }) : null;
+  const say = (text: string, markup?: unknown) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) });
+  if (act === 'm') { const v = await blMenu(); await show(chatId, msgId, v.text, v.markup); return ''; }
+  if (act === 'pp') { await blPost(chatId, true); return 'Превью ниже'; }
+  if (act === 'pg') { const ok = await blPost(CHANNEL); await clear(); await say(ok ? `✅ Пост-счётчик опубликован в ${CHANNEL}.` : '⚠️ Не получилось опубликовать: проверьте права бота в канале.'); return ''; }
+  if (!(id > 0)) return 'Жалоба не найдена';
+  if (act === 'a') {
+    const d = await blDecide(id, 'approve'); await clear();
+    await say(`✅ <b>Жалоба №${id} одобрена</b>\n${esc(blAt(d.r.shown))} теперь в общей базе (${d.n} ${plural(d.n, 'жалоба', 'жалобы', 'жалоб')}).` +
+      (d.warned ? `\nПредупредили ${d.warned} ${plural(d.warned, 'пользователя', 'пользователей', 'пользователей')} PRO, у кого он в контрагентах.` : '') +
+      (d.r.reporter ? `\n\n🎁 <b>Наградить автора ${await blWho(d.r.reporter)}?</b>` : ''),
+      d.r.reporter ? kb([[{ text: '+3 дня PRO', callback_data: `bl:r:${id}:d3` }, { text: '+7 дней', callback_data: `bl:r:${id}:d7` }, { text: '+30 дней', callback_data: `bl:r:${id}:d30` }],
+        [{ text: 'Скидка 20%', callback_data: `bl:r:${id}:p20` }, { text: 'Скидка 50%', callback_data: `bl:r:${id}:p50` }], [{ text: 'Без награды', callback_data: `bl:r:${id}:no` }]]) : undefined);
+    return 'Одобрено';
+  }
+  if (act === 'x') {
+    await say(`❌ <b>Отклонить жалобу №${id}?</b>\nВыберите причину — её увидит автор:`, kb([...BL_REASONS.map((t, i) => [{ text: t, callback_data: `bl:j:${id}:${i}` }]),
+      [{ text: '✏️ Написать свою', callback_data: `bl:jc:${id}` }]]));
+    return '';
+  }
+  if (act === 'j') { await blDecide(id, 'reject', { reason: BL_REASONS[Number(extra)] }); await clear(); await say(`❌ Жалоба №${id} отклонена: ${esc(BL_REASONS[Number(extra)] ?? '')}. Автор получил уведомление.`); return 'Отклонено'; }
+  if (act === 'jc') { await stSet('await', { kind: 'blr', id, at: Date.now() }); await say(`✏️ Пришлите причину отказа по жалобе №${id} одним сообщением — её увидит автор.`); return ''; }
+  if (act === 't') {
+    await say(`✏️ <b>Тип нарушения для жалобы №${id}</b>`, kb([...Object.entries(BL_KINDS).filter(([k]) => k !== 'other').map(([k, t]) => [{ text: t, callback_data: `bl:k:${id}:${k}` }]),
+      [{ text: '✏️ Свой вариант', callback_data: `bl:kc:${id}` }]]));
+    return '';
+  }
+  if (act === 'k') { await blSetKind(id, extra); await clear(); await say(`✏️ Жалоба №${id}: тип — «${esc(BL_KINDS[extra] ?? '')}». Теперь одобрите или отклоните её:`, blKb(id)); return 'Тип изменён'; }
+  if (act === 'kc') { await stSet('await', { kind: 'blk', id, at: Date.now() }); await say(`✏️ Пришлите свой тип нарушения для жалобы №${id} (коротко, до 60 знаков).`); return ''; }
+  if (act === 'r') {
+    const d = await blReward(id, extra); await clear();
+    await say(extra === 'no' ? `Жалоба №${id}: без награды.` : `🎁 Автору жалобы №${id} — ${BL_REWARDS[extra]}.${d.sent ? ' Уведомление отправлено.' : ' ⚠️ Уведомление не дошло.'}`);
+    return 'Готово';
+  }
+  return '';
+}
+
+// Запросы приложения (только PRO): проверка ников, подробности, свои жалобы, новая жалоба
+async function blApi(body: Record<string, unknown>) {
+  if (!SERVICE || !TOKEN) return aj({ error: 'server' }, 500);
+  const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
+  if (ue || !ud?.user) return aj({ error: 'auth' }, 401);
+  const u = ud.user as AUser;
+  if (isBanned(u)) return aj({ error: 'blocked' }, 403);
+  if (!isPro(await subOf(u.id))) return aj({ error: 'pro' }, 403);
+  const act = String(body.bl_api);
+  try {
+    if (act === 'lookup') {
+      const nicks = [...new Set((Array.isArray(body.nicks) ? body.nicks : []).slice(0, 500).map(blNick).filter(blOkNick))];
+      const [sum, all] = await Promise.all([blApproved(nicks).then(blSummary), blApproved().then((r) => blSummary(r).size)]);
+      return aj({ total: all, base: Object.fromEntries([...sum.values()].map((s) => [s.nick, { n: s.n, last: s.last, kinds: s.kinds }])) });
+    }
+    if (act === 'detail') {
+      const nick = blNick(body.nick); if (!blOkNick(nick)) throw new Error('Впишите ник');
+      const rows = (await blApproved([nick])).sort((a, b) => b.created_at.localeCompare(a.created_at));
+      const s = blSummary(rows).get(nick);
+      return aj({ nick, found: !!s, n: s?.n ?? 0, first: s?.first ?? null, last: s?.last ?? null, kinds: s?.kinds ?? {},
+        items: rows.slice(0, 30).map((r) => ({ at: r.created_at, kind: blKind(r), note: r.note })) });
+    }
+    if (act === 'mine') {
+      const { data, error } = await admin.from('bl_reports').select(BL_COLS).eq('reporter', u.id).order('created_at', { ascending: false }).limit(50);
+      if (error) throw error;
+      return aj({ list: (data as BlRow[]).map((r) => ({ id: r.id, nick: r.shown || r.nick, kind: blKind(r), status: r.status === 'removed' ? 'approved' : r.status,
+        reason: r.reason, reward: r.reward && r.reward !== 'no' ? BL_REWARDS[r.reward] : '', at: r.created_at })) });
+    }
+    if (act === 'report') {
+      const shown = String(body.nick ?? '').trim().replace(/^@+/, '').replace(/\s+/g, ' ').slice(0, 40), nick = blNick(shown);
+      if (!blOkNick(nick)) throw new Error('Впишите ник мошенника');
+      const kind = String(body.kind ?? ''); if (!(kind in BL_KINDS)) throw new Error('Выберите, что случилось');
+      const kindText = kind === 'other' ? String(body.kind_text ?? '').trim().slice(0, 60) : '';
+      if (kind === 'other' && !kindText) throw new Error('Напишите, что случилось');
+      const note = String(body.note ?? '').trim().slice(0, 1000);
+      const imgs = (Array.isArray(body.images) ? body.images : []).slice(0, 3).map(blImage);
+      if (!imgs.length) throw new Error('Приложите хотя бы один скрин');
+      if (imgs.some((x) => !x)) throw new Error('Скрин должен быть картинкой JPG или PNG до 2 МБ');
+      // Без спама: не больше 10 жалоб за сутки и одна жалоба на проверке на один ник
+      const { count } = await admin.from('bl_reports').select('id', { count: 'exact', head: true }).eq('reporter', u.id).gte('created_at', new Date(Date.now() - DAY).toISOString());
+      if ((count ?? 0) >= 10) throw new Error('Не больше 10 жалоб в сутки — попробуйте завтра');
+      const { data: dup } = await admin.from('bl_reports').select('id').eq('reporter', u.id).eq('nick', nick).eq('status', 'pending').limit(1);
+      if (dup?.length) throw new Error('Ваша жалоба на этот ник уже на проверке');
+      const { data: ins, error } = await admin.from('bl_reports').insert({ nick, shown, kind, kind_text: kindText, note, reporter: u.id }).select(BL_COLS).single();
+      if (error) throw error;
+      const r = ins as BlRow, ok = imgs as { bytes: Uint8Array; type: string; ext: string }[];
+      try { r.proofs = await blUpload(u.id, r.id, ok); }
+      catch (e) { await admin.from('bl_reports').delete().eq('id', r.id); throw e; }
+      await blNotifyOwner(r, ok).catch((e) => console.error('bl notify', e));
+      return aj({ ok: true, id: r.id });
+    }
+    return aj({ error: 'Неизвестное действие' }, 400);
+  } catch (e) { return aj({ error: String((e as Error)?.message ?? e).slice(0, 300) }, 400); }
+}
+
+// Админка: очередь, карточка жалобы со скринами, решение, поиск, ручное добавление, снятие, пост
+async function blAdmin(act: string, body: Record<string, unknown>) {
+  const withNicks = async (rows: BlRow[]) => {
+    const nicks = await nicksMap(), counts = blSummary(await blApproved([...new Set(rows.map((r) => r.nick))]));
+    const thumbs = await blSigned(rows.map((r) => r.proofs[0]).filter(Boolean));
+    let ti = 0;
+    return rows.map((r) => ({ ...r, kindLabel: blKind(r), from: r.reporter ? (nicks.get(r.reporter)?.username ?? null) : null, manual: !r.reporter,
+      inBase: counts.get(r.nick)?.n ?? 0, thumb: r.proofs[0] ? thumbs[ti++] ?? null : null }));
+  };
+  if (act === 'bl_counts') return blCounts();
+  if (act === 'bl_list') {
+    const st = String(body.status ?? 'pending');
+    let q = admin.from('bl_reports').select(BL_COLS).order('created_at', { ascending: false }).limit(300);
+    if (['pending', 'approved', 'rejected', 'removed'].includes(st)) q = q.eq('status', st);
+    if (typeof body.nick === 'string' && body.nick) q = q.eq('nick', blNick(body.nick));
+    const { data, error } = await q; if (error) throw error;
+    return { list: await withNicks(data as BlRow[]) };
+  }
+  if (act === 'bl_get') {
+    const r = await blGet(Number(body.id)); if (!r) throw new Error('Жалоба не найдена');
+    const [x] = await withNicks([r]);
+    return { report: { ...x, images: (await blSigned(r.proofs)).filter(Boolean), who: await blWho(r.reporter) }, kinds: BL_KINDS, reasons: BL_REASONS, rewards: BL_REWARDS };
+  }
+  if (act === 'bl_decide') {
+    const id = Number(body.id), a = body.act === 'reject' ? 'reject' : 'approve';
+    const d = await blDecide(id, a, { reason: String(body.reason ?? ''), kind: body.kind ? String(body.kind) : undefined, kindText: String(body.kind_text ?? '') });
+    let rewarded = false;
+    if (a === 'approve' && d.r.reporter && typeof body.reward === 'string' && body.reward in BL_REWARDS) rewarded = !!(await blReward(id, body.reward)).sent;
+    return { ok: true, sent: d.sent, warned: d.warned, n: d.n, rewarded };
+  }
+  if (act === 'bl_kind') { await blSetKind(Number(body.id), String(body.kind ?? ''), String(body.kind_text ?? '')); return { ok: true }; }
+  if (act === 'bl_search') {
+    const q = blNick(body.q);
+    const sum = blSummary(await blApproved());
+    const list = [...sum.values()].filter((s) => !q || s.nick.includes(q)).sort((a, b) => b.last.localeCompare(a.last)).slice(0, 100);
+    const { data: rep } = list.length ? await admin.from('bl_reports').select('nick, reporter').eq('status', 'approved').in('nick', list.map((s) => s.nick)) : { data: [] };
+    const nicks = await nicksMap();
+    return { list: list.map((s) => ({ ...s, from: [...new Set(((rep ?? []) as { nick: string; reporter: string | null }[]).filter((x) => x.nick === s.nick)
+      .map((x) => x.reporter ? (nicks.get(x.reporter)?.username ? '@' + nicks.get(x.reporter)!.username : 'без ника') : 'вручную'))] })) };
+  }
+  if (act === 'bl_add') {
+    const shown = String(body.nick ?? '').trim().replace(/^@+/, '').replace(/\s+/g, ' ').slice(0, 40), nick = blNick(shown);
+    if (!blOkNick(nick)) throw new Error('Впишите ник');
+    const kind = String(body.kind ?? 'other'); if (!(kind in BL_KINDS)) throw new Error('Выберите тип нарушения');
+    const imgs = (Array.isArray(body.images) ? body.images : []).slice(0, 3).map(blImage);
+    if (imgs.some((x) => !x)) throw new Error('Скрин должен быть картинкой JPG или PNG до 2 МБ');
+    const { data: ins, error } = await admin.from('bl_reports').insert({ nick, shown, kind, kind_text: kind === 'other' ? String(body.kind_text ?? '').trim().slice(0, 60) : '',
+      note: String(body.note ?? '').trim().slice(0, 1000), status: 'approved', decided_at: new Date().toISOString(), reward: 'no' }).select(BL_COLS).single();
+    if (error) throw error;
+    const r = ins as BlRow;
+    if (imgs.length) await blUpload('admin', r.id, imgs as { bytes: Uint8Array; type: string; ext: string }[]);
+    const sum = blSummary(await blApproved([nick])).get(nick)!;
+    const warned = sum.n === 1 ? await blWarnContacts(nick, sum, null) : 0;
+    return { ok: true, n: sum.n, warned };
+  }
+  if (act === 'bl_remove') return { ok: true, n: await blRemove(String(body.nick ?? '')) };
+  if (act === 'bl_post') return { ok: await blPost(body.mode === 'channel' ? CHANNEL : ADMIN_ID, body.mode !== 'channel') };
+  return null;
+}
+
+/* ---------- Курс в любом чате: @P2ProAppBot (инлайн-режим включается в @BotFather → /setinline) ---------- */
+// Пусто или «курс» — карточка курса USDT. «50000 92.1 93.4» — быстрый расчёт сделки: сумма, курс покупки, курс продажи
+const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const money2 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+async function inlineAnswer(q: { id: string; query?: string }) {
+  const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
+  const m = (q.query ?? '').trim().replace(/(\d),(\d)/g, '$1.$2').match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
+  if (m) {
+    const sum = +m[1], buy = +m[2], sell = +m[3];
+    if (sum > 0 && buy > 0 && sell > 0 && sum < 1e10) {
+      const usdt = sum / buy, out = usdt * sell, profit = out - sum, pct = profit / sum * 100, sg = profit >= 0 ? '+' : '−';
+      results.push({ type: 'article', id: 'deal', title: `Прибыль ${sg}${money2(Math.abs(profit))} ₽ (${sg}${money2(Math.abs(pct))}%)`,
+        description: `${money2(sum)} ₽ · купил по ${money2(buy)} · продал по ${money2(sell)}`, thumbnail_url: `${APP}icons/icon-192.png`,
+        input_message_content: { parse_mode: 'HTML', message_text: `🧮 <b>Расчёт сделки</b>\n\nСумма: <b>${money2(sum)} ₽</b>\nКупил по ${money2(buy)} ₽ → <b>${money2(usdt)} USDT</b>\n` +
+          `Продал по ${money2(sell)} ₽ → <b>${money2(out)} ₽</b>\n\nПрибыль: <b>${sg}${money2(Math.abs(profit))} ₽</b> (${sg}${money2(Math.abs(pct))}%)\n<i>Без комиссий бирж — точный расчёт в @P2ProAppBot</i>` },
+        reply_markup: open });
+    }
+  }
+  const main = await usdtRate();
+  if (main) {
+    const vals = await Promise.all(RP_FIATS.map(([c]) => fiatRate(c)));
+    const now = new Date(), when = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }) + ', ' + now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+    const ch = `${main.ch >= 0 ? '+' : '−'}${rub2(Math.abs(main.ch))}%`;
+    const fiats = RP_FIATS.map(([, name, sym], i) => vals[i] ? `${name}: ${vals[i] >= 1000 ? Math.round(vals[i]).toLocaleString('ru-RU') : rub2(vals[i])} ${sym}` : '').filter(Boolean).join(' · ');
+    results.push({ type: 'article', id: 'rate', title: `Курс USDT: ${rub2(main.rate)} ₽`, description: `${ch} за сутки · биржа xRocket`, thumbnail_url: `${APP}icons/icon-192.png`,
+      input_message_content: { parse_mode: 'HTML', message_text: `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${ch} за сутки)\n${fiats}\n\nБиржа xRocket · курс через @P2ProAppBot` },
+      reply_markup: open });
+  }
+  await tg('answerInlineQuery', { inline_query_id: q.id, results, cache_time: 60, is_personal: false, button: { text: '🚀 Открыть P2Pro', start_parameter: 'inline' } });
+}
+
+/* ---------- Возврат ушедших ---------- */
+// Кто 10–45 дней не записывал сделки — одно сообщение с курсом и его лучшим месяцем. Один раз за перерыв.
+// Кто выключил итоги дня кнопкой в боте, тому не пишем
+async function winback() {
+  const [tgs, users, trades] = await Promise.all([rowsAll<{ user_id: string; tg_id: number; daily_off: boolean | null }>('tg_users', 'user_id, tg_id, daily_off', 'tg_id'),
+    allUsers(), allTrades('user_id, ts')]);
+  const banned = new Set(users.filter(isBanned).map((u) => u.id)), last = new Map<string, number>(), now = Date.now();
+  for (const t of trades) last.set(t.user_id, Math.max(last.get(t.user_id) ?? 0, Date.parse(t.ts)));
+  const cand = tgs.filter((t) => { const l = last.get(t.user_id); return !!l && !t.daily_off && !banned.has(t.user_id) && Number(t.tg_id) !== ADMIN_ID && now - l >= 10 * DAY && now - l < 45 * DAY; });
+  if (!cand.length) return;
+  const done = new Map((await rowsAll<{ key: string; value: { last: number } }>('bot_state', 'key, value', 'key', (q) => q.like('key', 'wb:%'))).map((x) => [x.key, x.value?.last]));
+  const rate = await usdtRate();
+  let n = 0;
+  for (const t of cand.slice(0, 300)) {
+    const l = last.get(t.user_id)!;
+    if (done.get('wb:' + t.user_id) === l) continue;
+    const { data } = await admin.from('trades').select('ts, data').eq('user_id', t.user_id).eq('deleted', false).limit(5000);
+    const by: Record<string, number> = {};
+    for (const x of (data ?? []) as { ts: string; data: ATrade['data'] }[]) { if ((x.data?.cur ?? 'RUB') !== 'RUB') continue; const k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + (+(x.data?.profit ?? 0) || 0); }
+    const best = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
+    const text = `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ₽</b> (xRocket).\n` : '') +
+      (best && best[1] > 0 ? `Ваш лучший месяц — ${MONTHS_RU[+best[0].slice(5) - 1]}: <b>+${Math.round(best[1]).toLocaleString('ru-RU')} ₽</b>. ` : '') +
+      `Записывайте сделки, чтобы статистика оставалась полной.`;
+    let r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() });
+    if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() }); }
+    await stSet('wb:' + t.user_id, { last: l, at: now });
+    if (r?.ok) n++;
+    await sleep(50);
+  }
+  if (n) await tg('sendMessage', { chat_id: ADMIN_ID, text: `👋 Возврат ушедших: напомнили о P2Pro ${n} ${plural(n, 'человеку', 'людям', 'людям')}, кто 10+ дней не записывал сделки.` });
 }
 
 // Вход по одноразовой ссылке из бота: код забираем одним запросом (второй раз не сработает) и выдаём сессию аккаунта владельца
@@ -1519,6 +1979,7 @@ async function adminApi(body: Record<string, unknown>) {
       const aud = (['all', 'pro', 'exp', 'free'] as Aud[]).includes(body.aud as Aud) ? body.aud as Aud : 'all';
       const n = (await recipients(aud)).length; background(broadcastText(fmtText(t), aud)); return aj({ ok: true, n });
     }
+    if (act.startsWith('bl_')) { const r = await blAdmin(act, body); if (r) return aj(r); }
     return aj({ error: 'Неизвестное действие' }, 400);
   } catch (e) { return aj({ error: String((e as Error)?.message ?? e).slice(0, 300) }, 400); }
 }
@@ -1530,6 +1991,9 @@ Deno.serve(async (req) => {
   let update: any = null;
   try { update = JSON.parse(raw); } catch (_) { /* не JSON */ }
   // Веб-админка: своя проверка (сессия владельца), секрет Telegram ей не нужен
+  if (raw.length > 9e6) return aj({ error: 'Слишком большой запрос' }, 413);
+  // Приложение: общий чёрный список (только PRO, проверка по сессии пользователя)
+  if (typeof update?.bl_api === 'string') return blApi(update).catch((e) => { console.error('bl api', e); return aj({ error: 'server' }, 500); });
   if (typeof update?.admin_api === 'string') return adminApi(update).catch((e) => { console.error('admin api', e); return aj({ error: 'server' }, 500); });
   // Принимаем запросы только от Telegram и от расписания Supabase: оба присылают секрет, который мы задали
   if (!SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== SECRET) return new Response('forbidden', { status: 403 });
@@ -1542,6 +2006,8 @@ Deno.serve(async (req) => {
   }
   if (typeof update?.daily_user === 'string') { if (TOKEN && SERVICE) await dailySend(update.daily_user, String(update.day ?? mskDay(Date.now()))).catch((e) => console.error('daily', e)); return new Response('ok'); }
   const isAdmin = (id?: number) => id === ADMIN_ID && !!SERVICE && !!TOKEN;
+  // Курс в любом чате (инлайн-режим)
+  if (update?.inline_query) { if (TOKEN) await inlineAnswer(update.inline_query).catch((e) => console.error('inline', e)); return new Response('ok'); }
   // Оплата звёздами: проверка перед списанием и успешный платёж
   if (update?.pre_checkout_query) { await preCheckout(update.pre_checkout_query).catch((e) => console.error('precheckout', e)); return new Response('ok'); }
   if (update?.message?.successful_payment) { await paid(update.message).catch((e) => console.error('paid', e)); return new Response('ok'); }
