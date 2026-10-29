@@ -2084,7 +2084,30 @@ function inlineCanSave(uid: number) {
   if (inlineSaves.size > 5000) inlineSaves.clear();
   return true;
 }
+// Расчёт в чатах — только для тех, кто входил в P2Pro и сейчас подписан на канал (как при входе в приложение).
+// Подписку проверяем через Telegram и запоминаем на пару минут, чтобы не спрашивать на каждую букву.
+// Если Telegram не ответил — пускаем: из-за сбоя у Telegram подписчики не должны терять функцию
+const inlineSubs = new Map<number, { ok: boolean; at: number }>();
+async function inlineAllowed(tgId: number) {
+  const c = inlineSubs.get(tgId);
+  if (c && Date.now() - c.at < (c.ok ? 5 * 60e3 : 15e3)) return c.ok;
+  const { data: tu } = await admin.from('tg_users').select('user_id').eq('tg_id', tgId).maybeSingle();
+  let ok = !!tu;
+  if (ok && tgId !== ADMIN_ID) {
+    const r = await tg('getChatMember', { chat_id: CHANNEL, user_id: tgId }).catch(() => null);
+    const st = r?.ok ? r.result?.status : null;
+    if (st) ok = ['creator', 'administrator', 'member'].includes(st) || (st === 'restricted' && !!r.result?.is_member);
+  }
+  inlineSubs.set(tgId, { ok, at: Date.now() });
+  if (inlineSubs.size > 5000) inlineSubs.clear();
+  return ok;
+}
 async function inlineAnswer(q: { id: string; query?: string; from?: { id: number } }) {
+  if (!q.from || !await inlineAllowed(q.from.id)) {
+    await tg('answerInlineQuery', { inline_query_id: q.id, results: [], cache_time: 5, is_personal: true,
+      button: { text: '📢 Подпишитесь на канал и откройте P2Pro', start_parameter: 'inline' } });
+    return;
+  }
   const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
   const photo = (id: string, fileId: string, title: string, description: string, caption: string) =>
     ({ type: 'photo', id, photo_file_id: fileId, title, description, caption, parse_mode: 'HTML', reply_markup: open });
