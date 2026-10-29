@@ -1871,7 +1871,8 @@ async function blAdmin(act: string, body: Record<string, unknown>) {
 }
 
 /* ---------- Курс в любом чате: @P2ProAppBot (инлайн-режим включается в @BotFather → /setinline) ---------- */
-// Пусто или «курс» — карточка курса USDT. «50000 92.1 93.4» — карточка расчёта сделки: сумма, курс покупки, курс продажи.
+// Пусто или «курс» — карточка курса USDT. «50000 92.1 93.4» — карточка расчёта: сумма, курс покупки, курс продажи.
+// У PRO банк после курсов («50000 92.1 93.4 Сбер») — обычная сделка, без банка — треугольник.
 // В чат уходит картинка: рисуем PNG → JPEG и загружаем в Telegram (см. cardFileId). Старые записи удаляются раз в день
 const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const money2 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1939,27 +1940,46 @@ function dealCardSvg(d: { sum: number; buy: number; sell: number; usdt: number; 
   <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
 /* ---------- PRO: карточка сделки в чате с комиссиями и кнопкой «Сохранить в историю» ---------- */
-// Биржа и банк — как в последней сделке человека (или первые из его списков), комиссии — из его настроек в приложении.
-// Расчёт тот же, что в приложении (обычная сделка): комиссия биржи от суммы продажи, вывод — только в режиме «между биржами»
-type ChatDeal = { ex: string; bank: string; cur: string; sum: number; buy: number; sell: number; feeEx: number; feeExType: string; feeWd: number; feeWdType: string;
-  qty: number; gross: number; cost: number; commEx: number; commWd: number; comm: number; net: number; profit: number; profitPct: number; spreadPct: number };
-async function chatDeal(userId: string, sum: number, buy: number, sell: number): Promise<ChatDeal> {
+// «50000 92.1 93.4 Сбер» — обычная сделка через этот банк, «50000 92.1 93.4» без банка — треугольник.
+// Биржа — как в последней сделке человека (или первая из его списка), комиссии — из его настроек в приложении.
+// Расчёт тот же, что в приложении: у сделки комиссия биржи от суммы продажи (вывод — только в режиме «между биржами»),
+// у треугольника мейкер платит комиссию с обоих ордеров, прибыль — оставшийся USDT
+type ChatDeal = { mode: 'deal' | 'tri'; ex: string; bank: string; cur: string; sum: number; buy: number; sell: number; feeEx: number; feeExType: string; feeWd: number; feeWdType: string;
+  qty: number; soldQty: number; gross: number; cost: number; commEx: number; commWd: number; comm: number; net: number; profit: number; profitU: number | null; profitPct: number; spreadPct: number };
+const BANK_ALIAS: Record<string, string> = { 'тинькофф': 'т-банк', 'тинек': 'т-банк', 'тиньк': 'т-банк', 'тбанк': 'т-банк', 'т банк': 'т-банк', 'сбербанк': 'сбер', 'альфа': 'альфа-банк', 'альфабанк': 'альфа-банк', 'озон': 'ozon банк', 'ozon': 'ozon банк' };
+// Банк из запроса: если он есть в списке банков человека — пишем как у него, иначе как написал
+function chatBank(typed: string, mine: string[]): string {
+  const t = typed.replace(/[^\p{L}\p{N} .\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  if (!t) return '';
+  const k = (v: string) => v.toLowerCase().replace(/ё/g, 'е').replace(/[\s.\-]/g, '');
+  const want = k(BANK_ALIAS[t.toLowerCase()] ?? t);
+  const hit = mine.find((b) => k(b) === want) ?? mine.find((b) => want.length >= 3 && (k(b).startsWith(want) || want.startsWith(k(b))));
+  return hit ?? t[0].toUpperCase() + t.slice(1);
+}
+async function chatDeal(userId: string, sum: number, buy: number, sell: number, typedBank: string): Promise<ChatDeal> {
   const [{ data: prof }, { data: last }] = await Promise.all([
     admin.from('profiles').select('settings').eq('id', userId).maybeSingle(),
     admin.from('trades').select('data').eq('user_id', userId).eq('deleted', false).order('ts', { ascending: false }).limit(1)]);
-  const st = (prof?.settings ?? {}) as { cur?: string; feeExType?: string; feeWdType?: string; exchanges?: string[]; banks?: string[]; feePresets?: Record<string, { ex?: number; wd?: number }>; work?: string };
-  const lt = (last?.[0]?.data ?? {}) as { ex?: string; bank?: string };
-  const ex = String(lt.ex || st.exchanges?.[0] || 'Bybit').slice(0, 30), bank = String(lt.bank && lt.bank !== '—' ? lt.bank : st.banks?.[0] || '—').slice(0, 30);
+  const st = (prof?.settings ?? {}) as { cur?: string; exchanges?: string[]; banks?: string[]; feePresets?: Record<string, { ex?: number; wd?: number }>; work?: string };
+  const lt = (last?.[0]?.data ?? {}) as { ex?: string };
+  const ex = String(lt.ex || st.exchanges?.[0] || 'Bybit').slice(0, 30), cur = st.cur === 'USD' ? 'USD' : 'RUB';
   const preset = st.feePresets?.[ex] ?? (ex === 'Bybit' ? { ex: 0.3, wd: 1 } : { ex: 0, wd: 1 });
-  const feeEx = Math.max(0, Math.min(99, +(preset.ex ?? 0) || 0)), feeExType = 'pct';
-  const feeWd = st.work === 'inter' ? Math.max(0, +(preset.wd ?? 0) || 0) : 0, feeWdType = 'fixed';
+  const feeEx = Math.max(0, Math.min(99, +(preset.ex ?? 0) || 0)), f = feeEx / 100;
+  const bank = chatBank(typedBank, Array.isArray(st.banks) ? st.banks.map(String) : []);
+  if (!bank) {
+    // Треугольник: покупаем USDT у продавца по buy, продаём покупателю по sell на ту же сумму
+    const qGet = sum / buy, qGive = sum / sell, feeU = (qGet + qGive) * f, profitU = qGet - qGive - feeU;
+    return { mode: 'tri', ex, bank: '—', cur, sum, buy, sell, feeEx, feeExType: 'pct', feeWd: 0, feeWdType: 'fixed', qty: qGet, soldQty: qGive, gross: sum, cost: sum,
+      commEx: feeU * buy, commWd: 0, comm: feeU * buy, net: sum, profit: profitU * buy, profitU, profitPct: profitU / qGive * 100, spreadPct: (sell - buy) / buy * 100 };
+  }
+  const feeWd = st.work === 'inter' ? Math.max(0, +(preset.wd ?? 0) || 0) : 0;
   const qty = sum / buy, gross = qty * sell, cost = sum;
-  const commEx = gross * feeEx / 100, commWd = feeWd * buy, comm = commEx + commWd, net = gross - comm, profit = net - cost;
-  return { ex, bank, cur: st.cur === 'USD' ? 'USD' : 'RUB', sum, buy, sell, feeEx, feeExType, feeWd, feeWdType, qty, gross, cost, commEx, commWd, comm, net, profit,
-    profitPct: profit / cost * 100, spreadPct: (sell - buy) / buy * 100 };
+  const commEx = gross * f, commWd = feeWd * buy, comm = commEx + commWd, net = gross - comm, profit = net - cost;
+  return { mode: 'deal', ex, bank, cur, sum, buy, sell, feeEx, feeExType: 'pct', feeWd, feeWdType: 'fixed', qty, soldQty: qty, gross, cost, commEx, commWd, comm, net, profit,
+    profitU: null, profitPct: profit / cost * 100, spreadPct: (sell - buy) / buy * 100 };
 }
 function proDealCardSvg(d: ChatDeal) {
-  const W = 1080, H = 1080, pos = d.profit >= 0, col = pos ? '#3CD38A' : '#FF6B6B', sg = pos ? '+' : '−', cs = CUR[d.cur] ?? d.cur;
+  const W = 1080, H = 1080, tri = d.mode === 'tri', pos = d.profit >= 0, col = pos ? '#3CD38A' : '#FF6B6B', sg = pos ? '+' : '−', cs = CUR[d.cur] ?? d.cur;
   const x = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
   const big = `${sg}${money2(Math.abs(d.profit))} ${cs}`, fs = big.length > 14 ? 92 : big.length > 11 ? 110 : 120;
   const cell = (i: number, name: string, v: string, c = '#E8ECF2') => { const cx = 100 + (i % 2) * 450, cy = 600 + Math.floor(i / 2) * 120;
@@ -1973,16 +1993,16 @@ function proDealCardSvg(d: ChatDeal) {
   <rect x="100" y="90" width="100" height="100" rx="28" fill="#F2B54B"/>
   <text x="150" y="150" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="38" fill="#1B1405">P2</text>
   <text x="150" y="174" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="13" letter-spacing="4" fill="#1B1405">PRO</text>
-  <text x="226" y="138" font-family="Unbounded" font-weight="800" font-size="40" fill="#E8ECF2">${x(`Сделка · ${d.ex}`.slice(0, 22))}</text>
-  <text x="226" y="178" font-family="Onest" font-size="26" fill="#8691A2">${x(`${d.bank} · с вашими комиссиями`.slice(0, 40))}</text>
+  <text x="226" y="138" font-family="Unbounded" font-weight="800" font-size="${tri ? 34 : 40}" fill="#E8ECF2">${x(`${tri ? 'Треугольник' : 'Сделка'} · ${d.ex}`.slice(0, 26))}</text>
+  <text x="226" y="178" font-family="Onest" font-size="26" fill="#8691A2">${x(`${tri ? 'без карты' : d.bank} · с вашими комиссиями`.slice(0, 40))}</text>
   <rect x="${W - 250}" y="112" width="150" height="56" rx="28" fill="#F2B54B" fill-opacity=".16" stroke="#F2B54B" stroke-opacity=".5"/>
   <text x="${W - 175}" y="149" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="24" fill="#F2B54B">PRO</text>
   <text x="100" y="300" font-family="Onest" font-weight="600" font-size="28" letter-spacing="8" fill="${col}">${pos ? 'ЧИСТАЯ ПРИБЫЛЬ' : 'УБЫТОК'}</text>
   <text x="94" y="420" font-family="Unbounded" font-weight="800" font-size="${fs}" fill="${col}">${x(big)}</text>
-  <text x="100" y="484" font-family="Onest" font-size="32" fill="#8691A2">${x(`${sg}${money2(Math.abs(d.profitPct))}% к сумме · комиссии ${money2(d.comm)} ${cs}`)}</text>
-  ${cell(0, 'Сумма', `${money2(d.sum)} ${cs}`)}${cell(1, 'USDT', money2(d.qty))}
-  ${cell(2, 'Курс покупки', `${money2(d.buy)} ${cs}`)}${cell(3, 'Курс продажи', `${money2(d.sell)} ${cs}`)}
-  ${cell(4, `Комиссия ${d.ex} · ${String(d.feeEx).replace('.', ',')}%${d.commWd ? ' + вывод' : ''}`.slice(0, 30), `−${money2(d.comm)} ${cs}`, '#FF9F5A')}${cell(5, 'Получено', `${money2(d.net)} ${cs}`)}
+  <text x="100" y="484" font-family="Onest" font-size="32" fill="#8691A2">${x(tri ? `${sg}${money2(Math.abs(d.profitU ?? 0))} USDT остаток · комиссии ${money2(d.comm)} ${cs}` : `${sg}${money2(Math.abs(d.profitPct))}% к сумме · комиссии ${money2(d.comm)} ${cs}`)}</text>
+  ${cell(0, 'Сумма', `${money2(d.sum)} ${cs}`)}${tri ? cell(1, 'Получил от продавца', `${money2(d.qty)} USDT`) : cell(1, 'USDT', money2(d.qty))}
+  ${cell(2, tri ? 'Купил у продавца' : 'Курс покупки', `${money2(d.buy)} ${cs}`)}${cell(3, tri ? 'Продал покупателю' : 'Курс продажи', `${money2(d.sell)} ${cs}`)}
+  ${cell(4, `${tri ? 'Мейкер' : 'Комиссия'} ${d.ex} · ${String(d.feeEx).replace('.', ',')}%${d.commWd ? ' + вывод' : ''}`.slice(0, 30), `−${money2(d.comm)} ${cs}`, '#FF9F5A')}${tri ? cell(5, 'Отдал покупателю', `${money2(d.soldQty)} USDT`) : cell(5, 'Получено', `${money2(d.net)} ${cs}`)}
   <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">Посчитано в P2Pro PRO</text>
   <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
@@ -1996,9 +2016,9 @@ async function saveChatDeal(cq: { id: string; data?: string; from: { id: number 
   if (v.saved) return ans('Эта сделка уже в истории ✓');
   if (!isPro(await subOf(v.uid))) return ans('Сохранение из чата доступно в PRO', true);
   const d = v.d, id = 'c' + token.toLowerCase(), now = new Date().toISOString();
-  const t = { id, ts: now, cur: d.cur, mode: 'deal', ex: d.ex, bank: d.bank, note: 'Из чата', profitU: null, buy: d.buy, sum: d.sum, sell: d.sell,
+  const t = { id, ts: now, cur: d.cur, mode: d.mode ?? 'deal', ex: d.ex, bank: d.bank, note: 'Из чата', profitU: d.profitU ?? null, buy: d.buy, sum: d.sum, sell: d.sell,
     cp: '', cp2: '', sellers: null, cpNote: '', cp2Note: '', sales: null, feeEx: d.feeEx, feeExType: d.feeExType, feeWd: d.feeWd, feeWdType: d.feeWdType,
-    qty: d.qty, soldQty: d.qty, gross: d.gross, cost: d.cost, commEx: d.commEx, commWd: d.commWd, comm: d.comm, profit: d.profit, profitPct: d.profitPct,
+    qty: d.qty, soldQty: d.soldQty ?? d.qty, gross: d.gross, cost: d.cost, commEx: d.commEx, commWd: d.commWd, comm: d.comm, profit: d.profit, profitPct: d.profitPct,
     spreadPct: d.spreadPct, fav: false, src: 'chat' };
   const { error } = await admin.from('trades').upsert({ user_id: v.uid, id, ts: now, data: t, deleted: false }, { onConflict: 'user_id,id', ignoreDuplicates: true });
   if (error) { console.error('save chat deal', error); return ans('Не получилось сохранить — попробуйте ещё раз', true); }
@@ -2021,7 +2041,7 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
   const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
   const photo = (id: string, fileId: string, title: string, description: string, caption: string) =>
     ({ type: 'photo', id, photo_file_id: fileId, title, description, caption, parse_mode: 'HTML', reply_markup: open });
-  const m = (q.query ?? '').trim().replace(/(\d),(\d)/g, '$1.$2').match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
+  const m = (q.query ?? '').trim().replace(/(\d),(\d)/g, '$1.$2').match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)(?:\s+(\S.{0,39}))?$/);
   if (m) {
     const sum = +m[1], buy = +m[2], sell = +m[3];
     if (sum > 0 && buy > 0 && sell > 0 && sum < 1e10 && buy < 1e6 && sell < 1e6) {
@@ -2029,17 +2049,19 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
       const { data: tu } = q.from ? await admin.from('tg_users').select('user_id').eq('tg_id', q.from.id).maybeSingle() : { data: null };
       const pro = !!tu && isPro(await subOf(tu.user_id));
       if (pro && tu) {
-        const d = await chatDeal(tu.user_id, sum, buy, sell), cs = CUR[d.cur] ?? d.cur, sg = d.profit >= 0 ? '+' : '−';
+        const d = await chatDeal(tu.user_id, sum, buy, sell, m[4] ?? ''), cs = CUR[d.cur] ?? d.cur, sg = d.profit >= 0 ? '+' : '−';
         const token = [...crypto.getRandomValues(new Uint8Array(12))].map((x) => CODE_ABC[x % 32]).join('');
         await stSet('sv:' + token, { uid: tu.user_id, tg: q.from!.id, d });
         const title = `${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'} ${sg}${money2(Math.abs(d.profit))} ${cs} · с комиссиями`;
-        const desc = `${d.ex} · ${d.bank} · ${money2(sum)} ${cs} · ${money2(buy)} → ${money2(sell)}`;
-        const text = `🧮 <b>Сделка · ${esc(d.ex)} · ${esc(d.bank)}</b>\nСумма: <b>${money2(sum)} ${cs}</b> · ${money2(buy)} → ${money2(sell)}\n` +
-          `Комиссия ${esc(d.ex)}${d.commWd ? ' и вывод' : ''}: −${money2(d.comm)} ${cs}\n<b>${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'}: ${sg}${money2(Math.abs(d.profit))} ${cs}</b> (${sg}${money2(Math.abs(d.profitPct))}%)`;
+        const tri = d.mode === 'tri';
+        const desc = `${tri ? 'Треугольник' : 'Сделка'} · ${d.ex} · ${tri ? 'без карты' : d.bank} · ${money2(sum)} ${cs} · ${money2(buy)} → ${money2(sell)}`;
+        const text = `🧮 <b>${tri ? 'Треугольник' : 'Сделка'} · ${esc(d.ex)} · ${tri ? 'без карты' : esc(d.bank)}</b>\nСумма: <b>${money2(sum)} ${cs}</b> · ${tri ? `купил у продавца ${money2(buy)}, продал покупателю ${money2(sell)}` : `${money2(buy)} → ${money2(sell)}`}\n` +
+          `${tri ? 'Комиссия мейкера' : `Комиссия ${esc(d.ex)}${d.commWd ? ' и вывод' : ''}`}: −${money2(d.comm)} ${cs}\n<b>${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'}: ${sg}${money2(Math.abs(d.profit))} ${cs}</b> ` +
+          (tri ? `(${sg}${money2(Math.abs(d.profitU ?? 0))} USDT)` : `(${sg}${money2(Math.abs(d.profitPct))}%)`);
         const markup = kb([[{ text: '💾 Сохранить в историю', callback_data: 'sv:' + token }], [{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
         try {
           if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');
-          const fid = await cardFileId(`pro-${tu.user_id.slice(0, 8)}-${d.ex}-${d.feeEx}-${d.feeWd}-${d.cur}-${sum}-${buy}-${sell}`, () => svgJpeg(proDealCardSvg(d)));
+          const fid = await cardFileId(`pro-${tu.user_id.slice(0, 8)}-${d.mode}-${d.ex}-${d.bank}-${d.feeEx}-${d.feeWd}-${d.cur}-${sum}-${buy}-${sell}`, () => svgJpeg(proDealCardSvg(d)));
           results.push({ ...photo('deal', fid, title, desc, text), reply_markup: markup });
         } catch (e) {
           if (String(e).indexOf('inline limit') < 0) console.error('inline pro card', e);
