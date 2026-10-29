@@ -1362,8 +1362,8 @@ const partnerLink = (code: string) => `https://t.me/P2ProAppBot?start=p_${code}`
 async function partnerJoin(from: { id: number; first_name?: string; username?: string }, raw: string) {
   const code = raw.toLowerCase();
   if (!PCODE.test(code)) return;
-  const { data: p } = await admin.from('partners').select('name, active').eq('code', code).maybeSingle();
-  if (!p?.active) return;
+  const { data: p } = await admin.from('partners').select('*').eq('code', code).maybeSingle();   // '*' — работает и без колонки tg_id
+  if (!p?.active || Number(p.tg_id) === from.id) return;   // партнёр по своей же ссылке — не реферал
   const { data: had } = await admin.from('tg_users').select('tg_id').eq('tg_id', from.id).maybeSingle();
   if (had) return;
   const name = (from.username ? '@' + from.username : from.first_name ?? '').slice(0, 64);
@@ -1396,11 +1396,21 @@ async function partnerData() {
     rowsAll<PRow>('partners', '*', 'code'), rowsAll<PRef>('partner_refs', 'tg_id, code, name, at', 'tg_id'), rowsAll<PPay>('partner_payouts', '*', 'id'),
     rowsAll<TgRow>('tg_users', 'user_id, tg_id, username', 'tg_id'), allSubs()]);
   const tgBy = new Map(tgs.map((t) => [Number(t.tg_id), t])), subBy = new Map(subs.map((s) => [s.user_id, s]));
+  // Кто платил: подарок PRO лежит в подписке получателя, но деньги — того, кто дарил (gift_from).
+  // Возврат по счёту относим тому же, кто этот счёт оплатил
+  type PayX = Pay & { gift_from?: string; invoice?: string; refund?: boolean };
+  const invPayer = new Map<string, string>(), paidBy = new Map<string, PayX[]>();
+  for (const sb of subs) for (const p of (sb.payments ?? []) as PayX[]) if (p.invoice && !p.refund && +p.amount > 0) invPayer.set(p.invoice, p.gift_from || sb.user_id);
+  for (const sb of subs) for (const p of (sb.payments ?? []) as PayX[]) {
+    const who = (p.refund && p.invoice ? invPayer.get(p.invoice) : p.gift_from) || sb.user_id;
+    if (!paidBy.has(who)) paidBy.set(who, []);
+    paidBy.get(who)!.push(p);
+  }
   const people = refs.map((r) => {
     const t = tgBy.get(Number(r.tg_id)), s = t ? subBy.get(t.user_id) : undefined;
     let rub = 0, stars = 0, n = 0;
     // Считаем только оплаты после перехода по ссылке. Возвраты записаны отрицательной суммой — они уменьшают долю
-    for (const p of (s?.payments ?? []) as Pay[]) {
+    for (const p of (t ? paidBy.get(t.user_id) ?? [] : []) as Pay[]) {
       if (Date.parse(p.ts) < Date.parse(r.at)) continue;
       const k = payKind(p); if (k === 'free') continue;
       if (k === 'stars') stars += +p.amount || 0; else rub += +p.amount || 0;
@@ -2256,6 +2266,8 @@ async function partnerClaim(from: { id: number; first_name?: string; username?: 
   await admin.from('partners').update({ tg_id: null, tg_name: '' }).eq('tg_id', from.id);   // один Telegram — одна партнёрка
   const { data, error } = await admin.from('partners').update({ tg_id: from.id, tg_name: name }).eq('code', v.code).select('name, code');
   if (error || !data?.length) return send(from.id, 'Не получилось подключить кабинет — напишите владельцу P2Pro.', false);
+  // Если партнёр до этого сам переходил по своей ссылке — это не реферал, свои оплаты ему не засчитываем
+  await admin.from('partner_refs').delete().eq('tg_id', from.id).eq('code', v.code).then(() => {}, () => {});
   await pcCommands(from.id, true);
   await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `🤝 Партнёр <b>${esc(data[0].name || v.code)}</b> подключил кабинет в боте: ${esc(name) || 'без имени'}` });
   await partnerCabinet(from.id, null, true);
