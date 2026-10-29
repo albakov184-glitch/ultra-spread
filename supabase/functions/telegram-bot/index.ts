@@ -1371,8 +1371,10 @@ async function partnerJoin(from: { id: number; first_name?: string; username?: s
   const { data: ins, error } = await admin.from('partner_refs').upsert({ tg_id: from.id, code, name }, { onConflict: 'tg_id', ignoreDuplicates: true }).select('tg_id');
   if (error || !ins?.length) return;
   await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `🤝 По ссылке партнёра <b>${esc(p.name || code)}</b> пришёл новый человек: ${esc(name) || 'без имени'}` });
-  if (p.tg_id) await tg('sendMessage', { chat_id: p.tg_id, text: '👥 По вашей ссылке пришёл новый человек! Статистика — /partner' });
+  if (p.tg_id && !await pcMuted(code)) await tg('sendMessage', { chat_id: p.tg_id, text: '👥 По вашей ссылке пришёл новый человек! Статистика — /partner' });
 }
+// Партнёр может выключить уведомления о переходах и оплатах (кнопка в кабинете). Хранится в bot_state — без изменений в базе
+const pcMuted = (code: string) => stGet<boolean>('pmute:' + code, false).catch(() => false);
 // Покупка от человека, пришедшего по ссылке партнёра: пишем владельцу и самому партнёру (без имени покупателя)
 async function partnerSales(subs: NonNullable<Sub>[], since: number, until: number) {
   for (const sb of subs) for (const p of (sb.payments ?? []) as (Pay & { gift_from?: string; refund?: boolean })[]) {
@@ -1390,7 +1392,7 @@ async function partnerSales(subs: NonNullable<Sub>[], since: number, until: numb
     const per = p.period === 'y' ? 'год' : 'месяц', u = await userById(sb.user_id);
     await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
       text: `🤝💰 <b>Покупка по ссылке партнёра ${esc(pr.name || pr.code)}</b>\nPRO · ${per} · ${amt}${p.gift_from ? ' · 🎁 подарок' : ''}\n${u ? who(u) : ''}\nДоля партнёра (${+pr.pct}%): <b>${share}</b>` });
-    if (pr.tg_id) await tg('sendMessage', { chat_id: pr.tg_id, parse_mode: 'HTML',
+    if (pr.tg_id && !await pcMuted(pr.code)) await tg('sendMessage', { chat_id: pr.tg_id, parse_mode: 'HTML',
       text: `💰 <b>Новая оплата от вашего человека!</b>\nPRO на ${per} · ${amt}\nВаша доля: <b>+${share}</b>\n\nВся статистика — /partner` });
   }
 }
@@ -2309,7 +2311,9 @@ async function partnerCabinet(tgId: number, msgId: number | null, hello = false)
     `💳 Оплатили: <b>${p.payers}</b> · сейчас с PRO: ${p.pro}\n💰 Выручка с ваших людей: ${r(p.rub)}${st(p.stars)}\n\n` +
     `📈 Ваша доля: <b>${r(p.shareRub)}</b>${st(p.shareStars)}\n✅ Выплачено: ${r(p.paidRub)}${st(p.paidStars)}\n` +
     `⏳ <b>К выплате: ${r(Math.max(0, p.owedRub))}${st(Math.max(0, p.owedStars))}</b>\n\n<i>Обновлено ${whenText(Date.now())}. Выплаты — по договорённости с владельцем P2Pro.</i>`;
+  const muted = await pcMuted(p.code);
   const markup = kb([[{ text: '🔄 Обновить', callback_data: 'pc:r' }],
+    [{ text: muted ? '🔔 Включить уведомления' : '🔕 Отключить уведомления', callback_data: 'pc:n' }],
     [{ text: '📤 Поделиться ссылкой', url: `https://t.me/share/url?url=${encodeURIComponent(p.link)}&text=${encodeURIComponent('P2Pro — калькулятор и журнал P2P-сделок прямо в Telegram')}` }]]);
   await show(tgId, msgId, text, markup);
   return true;
@@ -2502,6 +2506,16 @@ Deno.serve(async (req) => {
   if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
   if (cq && /^my:/.test(cq.data ?? '') && SERVICE) { await myCallback(cq).catch((e) => console.error('my', e)); return new Response('ok'); }
   if (cq && /^sv:/.test(cq.data ?? '') && SERVICE) { await saveChatDeal(cq).catch((e) => console.error('save deal', e)); return new Response('ok'); }
+  if (cq && cq.data === 'pc:n' && SERVICE) {
+    const { data: me } = await admin.from('partners').select('code').eq('tg_id', cq.from.id).maybeSingle();
+    if (me) {
+      const off = !await pcMuted(me.code);
+      await stSet('pmute:' + me.code, off);
+      await tg('answerCallbackQuery', { callback_query_id: cq.id, text: off ? 'Уведомления отключены. Статистика по-прежнему в /partner' : 'Уведомления включены' });
+      await partnerCabinet(cq.from.id, cq.message?.message_id ?? null).catch((e) => console.error('pc', e));
+    } else await tg('answerCallbackQuery', { callback_query_id: cq.id });
+    return new Response('ok');
+  }
   if (cq && cq.data === 'pc:r' && SERVICE) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Обновляю…' }); await partnerCabinet(cq.from.id, cq.message?.message_id ?? null).catch((e) => console.error('pc', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
   if (cq) {
