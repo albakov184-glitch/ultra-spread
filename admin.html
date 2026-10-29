@@ -334,6 +334,8 @@ const METHOD = { sbp: 'СБП', card: 'Карта', crypto: 'Крипта', star
 let toastT;
 function toast(text, err) { const t = $('toast'); t.textContent = text; t.classList.toggle('err', !!err); t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 3400); }
 function confirmBox(title, text, okText = 'Да', danger) {
+  // Окно уже открыто (двойное нажатие) — второе не показываем, иначе одно действие выполнится дважды
+  if (document.querySelector('.modal')) return Promise.resolve(false);
   return new Promise(res => {
     const m = document.createElement('div'); m.className = 'modal';
     m.innerHTML = `<div><h3>${esc(title)}</h3><p class="muted" style="margin:0">${text}</p><div class="inl"><button class="btn" data-n>Отмена</button><button class="btn ${danger ? 'danger' : 'pri'}" data-y>${esc(okText)}</button></div></div>`;
@@ -887,6 +889,7 @@ function shrink(file) {
 }
 // Окно выбора: кнопки-варианты и/или своё поле. Ответ — выбранное значение или null
 function pickBox(title, text, opts, { input, okText = 'Готово', danger, def } = {}) {
+  if (document.querySelector('.modal')) return Promise.resolve(null);
   return new Promise(res => {
     const m = document.createElement('div'); m.className = 'modal'; let val = def ?? null;
     m.innerHTML = `<div><h3>${esc(title)}</h3>${text ? `<p class="muted" style="margin:0">${text}</p>` : ''}<div class="chips">${opts.map(([k, l]) => `<button class="chip ${k === val ? 'on' : ''}" data-pv="${esc(k)}">${esc(l)}</button>`).join('')}</div>
@@ -1069,8 +1072,9 @@ async function renderBc() {
   $('bcTest').onclick = async () => { if (!BC.text.trim()) return toast('Напишите текст', true); $('bcTest').disabled = true; try { await api('bc_test', { text: BC.text }); toast('Тест отправлен тебе в бот'); } catch (e) { toast(e.message, true); } $('bcTest').disabled = false; };
   $('bcGo').onclick = async () => {
     if (!BC.text.trim()) return toast('Напишите текст', true);
-    const cnt = n[BC.aud]; if (!await confirmBox('Отправить рассылку?', `Получат ${cnt} ${plural(cnt, 'человек', 'человека', 'человек')} (${A.find(x => x[0] === BC.aud)[1].toLowerCase()}). Отменить будет нельзя.`, 'Отправить')) return;
+    if ($('bcGo').disabled) return;   // второе нажатие, пока открыто подтверждение, — не вторая рассылка
     $('bcGo').disabled = true;
+    const cnt = n[BC.aud]; if (!await confirmBox('Отправить рассылку?', `Получат ${cnt} ${plural(cnt, 'человек', 'человека', 'человек')} (${A.find(x => x[0] === BC.aud)[1].toLowerCase()}). Отменить будет нельзя.`, 'Отправить')) { $('bcGo').disabled = false; return; }
     try { const r = await api('bc_send', { text: BC.text, aud: BC.aud }); toast(`Рассылка пошла: ${r.n} получателей. Итог придёт в бот`); BC.text = ''; $('bcT').value = ''; prev(); } catch (e) { toast(e.message, true); }
     $('bcGo').disabled = false;
   };

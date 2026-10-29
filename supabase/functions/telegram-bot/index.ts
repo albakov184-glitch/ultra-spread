@@ -2420,6 +2420,11 @@ async function adminApi(body: Record<string, unknown>) {
       const t = String(body.text ?? '').trim(); if (!t) throw new Error('Пустой текст');
       if (act === 'bc_test') { const r = await tg('sendMessage', { chat_id: ADMIN_ID, text: fmtText(t), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: openBtn() }); if (!r?.ok) throw new Error('Telegram не принял текст: ' + (r?.description ?? '')); return aj({ ok: true }); }
       const aud = (['all', 'pro', 'exp', 'free'] as Aud[]).includes(body.aud as Aud) ? body.aud as Aud : 'all';
+      // Та же рассылка второй раз за 10 минут — почти наверняка двойное нажатие или повтор после обрыва связи
+      const sig = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(aud + '\n' + t)))].slice(0, 12).map((x) => x.toString(16).padStart(2, '0')).join('');
+      const last = await stGet<{ sig: string; at: number } | null>('bc_last', null);
+      if (last?.sig === sig && Date.now() - last.at < 10 * 60e3) throw new Error('Эта рассылка уже ушла несколько минут назад — второй раз не отправляю');
+      await stSet('bc_last', { sig, at: Date.now() });
       const n = (await recipients(aud)).length; background(broadcastText(fmtText(t), aud)); return aj({ ok: true, n });
     }
     if (act.startsWith('bl_')) { const r = await blAdmin(act, body); if (r) return aj(r); }
