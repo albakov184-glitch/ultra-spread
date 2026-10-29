@@ -3389,6 +3389,7 @@ async function pullAll() {
   if (changed) render();
   if (chatIn.length) chatArrived(chatIn);
   subFresh = true; subCheck(); subFresh = false;
+  trialPrompt();
 }
 
 let syncTimer = 0, syncing = null, syncAgain = false, syncAgainPull = false, syncState = '', lastPull = 0;
@@ -4253,6 +4254,18 @@ function trialSheet() {
     ${featList()}
     <button class="btn primary pw-go" id="trialGo">Включить пробный PRO</button><button class="btn" data-close>Позже</button>
     <span class="muted small" style="text-align:center">Через 7 дней PRO выключится сам — без списаний. Один раз на аккаунт</span>`);
+}
+// Предложение пробного PRO при входе: после того как подписка пришла с сервера (у кого есть PRO — не покажется),
+// один раз на устройство. Если открыто другое окно, PIN-код или обзор — ждём, пока закроют
+let trialPromptT = 0;
+function trialPrompt(tries = 0) {
+  clearTimeout(trialPromptT);
+  if (S.settings.trialSeen || !trialAvail() || tries > 20) return;
+  trialPromptT = setTimeout(() => {
+    if (S.settings.trialSeen || !trialAvail()) return;
+    if ($('scrim') || $('pinLock') || !S.settings.onboarded || document.hidden) return trialPrompt(tries + 1);
+    S.settings.trialSeen = true; persist(false); trialSheet();
+  }, tries ? 15000 : 2500);
 }
 async function trialStart() {
   const b = $('trialGo'); if (!b || b.disabled) return;
