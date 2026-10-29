@@ -2055,9 +2055,14 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
         const title = `${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'} ${sg}${money2(Math.abs(d.profit))} ${cs} · с комиссиями`;
         const tri = d.mode === 'tri';
         const desc = `${tri ? 'Треугольник' : 'Сделка'} · ${d.ex} · ${tri ? 'без карты' : d.bank} · ${money2(sum)} ${cs} · ${money2(buy)} → ${money2(sell)}`;
-        const text = `🧮 <b>${tri ? 'Треугольник' : 'Сделка'} · ${esc(d.ex)} · ${tri ? 'без карты' : esc(d.bank)}</b>\nСумма: <b>${money2(sum)} ${cs}</b> · ${tri ? `купил у продавца ${money2(buy)}, продал покупателю ${money2(sell)}` : `${money2(buy)} → ${money2(sell)}`}\n` +
-          `${tri ? 'Комиссия мейкера' : `Комиссия ${esc(d.ex)}${d.commWd ? ' и вывод' : ''}`}: −${money2(d.comm)} ${cs}\n<b>${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'}: ${sg}${money2(Math.abs(d.profit))} ${cs}</b> ` +
-          (tri ? `(${sg}${money2(Math.abs(d.profitU ?? 0))} USDT)` : `(${sg}${money2(Math.abs(d.profitPct))}%)`);
+        const fee = `${String(d.feeEx).replace('.', ',')}%`;
+        const text = [`🧮 <b>${tri ? 'Треугольник' : 'Сделка'} · ${esc(d.ex)}</b>`, `<i>${tri ? 'без карты' : esc(d.bank)} · с моими комиссиями</i>`, '',
+          `💰 Сумма: <b>${money2(sum)} ${cs}</b>`,
+          `📥 ${tri ? 'Купил у продавца' : 'Курс покупки'}: <b>${money2(buy)} ${cs}</b>`,
+          `📤 ${tri ? 'Продал покупателю' : 'Курс продажи'}: <b>${money2(sell)} ${cs}</b>`,
+          `💸 ${tri ? `Комиссия мейкера (${fee})` : `Комиссия ${esc(d.ex)} (${fee}${d.commWd ? ' + вывод' : ''})`}: <b>−${money2(d.comm)} ${cs}</b>`, '',
+          `${d.profit >= 0 ? '✅ <b>Чистая прибыль' : '🔻 <b>Убыток'}: ${sg}${money2(Math.abs(d.profit))} ${cs}</b>`,
+          tri ? `Остаток: ${sg}${money2(Math.abs(d.profitU ?? 0))} USDT` : `Доходность: ${sg}${money2(Math.abs(d.profitPct))}%`].join('\n');
         const markup = kb([[{ text: '💾 Сохранить в историю', callback_data: 'sv:' + token }], [{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
         try {
           if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');

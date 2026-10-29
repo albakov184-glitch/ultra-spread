@@ -247,6 +247,8 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .item .r1 { font-family: var(--f-mono); font-weight: 600; text-align: right; }
 .item .r2 { font-family: var(--f-mono); font-size: 12px; text-align: right; }
 .tag { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; background: var(--surface-2); color: var(--muted); }
+.item.fresh { animation: freshIn 2.4s ease-out; box-shadow: inset 3px 0 0 var(--accent); }
+@keyframes freshIn { 0%, 35% { background: color-mix(in srgb, var(--accent) 14%, transparent); } }
 .tag.tag-chat { margin-left: 4px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .star { color: var(--accent); font-size: 12px; }
 .empty { text-align: center; color: var(--muted); padding: 32px 12px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
@@ -1931,7 +1933,7 @@ function renderHistory() {
   }).join('') + lock;
 }
 function itemHtml(t) {
-  return `<button class="item" data-open="${esc(t.id)}">
+  return `<button class="item${freshIds.has(String(t.id)) ? ' fresh' : ''}" data-open="${esc(t.id)}">
     <div style="min-width:0">
       <div class="l1">${fmtTime(t.ts)} · ${esc(t.ex)} ${t.mode === 'tri' ? '<span class="tag">треугольник</span>' : `<span class="tag">${esc(t.bank)}</span>`}${t.mode === 'circle' ? '<span class="tag">круг</span>' : ''}${t.src === 'chat' ? '<span class="tag tag-chat">из чата</span>' : ''}${t.fav ? '<span class="star">★</span>' : ''}</div>
       <div class="l2">${t.mode === 'tri' ? `${rate(t.sell)} / ${rate(t.buy)}` : `${rate(t.buy)} → ${rate(t.sell.toFixed(4))}`} · ${hid(nf0.format(t.sum))} ${SYM[t.cur]}</div>
@@ -2905,7 +2907,16 @@ function movePill(still) {
   p.classList.toggle('still', !!still);
   p.style.width = b.offsetWidth + 'px'; p.style.transform = `translateX(${b.offsetLeft}px)`;
 }
-let newSaved = 0;
+// Сделки, сохранённые кнопкой в чате: до первого открытия Истории — «+N» на вкладке и подсветка в списке
+const CHAT_KEY = KEY + '.chatNew';
+let chatNew = (() => { try { const v = JSON.parse(localStorage.getItem(CHAT_KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } })().filter(x => typeof x === 'string').slice(0, 50), freshIds = new Set();
+let newSaved = chatNew.length;
+function chatArrived(ids) {
+  ids = ids.filter(id => !chatNew.includes(id)); if (!ids.length) return;
+  if (current === 'hist') { ids.forEach(id => freshIds.add(id)); render(); }
+  else { chatNew = chatNew.concat(ids).slice(-50); lsSet(CHAT_KEY, chatNew); newSaved += ids.length; navBadge(); }
+  toast(`Из чата: +${ids.length} ${plural(ids.length, 'сделка', 'сделки', 'сделок')} в Истории`);
+}
 function navBadge() {
   const b = document.querySelector('.nav button[data-tab="hist"]'); b.querySelector('.nav-badge')?.remove();
   if (newSaved) b.insertAdjacentHTML('beforeend', `<span class="nav-badge" aria-label="Новых сделок: ${newSaved}">+${newSaved}</span>`);
@@ -2926,6 +2937,7 @@ function show(tab) {
   }
   if (tab === 'stats' && changed) chartFx = calFx = true;
   if (tab === 'hist' && newSaved) { newSaved = 0; navBadge(); }
+  if (tab === 'hist' && changed) { freshIds = new Set(chatNew); chatNew = []; lsSet(CHAT_KEY, null); } else if (changed) freshIds.clear();
   movePill(!changed);
   render();
   try { localStorage.setItem(KEY + '.tab', tab); } catch (e) {}
@@ -3347,6 +3359,7 @@ async function pullAll() {
   if (pr.error) throw pr.error; if (sub.error) throw sub.error;
   live();
   let maxAt = SH.at, changed = false;
+  const firstPull = !SH.pulled, chatIn = [];
   const merge = (rows, list, keyOf, keyCol, shMap) => {
     const map = new Map(list.map(x => [keyOf(x), x]));
     for (const r of rows) {
@@ -3354,7 +3367,10 @@ async function pullAll() {
       const k = r[keyCol], local = map.get(k);
       if (local ? fp(local) !== shMap[k] : k in shMap) continue;   // своя правка ещё не ушла
       if (r.deleted) { if (local) { map.delete(k); changed = true; } delete shMap[k]; }
-      else { if (!local || fp(local) !== fp(r.data)) { map.set(k, r.data); changed = true; } shMap[k] = fp(r.data); }
+      else {
+        if (!local && !firstPull && r.data?.src === 'chat' && keyCol === 'id') chatIn.push(String(k));
+        if (!local || fp(local) !== fp(r.data)) { map.set(k, r.data); changed = true; } shMap[k] = fp(r.data);
+      }
     }
     return [...map.values()];
   };
@@ -3371,6 +3387,7 @@ async function pullAll() {
   subApply(sub.data); setTimeout(trialEndCheck, 900);
   SH.at = maxAt; SH.pulled = true; shSave(); persist(false);
   if (changed) render();
+  if (chatIn.length) chatArrived(chatIn);
   subFresh = true; subCheck(); subFresh = false;
 }
 
@@ -4751,6 +4768,7 @@ syncIncog();
 bootAccount();
 addEventListener('resize', () => movePill(true));
 document.fonts?.ready.then(() => movePill(true));
+if (newSaved) navBadge();
 </script>
 
 </body>
