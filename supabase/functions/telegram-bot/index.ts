@@ -1899,6 +1899,8 @@ async function cardFileId(key: string, make: () => Promise<Uint8Array>) {
   return id;
 }
 async function cardsCleanup() {
+  // Кнопки «Сохранить» из чатов живут 7 дней
+  await admin.from('bot_state').delete().like('key', 'sv:%').lt('updated_at', new Date(Date.now() - 7 * DAY).toISOString()).then(() => {}, () => {});
   // Запомненные карточки для чатов — только за сегодня и вчера
   const keep2 = [mskDay(Date.now()), mskDay(Date.now() - DAY)];
   await admin.from('bot_state').delete().like('key', 'ip:%').not('key', 'like', `ip:${keep2[0]}:%`).not('key', 'like', `ip:${keep2[1]}:%`).then(() => {}, () => {});
@@ -1936,6 +1938,76 @@ function dealCardSvg(d: { sum: number; buy: number; sell: number; usdt: number; 
   <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">Без комиссий бирж · точный расчёт в P2Pro</text>
   <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
+/* ---------- PRO: карточка сделки в чате с комиссиями и кнопкой «Сохранить в историю» ---------- */
+// Биржа и банк — как в последней сделке человека (или первые из его списков), комиссии — из его настроек в приложении.
+// Расчёт тот же, что в приложении (обычная сделка): комиссия биржи от суммы продажи, вывод — только в режиме «между биржами»
+type ChatDeal = { ex: string; bank: string; cur: string; sum: number; buy: number; sell: number; feeEx: number; feeExType: string; feeWd: number; feeWdType: string;
+  qty: number; gross: number; cost: number; commEx: number; commWd: number; comm: number; net: number; profit: number; profitPct: number; spreadPct: number };
+async function chatDeal(userId: string, sum: number, buy: number, sell: number): Promise<ChatDeal> {
+  const [{ data: prof }, { data: last }] = await Promise.all([
+    admin.from('profiles').select('settings').eq('id', userId).maybeSingle(),
+    admin.from('trades').select('data').eq('user_id', userId).eq('deleted', false).order('ts', { ascending: false }).limit(1)]);
+  const st = (prof?.settings ?? {}) as { cur?: string; feeExType?: string; feeWdType?: string; exchanges?: string[]; banks?: string[]; feePresets?: Record<string, { ex?: number; wd?: number }>; work?: string };
+  const lt = (last?.[0]?.data ?? {}) as { ex?: string; bank?: string };
+  const ex = String(lt.ex || st.exchanges?.[0] || 'Bybit').slice(0, 30), bank = String(lt.bank && lt.bank !== '—' ? lt.bank : st.banks?.[0] || '—').slice(0, 30);
+  const preset = st.feePresets?.[ex] ?? (ex === 'Bybit' ? { ex: 0.3, wd: 1 } : { ex: 0, wd: 1 });
+  const feeEx = Math.max(0, Math.min(99, +(preset.ex ?? 0) || 0)), feeExType = 'pct';
+  const feeWd = st.work === 'inter' ? Math.max(0, +(preset.wd ?? 0) || 0) : 0, feeWdType = 'fixed';
+  const qty = sum / buy, gross = qty * sell, cost = sum;
+  const commEx = gross * feeEx / 100, commWd = feeWd * buy, comm = commEx + commWd, net = gross - comm, profit = net - cost;
+  return { ex, bank, cur: st.cur === 'USD' ? 'USD' : 'RUB', sum, buy, sell, feeEx, feeExType, feeWd, feeWdType, qty, gross, cost, commEx, commWd, comm, net, profit,
+    profitPct: profit / cost * 100, spreadPct: (sell - buy) / buy * 100 };
+}
+function proDealCardSvg(d: ChatDeal) {
+  const W = 1080, H = 1080, pos = d.profit >= 0, col = pos ? '#3CD38A' : '#FF6B6B', sg = pos ? '+' : '−', cs = CUR[d.cur] ?? d.cur;
+  const x = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+  const big = `${sg}${money2(Math.abs(d.profit))} ${cs}`, fs = big.length > 14 ? 92 : big.length > 11 ? 110 : 120;
+  const cell = (i: number, name: string, v: string, c = '#E8ECF2') => { const cx = 100 + (i % 2) * 450, cy = 600 + Math.floor(i / 2) * 120;
+    return `<rect x="${cx}" y="${cy}" width="430" height="104" rx="24" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".08"/>
+      <text x="${cx + 28}" y="${cy + 42}" font-family="Onest" font-size="25" fill="#8691A2">${x(name)}</text>
+      <text x="${cx + 28}" y="${cy + 84}" font-family="Onest" font-weight="600" font-size="34" fill="${c}">${x(v)}</text>`; };
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs><radialGradient id="g1" cx="20%" cy="12%" r="60%"><stop offset="0" stop-color="#F2B54B" stop-opacity=".2"/><stop offset="1" stop-color="#F2B54B" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="85%" cy="40%" r="55%"><stop offset="0" stop-color="${col}" stop-opacity=".16"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs>
+  <rect width="${W}" height="${H}" fill="#0C0F14"/><rect width="${W}" height="${H}" fill="url(#g1)"/><rect width="${W}" height="${H}" fill="url(#g2)"/>
+  <rect x="100" y="90" width="100" height="100" rx="28" fill="#F2B54B"/>
+  <text x="150" y="150" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="38" fill="#1B1405">P2</text>
+  <text x="150" y="174" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="13" letter-spacing="4" fill="#1B1405">PRO</text>
+  <text x="226" y="138" font-family="Unbounded" font-weight="800" font-size="40" fill="#E8ECF2">${x(`Сделка · ${d.ex}`.slice(0, 22))}</text>
+  <text x="226" y="178" font-family="Onest" font-size="26" fill="#8691A2">${x(`${d.bank} · с вашими комиссиями`.slice(0, 40))}</text>
+  <rect x="${W - 250}" y="112" width="150" height="56" rx="28" fill="#F2B54B" fill-opacity=".16" stroke="#F2B54B" stroke-opacity=".5"/>
+  <text x="${W - 175}" y="149" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="24" fill="#F2B54B">PRO</text>
+  <text x="100" y="300" font-family="Onest" font-weight="600" font-size="28" letter-spacing="8" fill="${col}">${pos ? 'ЧИСТАЯ ПРИБЫЛЬ' : 'УБЫТОК'}</text>
+  <text x="94" y="420" font-family="Unbounded" font-weight="800" font-size="${fs}" fill="${col}">${x(big)}</text>
+  <text x="100" y="484" font-family="Onest" font-size="32" fill="#8691A2">${x(`${sg}${money2(Math.abs(d.profitPct))}% к сумме · комиссии ${money2(d.comm)} ${cs}`)}</text>
+  ${cell(0, 'Сумма', `${money2(d.sum)} ${cs}`)}${cell(1, 'USDT', money2(d.qty))}
+  ${cell(2, 'Курс покупки', `${money2(d.buy)} ${cs}`)}${cell(3, 'Курс продажи', `${money2(d.sell)} ${cs}`)}
+  ${cell(4, `Комиссия ${d.ex} · ${String(d.feeEx).replace('.', ',')}%${d.commWd ? ' + вывод' : ''}`.slice(0, 30), `−${money2(d.comm)} ${cs}`, '#FF9F5A')}${cell(5, 'Получено', `${money2(d.net)} ${cs}`)}
+  <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">Посчитано в P2Pro PRO</text>
+  <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
+}
+// Кнопка «Сохранить в историю»: сохранить может только тот, кто отправил карточку, и только один раз
+async function saveChatDeal(cq: { id: string; data?: string; from: { id: number }; inline_message_id?: string }) {
+  const token = String(cq.data ?? '').slice(3);
+  const ans = (text: string, alert = false) => tg('answerCallbackQuery', { callback_query_id: cq.id, text, show_alert: alert });
+  const v = /^[A-Z2-9]{12}$/.test(token) ? await stGet<{ uid: string; tg: number; d: ChatDeal; saved?: boolean } | null>('sv:' + token, null) : null;
+  if (!v) return ans('Кнопка устарела — посчитайте сделку заново', true);
+  if (cq.from.id !== v.tg) return ans('Это не ваша сделка — сохранить её может только тот, кто её отправил', true);
+  if (v.saved) return ans('Эта сделка уже в истории ✓');
+  if (!isPro(await subOf(v.uid))) return ans('Сохранение из чата доступно в PRO', true);
+  const d = v.d, id = 'c' + token.toLowerCase(), now = new Date().toISOString();
+  const t = { id, ts: now, cur: d.cur, mode: 'deal', ex: d.ex, bank: d.bank, note: 'Из чата', profitU: null, buy: d.buy, sum: d.sum, sell: d.sell,
+    cp: '', cp2: '', sellers: null, cpNote: '', cp2Note: '', sales: null, feeEx: d.feeEx, feeExType: d.feeExType, feeWd: d.feeWd, feeWdType: d.feeWdType,
+    qty: d.qty, soldQty: d.qty, gross: d.gross, cost: d.cost, commEx: d.commEx, commWd: d.commWd, comm: d.comm, profit: d.profit, profitPct: d.profitPct,
+    spreadPct: d.spreadPct, fav: false, src: 'chat' };
+  const { error } = await admin.from('trades').upsert({ user_id: v.uid, id, ts: now, data: t, deleted: false }, { onConflict: 'user_id,id', ignoreDuplicates: true });
+  if (error) { console.error('save chat deal', error); return ans('Не получилось сохранить — попробуйте ещё раз', true); }
+  await stSet('sv:' + token, { ...v, saved: true });
+  await ans('✅ Сделка сохранена в историю P2Pro');
+  if (cq.inline_message_id) await tg('editMessageReplyMarkup', { inline_message_id: cq.inline_message_id, reply_markup: kb([[{ text: '✅ Сохранено в историю', callback_data: 'sv:' + token }],
+    [{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]) });
+}
+
 // Картинку расчёта рисуем не чаще 15 раз за 10 минут на человека — иначе перебором чисел можно нагрузить сервер. Сверх — текстом
 const inlineDraws = new Map<number, number[]>();
 function inlineCanDraw(uid: number) {
@@ -1953,17 +2025,40 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
   if (m) {
     const sum = +m[1], buy = +m[2], sell = +m[3];
     if (sum > 0 && buy > 0 && sell > 0 && sum < 1e10 && buy < 1e6 && sell < 1e6) {
-      const usdt = sum / buy, out = usdt * sell, profit = out - sum, pct = profit / sum * 100, sg = profit >= 0 ? '+' : '−';
-      const title = `Прибыль ${sg}${money2(Math.abs(profit))} ₽ (${sg}${money2(Math.abs(pct))}%)`, desc = `${money2(sum)} ₽ · купил по ${money2(buy)} · продал по ${money2(sell)}`;
-      const text = `🧮 <b>Расчёт сделки</b>\n\nСумма: <b>${money2(sum)} ₽</b>\nКупил по ${money2(buy)} ₽ → <b>${money2(usdt)} USDT</b>\n` +
-        `Продал по ${money2(sell)} ₽ → <b>${money2(out)} ₽</b>\n\nПрибыль: <b>${sg}${money2(Math.abs(profit))} ₽</b> (${sg}${money2(Math.abs(pct))}%)\n<i>Без комиссий бирж — точный расчёт в @P2ProAppBot</i>`;
-      try {
-        if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');
-        const url = await cardFileId(`deal-${sum}-${buy}-${sell}`, () => svgJpeg(dealCardSvg({ sum, buy, sell, usdt, out, profit, pct })));
-        results.push(photo('deal', url, title, desc, text));
-      } catch (e) {
-        console.error('inline deal card', e);
-        results.push({ type: 'article', id: 'deal', title, description: desc, thumbnail_url: `${APP}icons/icon-192.png`, input_message_content: { parse_mode: 'HTML', message_text: text }, reply_markup: open });
+      // PRO: с комиссиями из настроек человека и кнопкой «Сохранить в историю»
+      const { data: tu } = q.from ? await admin.from('tg_users').select('user_id').eq('tg_id', q.from.id).maybeSingle() : { data: null };
+      const pro = !!tu && isPro(await subOf(tu.user_id));
+      if (pro && tu) {
+        const d = await chatDeal(tu.user_id, sum, buy, sell), cs = CUR[d.cur] ?? d.cur, sg = d.profit >= 0 ? '+' : '−';
+        const token = [...crypto.getRandomValues(new Uint8Array(12))].map((x) => CODE_ABC[x % 32]).join('');
+        await stSet('sv:' + token, { uid: tu.user_id, tg: q.from!.id, d });
+        const title = `${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'} ${sg}${money2(Math.abs(d.profit))} ${cs} · с комиссиями`;
+        const desc = `${d.ex} · ${d.bank} · ${money2(sum)} ${cs} · ${money2(buy)} → ${money2(sell)}`;
+        const text = `🧮 <b>Сделка · ${esc(d.ex)} · ${esc(d.bank)}</b>\nСумма: <b>${money2(sum)} ${cs}</b> · ${money2(buy)} → ${money2(sell)}\n` +
+          `Комиссия ${esc(d.ex)}${d.commWd ? ' и вывод' : ''}: −${money2(d.comm)} ${cs}\n<b>${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'}: ${sg}${money2(Math.abs(d.profit))} ${cs}</b> (${sg}${money2(Math.abs(d.profitPct))}%)`;
+        const markup = kb([[{ text: '💾 Сохранить в историю', callback_data: 'sv:' + token }], [{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
+        try {
+          if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');
+          const fid = await cardFileId(`pro-${tu.user_id.slice(0, 8)}-${d.ex}-${d.feeEx}-${d.feeWd}-${d.cur}-${sum}-${buy}-${sell}`, () => svgJpeg(proDealCardSvg(d)));
+          results.push({ ...photo('deal', fid, title, desc, text), reply_markup: markup });
+        } catch (e) {
+          if (String(e).indexOf('inline limit') < 0) console.error('inline pro card', e);
+          results.push({ type: 'article', id: 'deal', title, description: desc, thumbnail_url: `${APP}icons/icon-192.png`, input_message_content: { parse_mode: 'HTML', message_text: text }, reply_markup: markup });
+        }
+      } else {
+        const usdt = sum / buy, out = usdt * sell, profit = out - sum, pct = profit / sum * 100, sg = profit >= 0 ? '+' : '−';
+        const title = `Прибыль ${sg}${money2(Math.abs(profit))} ₽ (${sg}${money2(Math.abs(pct))}%)`, desc = `${money2(sum)} ₽ · купил по ${money2(buy)} · продал по ${money2(sell)}`;
+        const text = `🧮 <b>Расчёт сделки</b>\n\nСумма: <b>${money2(sum)} ₽</b>\nКупил по ${money2(buy)} ₽ → <b>${money2(usdt)} USDT</b>\n` +
+          `Продал по ${money2(sell)} ₽ → <b>${money2(out)} ₽</b>\n\nПрибыль: <b>${sg}${money2(Math.abs(profit))} ₽</b> (${sg}${money2(Math.abs(pct))}%)\n` +
+          `<i>Без комиссий бирж.</i> С комиссиями вашей биржи и сохранением в историю — в <b>P2Pro PRO</b> @P2ProAppBot`;
+        try {
+          if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');
+          const fid = await cardFileId(`deal-${sum}-${buy}-${sell}`, () => svgJpeg(dealCardSvg({ sum, buy, sell, usdt, out, profit, pct })));
+          results.push(photo('deal', fid, title, desc, text));
+        } catch (e) {
+          if (String(e).indexOf('inline limit') < 0) console.error('inline deal card', e);
+          results.push({ type: 'article', id: 'deal', title, description: desc, thumbnail_url: `${APP}icons/icon-192.png`, input_message_content: { parse_mode: 'HTML', message_text: text }, reply_markup: open });
+        }
       }
     }
   }
@@ -1987,7 +2082,7 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
       results.push({ type: 'article', id: 'rate', title, description: desc, thumbnail_url: `${APP}icons/icon-192.png`, input_message_content: { parse_mode: 'HTML', message_text: text }, reply_markup: open });
     }
   }
-  await tg('answerInlineQuery', { inline_query_id: q.id, results, cache_time: 60, is_personal: false, button: { text: '🚀 Открыть P2Pro', start_parameter: 'inline' } });
+  await tg('answerInlineQuery', { inline_query_id: q.id, results, cache_time: m ? 10 : 60, is_personal: !!m, button: { text: '🚀 Открыть P2Pro', start_parameter: 'inline' } });
 }
 
 /* ---------- Возврат ушедших ---------- */
@@ -2327,6 +2422,7 @@ Deno.serve(async (req) => {
   if (who && !isAdmin(who) && flood(who)) { if (cq) await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Слишком часто — подождите немного' }); return new Response('ok'); }
   if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
   if (cq && /^my:/.test(cq.data ?? '') && SERVICE) { await myCallback(cq).catch((e) => console.error('my', e)); return new Response('ok'); }
+  if (cq && /^sv:/.test(cq.data ?? '') && SERVICE) { await saveChatDeal(cq).catch((e) => console.error('save deal', e)); return new Response('ok'); }
   if (cq && cq.data === 'pc:r' && SERVICE) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Обновляю…' }); await partnerCabinet(cq.from.id, cq.message?.message_id ?? null).catch((e) => console.error('pc', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
   if (cq) {

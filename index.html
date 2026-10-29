@@ -247,6 +247,7 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 .item .r1 { font-family: var(--f-mono); font-weight: 600; text-align: right; }
 .item .r2 { font-family: var(--f-mono); font-size: 12px; text-align: right; }
 .tag { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; background: var(--surface-2); color: var(--muted); }
+.tag.tag-chat { margin-left: 4px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .star { color: var(--accent); font-size: 12px; }
 .empty { text-align: center; color: var(--muted); padding: 32px 12px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .empty b { color: var(--fg); }
@@ -1932,7 +1933,7 @@ function renderHistory() {
 function itemHtml(t) {
   return `<button class="item" data-open="${esc(t.id)}">
     <div style="min-width:0">
-      <div class="l1">${fmtTime(t.ts)} · ${esc(t.ex)} ${t.mode === 'tri' ? '<span class="tag">треугольник</span>' : `<span class="tag">${esc(t.bank)}</span>`}${t.mode === 'circle' ? '<span class="tag">круг</span>' : ''}${t.fav ? '<span class="star">★</span>' : ''}</div>
+      <div class="l1">${fmtTime(t.ts)} · ${esc(t.ex)} ${t.mode === 'tri' ? '<span class="tag">треугольник</span>' : `<span class="tag">${esc(t.bank)}</span>`}${t.mode === 'circle' ? '<span class="tag">круг</span>' : ''}${t.src === 'chat' ? '<span class="tag tag-chat">из чата</span>' : ''}${t.fav ? '<span class="star">★</span>' : ''}</div>
       <div class="l2">${t.mode === 'tri' ? `${rate(t.sell)} / ${rate(t.buy)}` : `${rate(t.buy)} → ${rate(t.sell.toFixed(4))}`} · ${hid(nf0.format(t.sum))} ${SYM[t.cur]}</div>
     </div>
     <div><div class="r1 ${cls(t.profit)}">${money(t.profit, t.cur, true)}</div><div class="r2 ${cls(t.profit)}">${pct(t.profitPct)}</div></div>
