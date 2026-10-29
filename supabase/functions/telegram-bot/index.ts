@@ -1872,8 +1872,7 @@ async function blAdmin(act: string, body: Record<string, unknown>) {
 
 /* ---------- Курс в любом чате: @P2ProAppBot (инлайн-режим включается в @BotFather → /setinline) ---------- */
 // Пусто или «курс» — карточка курса USDT. «50000 92.1 93.4» — карточка расчёта сделки: сумма, курс покупки, курс продажи.
-// В чат уходит картинка: Telegram берёт её по ссылке и только в JPEG, поэтому рисуем PNG → JPEG и кладём в публичное хранилище
-// (папка cards в хранилище avatars). Картинки старше суток удаляются раз в день
+// В чат уходит картинка: рисуем PNG → JPEG и загружаем в Telegram (см. cardFileId). Старые записи удаляются раз в день
 const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const money2 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 async function svgJpeg(svg: string) {
@@ -1882,15 +1881,27 @@ async function svgJpeg(svg: string) {
   const jpeg = (await import('npm:jpeg-js@0.4.4')).default;
   return new Uint8Array(jpeg.encode({ data: img.pixels, width: img.width, height: img.height }, 88).data);
 }
-async function cardUrl(path: string, make: () => Promise<Uint8Array>) {
-  const url = admin.storage.from('avatars').getPublicUrl(path).data.publicUrl;
-  const head = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(3000) }).catch(() => null);
-  if (head?.ok) return url;   // такую карточку уже рисовали — берём готовую
-  const { error } = await admin.storage.from('avatars').upload(path, await make(), { contentType: 'image/jpeg', upsert: true });
-  if (error) throw error;
-  return url;
+// Карточку загружаем прямо в Telegram (тихо отправляем владельцу и сразу удаляем) и берём её file_id.
+// По ссылке Telegram иногда скачивал картинку не до конца — она приходила обрезанной снизу. Готовый file_id
+// запоминаем: одну и ту же карточку рисуем и загружаем один раз
+async function cardFileId(key: string, make: () => Promise<Uint8Array>) {
+  const k = 'ip:' + mskDay(Date.now()) + ':' + key, have = await stGet<{ id: string } | null>(k, null);
+  if (have?.id) return have.id;
+  const fd = new FormData();
+  fd.append('chat_id', String(ADMIN_ID)); fd.append('disable_notification', 'true');
+  fd.append('photo', new Blob([await make()], { type: 'image/jpeg' }), 'P2Pro.jpg');
+  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+  const sizes = r?.result?.photo as { file_id: string; width: number }[] | undefined;
+  if (!r?.ok || !sizes?.length) throw new Error('upload: ' + (r?.description ?? 'no response'));
+  await tg('deleteMessage', { chat_id: ADMIN_ID, message_id: r.result.message_id });
+  const id = sizes.sort((a, b) => b.width - a.width)[0].file_id;
+  await stSet(k, { id });
+  return id;
 }
 async function cardsCleanup() {
+  // Запомненные карточки для чатов — только за сегодня и вчера
+  const keep2 = [mskDay(Date.now()), mskDay(Date.now() - DAY)];
+  await admin.from('bot_state').delete().like('key', 'ip:%').not('key', 'like', `ip:${keep2[0]}:%`).not('key', 'like', `ip:${keep2[1]}:%`).then(() => {}, () => {});
   const keep = new Set([mskDay(Date.now()), mskDay(Date.now() - DAY)]);
   const { data } = await admin.storage.from('avatars').list('cards', { limit: 100 });
   for (const d of (data ?? []) as { name: string }[]) {
@@ -1935,9 +1946,9 @@ function inlineCanDraw(uid: number) {
   return true;
 }
 async function inlineAnswer(q: { id: string; query?: string; from?: { id: number } }) {
-  const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]), day = mskDay(Date.now());
-  const photo = (id: string, url: string, title: string, description: string, caption: string) =>
-    ({ type: 'photo', id, photo_url: url, thumbnail_url: url, photo_width: 1080, photo_height: 1080, title, description, caption, parse_mode: 'HTML', reply_markup: open });
+  const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
+  const photo = (id: string, fileId: string, title: string, description: string, caption: string) =>
+    ({ type: 'photo', id, photo_file_id: fileId, title, description, caption, parse_mode: 'HTML', reply_markup: open });
   const m = (q.query ?? '').trim().replace(/(\d),(\d)/g, '$1.$2').match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
   if (m) {
     const sum = +m[1], buy = +m[2], sell = +m[3];
@@ -1948,7 +1959,7 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
         `Продал по ${money2(sell)} ₽ → <b>${money2(out)} ₽</b>\n\nПрибыль: <b>${sg}${money2(Math.abs(profit))} ₽</b> (${sg}${money2(Math.abs(pct))}%)\n<i>Без комиссий бирж — точный расчёт в @P2ProAppBot</i>`;
       try {
         if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');
-        const url = await cardUrl(`cards/${day}/deal-${sum}-${buy}-${sell}.jpg`, () => svgJpeg(dealCardSvg({ sum, buy, sell, usdt, out, profit, pct })));
+        const url = await cardFileId(`deal-${sum}-${buy}-${sell}`, () => svgJpeg(dealCardSvg({ sum, buy, sell, usdt, out, profit, pct })));
         results.push(photo('deal', url, title, desc, text));
       } catch (e) {
         console.error('inline deal card', e);
@@ -1966,7 +1977,7 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
     const text = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${ch} за сутки)\n${fiats.filter((f) => f.v !== '—').map((f) => `${f.name}: ${f.v}`).join(' · ')}\n\nБиржа xRocket · курс через @P2ProAppBot`;
     try {
       // Карточка курса обновляется раз в 10 минут: все, кто шлёт курс в эти 10 минут, получают одну и ту же картинку
-      const url = await cardUrl(`cards/${day}/rate-${Math.floor(Date.now() / 600e3)}.jpg`, async () => {
+      const url = await cardFileId(`rate-${Math.floor(Date.now() / 600e3)}`, async () => {
         const { data: hist } = await admin.from('rate_history').select('usdt').gte('ts', new Date(Date.now() - DAY).toISOString()).order('ts');
         return svgJpeg(rateCardSvg({ when, rate: `${rub2(main.rate)} ₽`, ch: main.ch, hist: ((hist ?? []) as { usdt: number }[]).map((h) => +h.usdt), fiats }));
       });
