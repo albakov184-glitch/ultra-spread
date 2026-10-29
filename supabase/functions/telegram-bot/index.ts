@@ -1067,6 +1067,7 @@ async function tick() {
       await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
         text: `💰 <b>Оплата ${(+p.amount).toLocaleString('ru-RU')} ₽</b>\nPRO · ${p.period === 'y' ? 'год' : 'месяц'}${(p as { auto?: boolean }).auto ? ' · автопродление' : ''}\n${u ? who(u) : s.user_id}` });
     }
+    await partnerSales((subs ?? []) as NonNullable<Sub>[], since, Date.parse(nowIso)).catch((e) => console.error('partner sales', e));
   }
   await stSet('seen', { at: nowIso });
   // Старые запросы входа на сайт больше не нужны
@@ -1370,6 +1371,28 @@ async function partnerJoin(from: { id: number; first_name?: string; username?: s
   const { data: ins, error } = await admin.from('partner_refs').upsert({ tg_id: from.id, code, name }, { onConflict: 'tg_id', ignoreDuplicates: true }).select('tg_id');
   if (error || !ins?.length) return;
   await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `🤝 По ссылке партнёра <b>${esc(p.name || code)}</b> пришёл новый человек: ${esc(name) || 'без имени'}` });
+  if (p.tg_id) await tg('sendMessage', { chat_id: p.tg_id, text: '👥 По вашей ссылке пришёл новый человек! Статистика — /partner' });
+}
+// Покупка от человека, пришедшего по ссылке партнёра: пишем владельцу и самому партнёру (без имени покупателя)
+async function partnerSales(subs: NonNullable<Sub>[], since: number, until: number) {
+  for (const sb of subs) for (const p of (sb.payments ?? []) as (Pay & { gift_from?: string; refund?: boolean })[]) {
+    const t = Date.parse(p.ts), k = payKind(p);
+    if (!(+p.amount > 0) || p.refund || k === 'free' || t <= since || t > until) continue;
+    const payer = p.gift_from || sb.user_id;
+    const { data: tu } = await admin.from('tg_users').select('tg_id').eq('user_id', payer).maybeSingle();
+    if (!tu) continue;
+    const { data: ref } = await admin.from('partner_refs').select('code, at').eq('tg_id', tu.tg_id).maybeSingle();
+    if (!ref || Date.parse(ref.at) > t) continue;   // пришёл по ссылке позже этой оплаты — не его
+    const { data: pr } = await admin.from('partners').select('*').eq('code', ref.code).maybeSingle();
+    if (!pr) continue;
+    const amt = k === 'stars' ? `${(+p.amount).toLocaleString('ru-RU')} ⭐` : `${(+p.amount).toLocaleString('ru-RU')} ₽`;
+    const share = k === 'stars' ? `${Math.floor(+p.amount * +pr.pct / 100).toLocaleString('ru-RU')} ⭐` : `${r2(+p.amount * +pr.pct / 100).toLocaleString('ru-RU')} ₽`;
+    const per = p.period === 'y' ? 'год' : 'месяц', u = await userById(sb.user_id);
+    await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
+      text: `🤝💰 <b>Покупка по ссылке партнёра ${esc(pr.name || pr.code)}</b>\nPRO · ${per} · ${amt}${p.gift_from ? ' · 🎁 подарок' : ''}\n${u ? who(u) : ''}\nДоля партнёра (${+pr.pct}%): <b>${share}</b>` });
+    if (pr.tg_id) await tg('sendMessage', { chat_id: pr.tg_id, parse_mode: 'HTML',
+      text: `💰 <b>Новая оплата от вашего человека!</b>\nPRO на ${per} · ${amt}\nВаша доля: <b>+${share}</b>\n\nВся статистика — /partner` });
+  }
 }
 // Таблица целиком (Supabase отдаёт по 1000 строк)
 // Сортировка по ключу обязательна: без неё страницы могут повторять или терять строки
