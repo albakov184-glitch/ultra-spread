@@ -2014,6 +2014,9 @@ async function saveChatDeal(cq: { id: string; data?: string; from: { id: number 
   if (!v) return ans('Кнопка устарела — посчитайте сделку заново', true);
   if (cq.from.id !== v.tg) return ans('Это не ваша сделка — сохранить её может только тот, кто её отправил', true);
   if (v.saved) return ans('Эта сделка уже в истории ✓');
+  // Telegram за это время могли привязать к другому аккаунту P2Pro — тогда в старый не пишем
+  const { data: tu } = await admin.from('tg_users').select('user_id').eq('tg_id', cq.from.id).maybeSingle();
+  if (tu?.user_id !== v.uid) return ans('Этот Telegram теперь привязан к другому аккаунту P2Pro — посчитайте сделку заново', true);
   if (!isPro(await subOf(v.uid))) return ans('Сохранение из чата доступно в PRO', true);
   const d = v.d, id = 'c' + token.toLowerCase(), now = new Date().toISOString();
   const t = { id, ts: now, cur: d.cur, mode: d.mode ?? 'deal', ex: d.ex, bank: d.bank, note: 'Из чата', profitU: d.profitU ?? null, buy: d.buy, sum: d.sum, sell: d.sell,
@@ -2037,6 +2040,15 @@ function inlineCanDraw(uid: number) {
   if (inlineDraws.size > 5000) inlineDraws.clear();
   return true;
 }
+// Кнопки «Сохранить» тоже ограничены: Telegram шлёт запрос на каждую букву, а каждая кнопка — строка в bot_state
+const inlineSaves = new Map<number, number[]>();
+function inlineCanSave(uid: number) {
+  const now = Date.now(), l = (inlineSaves.get(uid) ?? []).filter((t) => now - t < 10 * 60e3);
+  if (l.length >= 40) return false;
+  l.push(now); inlineSaves.set(uid, l);
+  if (inlineSaves.size > 5000) inlineSaves.clear();
+  return true;
+}
 async function inlineAnswer(q: { id: string; query?: string; from?: { id: number } }) {
   const results: unknown[] = [], open = kb([[{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
   const photo = (id: string, fileId: string, title: string, description: string, caption: string) =>
@@ -2050,8 +2062,8 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
       const pro = !!tu && isPro(await subOf(tu.user_id));
       if (pro && tu) {
         const d = await chatDeal(tu.user_id, sum, buy, sell, m[4] ?? ''), cs = CUR[d.cur] ?? d.cur, sg = d.profit >= 0 ? '+' : '−';
-        const token = [...crypto.getRandomValues(new Uint8Array(12))].map((x) => CODE_ABC[x % 32]).join('');
-        await stSet('sv:' + token, { uid: tu.user_id, tg: q.from!.id, d });
+        const token = inlineCanSave(q.from!.id) ? [...crypto.getRandomValues(new Uint8Array(12))].map((x) => CODE_ABC[x % 32]).join('') : '';
+        if (token) await stSet('sv:' + token, { uid: tu.user_id, tg: q.from!.id, d });
         const title = `${d.profit >= 0 ? 'Чистая прибыль' : 'Убыток'} ${sg}${money2(Math.abs(d.profit))} ${cs} · с комиссиями`;
         const tri = d.mode === 'tri';
         const desc = `${tri ? 'Треугольник' : 'Сделка'} · ${d.ex} · ${tri ? 'без карты' : d.bank} · ${money2(sum)} ${cs} · ${money2(buy)} → ${money2(sell)}`;
@@ -2063,7 +2075,7 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
           `💸 ${tri ? `Комиссия мейкера (${fee})` : `Комиссия ${esc(d.ex)} (${fee}${d.commWd ? ' + вывод' : ''})`}: <b>−${money2(d.comm)} ${cs}</b>`, '',
           `${d.profit >= 0 ? '✅ <b>Чистая прибыль' : '🔻 <b>Убыток'}: ${sg}${money2(Math.abs(d.profit))} ${cs}</b>`,
           tri ? `Остаток: ${sg}${money2(Math.abs(d.profitU ?? 0))} USDT` : `Доходность: ${sg}${money2(Math.abs(d.profitPct))}%`].join('\n');
-        const markup = kb([[{ text: '💾 Сохранить в историю', callback_data: 'sv:' + token }], [{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]);
+        const markup = token ? kb([[{ text: '💾 Сохранить в историю', callback_data: 'sv:' + token }], [{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]) : open;
         try {
           if (!inlineCanDraw(q.from?.id ?? 0)) throw new Error('inline limit');
           const fid = await cardFileId(`pro-${tu.user_id.slice(0, 8)}-${d.mode}-${d.ex}-${d.bank}-${d.feeEx}-${d.feeWd}-${d.cur}-${sum}-${buy}-${sell}`, () => svgJpeg(proDealCardSvg(d)));
