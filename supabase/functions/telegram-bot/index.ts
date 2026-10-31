@@ -58,8 +58,9 @@ const isTg = (email?: string) => /@telegram\.invalid$/i.test(email ?? '');
 type AUser = { id: string; email?: string; created_at: string; last_sign_in_at?: string; banned_until?: string | null; user_metadata?: Record<string, unknown> };
 type Pay = { ts: string; amount: number; period?: string; method?: string; days?: number };
 type Sub = { user_id: string; pro_since: string | null; pro_until: string | null; auto_renew: boolean; pay_method: string | null; period: string; payments: Pay[]; reminded_for?: string | null } | null;
-type Btn = { text: string; callback_data?: string; url?: string; web_app?: { url: string } };
-type Msg = { message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; username?: string }; text?: string };
+type Btn = { text: string; callback_data?: string; url?: string; web_app?: { url: string }; icon_custom_emoji_id?: string };
+type Ent = { type: string; offset: number; length: number; url?: string; custom_emoji_id?: string; language?: string };
+type Msg = { message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; username?: string }; text?: string; entities?: Ent[] };
 const kb = (rows: Btn[][]) => ({ inline_keyboard: rows });
 const isPro = (s: Sub) => !!s?.pro_until && Date.parse(s.pro_until) > Date.now();
 const isBanned = (u: AUser) => !!u.banned_until && Date.parse(u.banned_until) > Date.now();
@@ -105,6 +106,7 @@ const MENU = () => kb([
   [{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '🌅 Утренний отчёт', callback_data: 'rp' }],
   [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🛡 Чёрный список', callback_data: 'bl:m' }],
   [{ text: '🩺 Сторож', callback_data: 'hw' }, { text: '🖥 Веб-админка', callback_data: 'wa' }],
+  [{ text: '✏️ Приветствие и кнопки', callback_data: 'wl' }],
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
@@ -839,6 +841,7 @@ async function adminCallback(cq: { id: string; data?: string; message?: { chat: 
       toastText = 'Ссылка отправлена';
     }
     else if (k === 'bl') toastText = await blCallback(chatId, msgId, a, b, c);
+    else if (k === 'wl') await wlCallback(chatId, msgId, a, b);
     else if (k === 'hw') { toastText = 'Проверяю…'; await show(chatId, msgId, await healthText(), toMenu([{ text: '🔄 Проверить', callback_data: 'hw' }])); }
     else if (k === 'st') await show(chatId, msgId, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (k === 'l') await view(await listView(Number(a) || 0));
@@ -967,7 +970,8 @@ async function adminMessage(msg: Msg): Promise<boolean> {
   const view0 = (v: { text: string; markup: unknown }) => show(chatId, null, v.text, v.markup);
   if (text.startsWith('/start')) return false;
   try {
-    const aw = await stGet<{ kind: string; aud?: Aud; at: number; id?: number } | null>('await', null);
+    const aw = await stGet<{ kind: string; aud?: Aud; at: number; id?: number; key?: string } | null>('await', null);
+    if ((aw?.kind === 'wlt' || aw?.kind === 'wlb') && Date.now() - aw.at < 60 * 60e3 && text && !text.startsWith('/')) { await wlSave(msg, aw); return true; }
     // Чёрный список: своя причина отказа или свой тип нарушения — текстом
     if ((aw?.kind === 'blr' || aw?.kind === 'blk') && aw.id && Date.now() - aw.at < 60 * 60e3 && text && !text.startsWith('/')) {
       await stSet('await', null);
@@ -1161,14 +1165,123 @@ async function userOfTg(tgId: number): Promise<string | null> {
   const { data } = await admin.from('tg_users').select('user_id').eq('tg_id', tgId).maybeSingle();
   return data?.user_id ?? null;
 }
-async function startKb(tgId: number) {
-  let pro: Btn = appBtn('🎁 7 дней PRO', '?trial=1');
+// Приветствие на /start и кнопки под ним: владелец меняет их в боте (меню → «Приветствие и кнопки»).
+// Хранится в bot_state 'welcome'. Текст — как владелец его прислал (жирный, ссылки, премиум-эмодзи), {имя} — имя человека
+type WBtn = { t: string; e?: string };
+type WCfg = { text?: string; ents?: Ent[]; btn?: Record<string, WBtn> };
+const WB_DEF: Record<string, [string, string]> = { open: ['🚀 Открыть P2Pro', 'Открыть приложение'], rate: ['💱 Курс USDT', 'Курс USDT'], day: ['📊 Мой день', 'Мой день'],
+  month: ['📅 Мой месяц', 'Мой месяц'], trial: ['🎁 7 дней PRO', 'Пробный PRO (кто ещё не брал)'], pro: ['⭐ Мой PRO', 'Мой PRO'],
+  channel: ['📢 Канал', 'Канал'], support: ['💬 Поддержка', 'Поддержка'] };
+const wbtn = (cfg: WCfg, key: string, rest: Omit<Btn, 'text'>): Btn => {
+  const b = cfg.btn?.[key];
+  return { text: b?.t || WB_DEF[key][0], ...rest, ...(b?.e ? { icon_custom_emoji_id: b.e } : {}) };
+};
+async function startKb(tgId: number, cfg?: WCfg) {
+  cfg ??= await stGet<WCfg>('welcome', {});
+  let pro = wbtn(cfg, 'trial', { web_app: { url: APP + '?trial=1' } });
   if (SERVICE) try {
     const uid = await userOfTg(tgId);
-    if (!(await trialFree(uid, tgId))) pro = { text: '⭐ Мой PRO', callback_data: 'my:pro' };
+    if (!(await trialFree(uid, tgId))) pro = wbtn(cfg, 'pro', { callback_data: 'my:pro' });
   } catch (e) { console.error('start kb', e); }
-  return kb([[appBtn()], [{ text: '💱 Курс USDT', callback_data: 'my:rate' }, { text: '📊 Мой день', callback_data: 'my:day' }],
-    [{ text: '📅 Мой месяц', callback_data: 'my:month' }, pro], [{ text: '💬 Поддержка', url: SUPPORT }]]);
+  return kb([[wbtn(cfg, 'open', { web_app: { url: APP } })], [wbtn(cfg, 'rate', { callback_data: 'my:rate' }), wbtn(cfg, 'day', { callback_data: 'my:day' })],
+    [wbtn(cfg, 'month', { callback_data: 'my:month' }), pro], [wbtn(cfg, 'channel', { url: 'https://t.me/' + CHANNEL.slice(1) }), wbtn(cfg, 'support', { url: SUPPORT })]]);
+}
+// Длина строки в единицах Telegram (UTF-16)
+const u16 = (x: string) => x.length;
+// Отправить приветствие. Если Telegram не принял премиум-эмодзи (в тексте или кнопках) — повторяем без них, а потом стандартное
+async function sendWelcome(chat: number, tgId: number, rawName: string): Promise<{ ok: boolean; plain?: boolean }> {
+  const cfg = await stGet<WCfg>('welcome', {}), markup = await startKb(tgId, cfg);
+  const noIcons = { inline_keyboard: markup.inline_keyboard.map((r) => r.map(({ icon_custom_emoji_id: _x, ...b }) => b)) };
+  if (cfg.text) {
+    // Подставляем имя вместо {имя} и сдвигаем разметку после него
+    let text = cfg.text, ents = (cfg.ents ?? []).map((e) => ({ ...e }));
+    const name = rawName.slice(0, 40), tag = '{имя}';
+    for (let i = text.indexOf(tag); i >= 0; i = text.indexOf(tag, i + name.length)) {
+      const d = u16(name) - u16(tag);
+      text = text.slice(0, i) + name + text.slice(i + tag.length);
+      ents = ents.map((e) => e.offset >= i + tag.length ? { ...e, offset: e.offset + d } : e.offset + e.length > i ? { ...e, length: Math.max(1, e.length + d) } : e);
+    }
+    const tries = [{ ents, kb: markup }, { ents, kb: noIcons }, { ents: ents.filter((e) => e.type !== 'custom_emoji'), kb: noIcons }];
+    for (const [i, t] of tries.entries()) {
+      const r = await tg('sendMessage', { chat_id: chat, text, entities: t.ents, link_preview_options: { is_disabled: true }, reply_markup: t.kb });
+      if (r?.ok) return { ok: true, plain: i > 0 };
+      console.error('welcome', r?.description);
+    }
+  } else {
+    for (const [i, m] of [markup, noIcons].entries()) {
+      const r = await tg('sendMessage', { chat_id: chat, text: WELCOME(esc(rawName.slice(0, 40))), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: m });
+      if (r?.ok) return { ok: true, plain: i > 0 };
+    }
+  }
+  const r = await tg('sendMessage', { chat_id: chat, text: WELCOME(esc(rawName.slice(0, 40))), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: noIcons });
+  return { ok: !!r?.ok, plain: true };
+}
+// Редактор для владельца
+async function wlPanel(chatId: number, msgId: number | null) {
+  const cfg = await stGet<WCfg>('welcome', {}), n = (cfg.ents ?? []).filter((e) => e.type === 'custom_emoji').length;
+  const icons = Object.values(cfg.btn ?? {}).filter((b) => b.e).length;
+  await show(chatId, msgId, `✏️ <b>Приветствие и кнопки</b>
+
+Текст: <b>${cfg.text ? 'свой' : 'стандартный'}</b>${n ? ` · премиум-эмодзи: ${n}` : ''}\nКнопки: <b>${Object.keys(cfg.btn ?? {}).length ? 'изменены ' + Object.keys(cfg.btn ?? {}).length : 'стандартные'}</b>${icons ? ` · с иконками: ${icons}` : ''}\n\n` +
+    `«Показать» — пришлю приветствие так, как его увидят люди.`,
+    kb([[{ text: '👁 Показать', callback_data: 'wl:v' }], [{ text: '✏️ Изменить текст', callback_data: 'wl:t' }, { text: '🔘 Кнопки', callback_data: 'wl:b' }],
+      [{ text: '↺ Стандартный текст', callback_data: 'wl:rt' }, { text: '↺ Стандартные кнопки', callback_data: 'wl:rb' }], [{ text: '‹ Меню', callback_data: 'm' }]]));
+}
+async function wlButtons(chatId: number, msgId: number | null) {
+  const cfg = await stGet<WCfg>('welcome', {});
+  const rows = Object.entries(WB_DEF).map(([k, [def, what]]) => [{ text: `${what}: ${cfg.btn?.[k]?.t || def}${cfg.btn?.[k]?.e ? ' ✨' : ''}`.slice(0, 60), callback_data: 'wl:e:' + k }]);
+  await show(chatId, msgId, '🔘 <b>Кнопки под приветствием</b>\n\nНажмите на кнопку, которую хотите изменить. ✨ — у кнопки премиум-эмодзи.', kb([...rows, [{ text: '‹ Назад', callback_data: 'wl' }]]));
+}
+async function wlCallback(chatId: number, msgId: number | null, a: string, b: string) {
+  if (!a) return wlPanel(chatId, msgId);
+  if (a === 'v') {
+    const r = await sendWelcome(chatId, ADMIN_ID, 'Имя');
+    if (r.plain) await tg('sendMessage', { chat_id: chatId, text: '⚠️ Telegram не принял премиум-эмодзи от бота — показаны обычные. Чтобы бот мог отправлять премиум-эмодзи, Telegram требует купить боту дополнительное имя на Fragment.' });
+    return;
+  }
+  if (a === 't') {
+    await stSet('await', { kind: 'wlt', at: Date.now() });
+    return show(chatId, msgId, '✏️ Пришлите новый текст приветствия одним сообщением.\n\nМожно: <b>жирный</b>, <i>курсив</i>, ссылки и ваши премиум-эмодзи. Вместо имени человека напишите <code>{имя}</code>.\n\nПример: <code>Привет, {имя}! 👋</code>', kb([[{ text: 'Отмена', callback_data: 'wl' }]]));
+  }
+  if (a === 'b') return wlButtons(chatId, msgId);
+  if (a === 'e' && WB_DEF[b]) {
+    await stSet('await', { kind: 'wlb', key: b, at: Date.now() });
+    return show(chatId, msgId, `🔘 Новый текст кнопки «${WB_DEF[b][1]}» — одним сообщением.\n\nЧтобы поставить премиум-эмодзи иконкой, начните текст с него: например <code>⭐ Мой PRO</code>, где ⭐ — ваше эмодзи.\nНапишите <code>-</code>, чтобы вернуть стандартный текст.`, kb([[{ text: 'Отмена', callback_data: 'wl:b' }]]));
+  }
+  if (a === 'rt' || a === 'rb') {
+    const cfg = await stGet<WCfg>('welcome', {});
+    if (a === 'rt') { delete cfg.text; delete cfg.ents; } else delete cfg.btn;
+    await stSet('welcome', cfg);
+    return wlPanel(chatId, msgId);
+  }
+}
+// Текст от владельца для приветствия или кнопки
+async function wlSave(msg: Msg, aw: { kind: string; key?: string }) {
+  const chatId = msg.chat.id, text = msg.text ?? '', ents = (msg.entities ?? []).filter((e) => ['bold', 'italic', 'underline', 'strikethrough', 'spoiler', 'code', 'text_link', 'custom_emoji', 'blockquote'].includes(e.type));
+  const cfg = await stGet<WCfg>('welcome', {});
+  if (aw.kind === 'wlt') {
+    if (!text.trim() || text.length > 3500) return show(chatId, null, 'Нужен текст до 3500 знаков. Пришлите ещё раз или нажмите «Отмена».', kb([[{ text: 'Отмена', callback_data: 'wl' }]]));
+    cfg.text = text; cfg.ents = ents.map((e) => ({ type: e.type, offset: e.offset, length: e.length, ...(e.url ? { url: e.url } : {}), ...(e.custom_emoji_id ? { custom_emoji_id: e.custom_emoji_id } : {}) }));
+    await stSet('welcome', cfg); await stSet('await', null);
+    await tg('sendMessage', { chat_id: chatId, text: '✅ Приветствие сохранено. Вот как его увидят:' });
+    const r = await sendWelcome(chatId, ADMIN_ID, msg.from?.first_name ?? 'Имя');
+    if (r.plain) await tg('sendMessage', { chat_id: chatId, text: '⚠️ Telegram не разрешил боту премиум-эмодзи — они заменены обычными. Остальное работает.' });
+    return wlPanel(chatId, null);
+  }
+  const key = aw.key ?? '';
+  if (!WB_DEF[key]) return;
+  cfg.btn ??= {};
+  if (text.trim() === '-') delete cfg.btn[key];
+  else {
+    const ce = ents.find((e) => e.type === 'custom_emoji' && e.offset === 0);
+    let t = text.trim();
+    if (ce) t = text.slice(ce.offset + ce.length).trim() || WB_DEF[key][0];   // иконку покажет Telegram, само эмодзи из текста убираем
+    if (!t || t.length > 40) return show(chatId, null, 'Текст кнопки — до 40 знаков. Пришлите ещё раз.', kb([[{ text: 'Отмена', callback_data: 'wl:b' }]]));
+    cfg.btn[key] = { t, ...(ce?.custom_emoji_id ? { e: ce.custom_emoji_id } : {}) };
+  }
+  await stSet('welcome', cfg); await stSet('await', null);
+  await tg('sendMessage', { chat_id: chatId, text: '✅ Кнопка сохранена.' });
+  return wlButtons(chatId, null);
 }
 // Итоги месяца по Москве: прибыль, сделки, средняя за день, лучший день и сравнение с теми же днями прошлого месяца
 async function monthText(userId: string) {
@@ -2530,6 +2643,7 @@ async function adminApi(body: Record<string, unknown>) {
       return aj({ ok: true });
     }
     if (act === 'partner_payout_del') { const { error } = await admin.from('partner_payouts').delete().eq('id', Number(body.id)); if (error) throw error; return aj({ ok: true }); }
+    if (act === 'wl_open') { await wlPanel(ADMIN_ID, null); return aj({ ok: true }); }
     if (act === 'wb_propose') { const c = await wbCandidates(); await wbShow(ADMIN_ID, null, false, c); return aj({ ok: true, n: c.filter((x) => !x.skip).length, all: c.length }); }
     if (act === 'bc_counts') { const n = await Promise.all((['all', 'pro', 'exp', 'free'] as Aud[]).map((a) => recipients(a).then((r) => r.length))); return aj({ all: n[0], pro: n[1], exp: n[2], free: n[3] }); }
     if (act === 'bc_test' || act === 'bc_send') {
@@ -2624,7 +2738,7 @@ Deno.serve(async (req) => {
       // Пришёл по ссылке партнёра — запоминаем, затем обычное приветствие
       const pm = text.trim().match(/^\/start p_([A-Za-z0-9_]{2,24})$/);
       if (pm && msg.from && SERVICE) await partnerJoin(msg.from, pm[1]).catch((e) => console.error('partner', e));
-      if (text.startsWith('/start')) await tg('sendMessage', { chat_id: msg.chat.id, text: WELCOME(esc((msg.from?.first_name ?? '').slice(0, 40))), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: await startKb(msg.from?.id ?? 0) });
+      if (text.startsWith('/start')) await sendWelcome(msg.chat.id, msg.from?.id ?? 0, msg.from?.first_name ?? '');
       else await send(msg.chat.id, HELP);
     } catch (_) { /* сеть Telegram недоступна — пропускаем */ }
   }

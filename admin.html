@@ -1067,12 +1067,16 @@ async function renderBc() {
       <div class="card"><div class="card-t">Как увидят <span class="muted">превью</span></div><div class="tgprev"><div class="bubble" id="bcP"></div><div class="tgbtn" id="bcB">🚀 Открыть P2Pro</div></div></div></div>
     <div class="card" style="margin-top:16px"><div class="card-t">👋 Напоминание ушедшим</div>
       <p class="hint" style="margin:6px 0 12px">Кто 10+ дней не записывал сделки. Список с никами придёт тебе в бот — там можно отправить напоминание, убрать кого-то из списка или отменить. Каждый день в 12:00 список приходит сам.</p>
-      <button class="btn pri" id="wbGo">Прислать список в бот</button></div>`;
+      <button class="btn pri" id="wbGo">Прислать список в бот</button></div>
+    <div class="card" style="margin-top:16px"><div class="card-t">✏️ Приветствие и кнопки бота</div>
+      <p class="hint" style="margin:6px 0 12px">Текст на /start и надписи кнопок под ним. Меняются в боте: там можно вставить свои премиум-эмодзи — сюда их не скопировать.</p>
+      <button class="btn pri" id="wlGo">Открыть редактор в боте</button></div>`;
   const prev = () => { BC.text = $('bcT').value; $('bcP').innerHTML = (esc(BC.text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>') || '<span class="muted">Здесь появится текст…</span>') + `<span class="tm">${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>`;
     $('bcB').textContent = BC.aud === 'exp' || BC.aud === 'free' ? '⭐ Продлить PRO' : '🚀 Открыть P2Pro'; };
   prev(); $('bcT').oninput = prev;
   $('bcA').onclick = e => { const b = e.target.closest('[data-aud]'); if (!b) return; BC.aud = b.dataset.aud; document.querySelectorAll('[data-aud]').forEach(x => x.classList.toggle('on', x === b)); prev(); };
   $('bcTest').onclick = async () => { if (!BC.text.trim()) return toast('Напишите текст', true); $('bcTest').disabled = true; try { await api('bc_test', { text: BC.text }); toast('Тест отправлен тебе в бот'); } catch (e) { toast(e.message, true); } $('bcTest').disabled = false; };
+  $('wlGo').onclick = async () => { $('wlGo').disabled = true; try { await api('wl_open'); toast('Редактор отправлен тебе в бот'); } catch (e) { toast(e.message, true); } $('wlGo').disabled = false; };
   $('wbGo').onclick = async () => {
     $('wbGo').disabled = true;
     try { const r = await api('wb_propose'); toast(r.all ? `Список отправлен в бот: ${r.all} ${plural(r.all, 'человек', 'человека', 'человек')}` : 'Сейчас некому напоминать — сообщение в боте'); } catch (e) { toast(e.message, true); }
