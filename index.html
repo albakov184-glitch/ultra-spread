@@ -128,6 +128,12 @@ button { cursor: pointer; border: 0; background: none; }
 .seg.sm button { padding: 6px 10px; font-size: 13px; white-space: nowrap; }
 .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
+.xr-fiats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.xr-fiats button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.1)); background: transparent; color: var(--fg); font: inherit; font-family: var(--f-mono); font-size: 14px; text-align: left; cursor: pointer; }
+.xr-fiats button:active { transform: scale(.97); }
+.xr-fiats button i { margin-left: auto; font-style: normal; opacity: .4; }
+.cur-pick { display: flex; flex-direction: column; gap: 8px; }
+.cur-chips .chip { flex: none; }
 .chip { flex: none; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 500; border: 1px solid var(--line); color: var(--muted); background: transparent; white-space: nowrap; }
 .chip.on { border-color: var(--accent); color: var(--fg); background: var(--accent-soft); }
 
@@ -1181,10 +1187,7 @@ img { max-width: 100%; }
         </div>
       </details>
 
-      <div class="seg sm" aria-label="Валюта">
-        <button id="curRUB" class="on">₽ Рубли</button>
-        <button id="curUSD">$ Доллары</button>
-      </div>
+      <div class="cur-pick"><span class="muted small">Валюта</span><div class="chips cur-chips" id="curChips" aria-label="Валюта"></div></div>
     </div>
 
     </div>
@@ -1249,7 +1252,7 @@ img { max-width: 100%; }
   <!-- ============ АНАЛИТИКА ============ -->
   <section id="tab-stats" class="app" hidden>
     <div class="chips" id="sPeriod"></div>
-    <div class="seg sm" id="sCurSeg" hidden><button data-scur="RUB" class="on">₽ Рубли</button><button data-scur="USD">$ Доллары</button></div>
+    <div class="chips" id="sCurSeg" hidden></div>
     <div id="sEmpty" hidden></div>
 
     <div class="card">
@@ -1536,7 +1539,10 @@ img { max-width: 100%; }
 <script>
 /* ================= СОСТОЯНИЕ ================= */
 const KEY = 'ultraSpread.v2';
-const SYM = { RUB: '₽', USD: '$' };
+const SYM = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', EUR: '€', USD: '$' };
+// Валюты сделок. Каждая сделка хранит свою валюту — при смене валюты старые сделки не пересчитываются
+const CURS = [['RUB', '🇷🇺', 'Рубли'], ['KZT', '🇰🇿', 'Тенге'], ['UAH', '🇺🇦', 'Гривны'], ['BYN', '🇧🇾', 'Бел. рубли'], ['EUR', '🇪🇺', 'Евро'], ['USD', '🇺🇸', 'Доллары']];
+const CUR_FLAG = Object.fromEntries(CURS.map(c => [c[0], c[1]])), CUR_NAME = Object.fromEntries(CURS.map(c => [c[0], c[2]]));
 // Своё свойство объекта (Object.hasOwn нет в Safari до 15.4): имена вроде «toString» не должны считаться допустимыми
 const own = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k);
 const DEFAULT = {
@@ -1701,8 +1707,7 @@ function renderCalcStatic() {
   $('cp2Field').hidden = !tri || parts;
   $('cpRow').classList.toggle('two', tri && !parts);
   if (parts) renderSellers();
-  $('curRUB').classList.toggle('on', st.cur === 'RUB');
-  $('curUSD').classList.toggle('on', st.cur === 'USD');
+  $('curChips').innerHTML = CURS.map(([k, f]) => `<button class="chip ${k === st.cur ? 'on' : ''}" data-cur="${k}" aria-pressed="${k === st.cur}">${f} ${k}</button>`).join('');
   document.querySelectorAll('.cur-sym').forEach(el => el.textContent = SYM[st.cur]);
   document.querySelectorAll('[data-ft]').forEach(b => b.classList.toggle('on', st[b.dataset.ft === 'ex' ? 'feeExType' : 'feeWdType'] === b.dataset.v));
   $('exChips').innerHTML = st.exchanges.map(x => `<button class="chip ${x === d.ex ? 'on' : ''}" data-ex="${esc(x)}">${esc(x)}</button>`).join('');
@@ -1803,15 +1808,35 @@ function tween(el, to, fmt) {
     el.textContent = fmt(from + (to - from) * e); if (k < 1) el._raf = requestAnimationFrame(step); };
   el._raf = requestAnimationFrame(step);
 }
+// Валюта для карточек и месяца: выбранная в калькуляторе, если в ней есть сделки, иначе та, где сделок больше
+function mainCur(T) {
+  if (!T.length || T.some(t => t.cur === S.settings.cur)) return S.settings.cur;
+  const n = {}; T.forEach(t => n[t.cur] = (n[t.cur] || 0) + 1);
+  return Object.keys(n).filter(c => own(SYM, c)).sort((a, b) => n[b] - n[a])[0] || 'RUB';
+}
+// Перевод суммы между валютами через курс USDT на бирже (сколько валюты стоит 1 USDT). null — курса пока нет
+function fxConv(v, from, to) {
+  if (from === to) return v;
+  const a = rateOf(from), b = rateOf(to);
+  return a && b ? v / a.rate * b.rate : null;
+}
+let fxAsked = 0;
 function renderToday() {
   const cur = S.settings.cur, k = dayKey(new Date());
-  const t = S.trades.filter(x => dayKey(x.ts) === k && x.cur === cur);
-  const p = t.reduce((a, x) => a + x.profit, 0);
-  $('todayProfit').textContent = money(p, cur, true);
+  // Все сделки за сегодня: в другой валюте пересчитываются в выбранную по биржевому курсу
+  const t = S.trades.filter(x => dayKey(x.ts) === k), by = {};
+  t.forEach(x => { const c = own(SYM, x.cur) ? x.cur : 'RUB'; by[c] = (by[c] || 0) + (+x.profit || 0); });
+  const curs = Object.keys(by), missing = curs.filter(c => fxConv(1, c, cur) == null);
+  if (missing.length && Date.now() - fxAsked > 60e3) { fxAsked = Date.now(); Promise.all([cur, ...missing].map(c => xrFxGet(c, 3600e3))).then(renderToday); }
+  const p = curs.reduce((a, c) => a + (fxConv(by[c], c, cur) ?? 0), 0);
+  $('todayProfit').textContent = (curs.some(c => c !== cur) ? '≈ ' : '') + money(p, cur, true);
   $('todayProfit').className = 'goal-val num ' + cls(p);
-  $('todayCount').textContent = t.length ? `${t.length} ${plural(t.length, 'сделка', 'сделки', 'сделок')}` : 'Пока нет сделок';
-  const g = +S.settings.goal || 0, showGoal = g > 0 && cur === 'RUB';
-  $('goalOf').textContent = showGoal ? (p >= g ? 'Цель выполнена' : `цель ${hid(nf0.format(g))} ₽ · осталось ${hid(nf0.format(g - Math.max(p, 0)))} ₽`) : '';
+  $('todayCount').textContent = !t.length ? 'Пока нет сделок' : curs.length > 1 || curs[0] !== cur
+    ? curs.map(c => hid(money(by[c], c, true).replace(/^\+/, ''))).join(' + ').replace(/\+ −/g, '− ')
+    : `${t.length} ${plural(t.length, 'сделка', 'сделки', 'сделок')}`;
+  // Цель задаётся в Профиле в рублях — показываем её в выбранной валюте
+  const gRub = +S.settings.goal || 0, gx = fxConv(gRub, 'RUB', cur), g = gx == null ? 0 : cur === 'RUB' ? gx : Math.round(gx / 10) * 10, showGoal = g > 0, sy = SYM[cur];
+  $('goalOf').textContent = showGoal ? (p >= g ? 'Цель выполнена' : `цель ${hid(nf0.format(g))} ${sy} · осталось ${hid(nf0.format(g - Math.max(p, 0)))} ${sy}`) : '';
   $('goalBar').hidden = !showGoal;
   $('goalBar').className = 'bar' + (p >= g ? ' pos' : '');
   $('goalBar').firstElementChild.style.width = showGoal ? Math.max(0, Math.min(100, p / g * 100)) + '%' : '0';
@@ -1984,7 +2009,7 @@ function openTrade(id) {
 }
 
 /* ================= АНАЛИТИКА ================= */
-let sPeriod = '30', sCur = 'RUB', chartMode = 'bar', chart = null;
+let sPeriod = '30', sCur = null, chartMode = 'bar', chart = null;
 let chartFx = false, calFx = false;   // при входе в аналитику: столбики вырастают по очереди, дни календаря загораются волной
 function renderStats() {
   const pro = S.settings.pro;
@@ -1992,10 +2017,11 @@ function renderStats() {
   $('sPeriod').innerHTML = [['7', '7 дней'], ['30', '30 дней'], ['90', '90 дней'], ['all', 'Всё время']]
     .map(([k, l]) => `<button class="chip ${k === sPeriod ? 'on' : ''}" data-sp="${k}">${l}${pro || k === '7' ? '' : ' 🔒'}</button>`).join('');
   // Рубли и доллары считаются раздельно (в старой версии они складывались)
-  const curs = [...new Set(S.trades.map(t => t.cur))];
+  // Каждая валюта — отдельно: складывать рубли с тенге нельзя
+  const curs = CURS.map(c => c[0]).filter(c => S.trades.some(t => t.cur === c));
+  if (!curs.includes(sCur)) sCur = curs.includes(S.settings.cur) ? S.settings.cur : curs[0] || S.settings.cur;
   $('sCurSeg').hidden = curs.length < 2;
-  if (curs.length === 1) sCur = curs[0];
-  document.querySelectorAll('[data-scur]').forEach(b => b.classList.toggle('on', b.dataset.scur === sCur));
+  $('sCurSeg').innerHTML = curs.map(c => `<button class="chip ${c === sCur ? 'on' : ''}" data-scur="${c}">${CUR_FLAG[c]} ${CUR_NAME[c]}</button>`).join('');
   const T = S.trades.filter(t => t.cur === sCur && inPeriod(t, sPeriod));
   const c = sCur, n = T.length;
   $('sEmpty').hidden = n > 0;
@@ -2030,7 +2056,7 @@ const monTitle = (y, m) => { const x = new Date(y, m, 1).toLocaleDateString('ru-
 // Сделки месяца в одной валюте (по умолчанию — рубли, если они есть): сумма по каждому дню и итоги
 function monthStats(y, m, cur) {
   const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
-  cur = cur || (!T.length || T.some(t => t.cur === 'RUB') ? 'RUB' : 'USD');
+  cur = cur || mainCur(T);
   const X = T.filter(t => t.cur === cur), n = new Date(y, m + 1, 0).getDate(), bars = Array(n).fill(0), cnt = Array(n).fill(0);
   X.forEach(t => { const i = new Date(t.ts).getDate() - 1; bars[i] += t.profit; cnt[i]++; });
   const sum = f => X.reduce((a, t) => a + f(t), 0), active = cnt.filter(Boolean).length;
@@ -2119,10 +2145,10 @@ function monthReportText() {
   const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
   const month = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
   const lines = [`Отчёт P2Pro · ${month}`, ''];
-  ['RUB', 'USD'].forEach(c => {
+  CURS.map(x => x[0]).forEach(c => {
     const X = T.filter(t => t.cur === c); if (!X.length) return;
     const p = X.reduce((a, t) => a + t.profit, 0), turn = X.reduce((a, t) => a + t.sum, 0), fee = X.reduce((a, t) => a + t.comm, 0);
-    lines.push(`${c === 'RUB' ? 'Рубли' : 'Доллары'}: ${X.length} ${plural(X.length, 'сделка', 'сделки', 'сделок')}`,
+    lines.push(`${CUR_NAME[c]}: ${X.length} ${plural(X.length, 'сделка', 'сделки', 'сделок')}`,
       `Прибыль: ${money(p, c, true)}`, `Оборот: ${money(turn, c)}`, `Комиссии: ${money(fee, c)}`, '');
     const ex = {}; X.forEach(t => ex[t.ex] = (ex[t.ex] || 0) + t.profit);
     lines.push('По биржам:', ...Object.entries(ex).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}: ${money(v, c, true)}`), '');
@@ -2430,7 +2456,7 @@ document.addEventListener('click', e => {
 
 /* ================= ПОДСКАЗКИ ================= */
 const INFO = {
-  goal: ['Сегодня и цель', 'Прибыль за сегодня по всем сохранённым сделкам. Цель на день задаётся в Профиле, полоска показывает, сколько осталось до цели.'],
+  goal: ['Сегодня и цель', 'Прибыль за сегодня по всем сохранённым сделкам. Цель на день задаётся в Профиле, полоска показывает, сколько осталось до цели.\n\nЕсли сделки в разных валютах — например, часть в рублях, часть в тенге — они пересчитываются в валюту, выбранную в калькуляторе, по текущему биржевому курсу USDT. Поэтому перед суммой стоит «≈», а справа видно, из чего она сложилась: «632 ₽ + 1 820 ₸».\n\nЦель тоже показывается в выбранной валюте. Сами сделки не меняются — в истории каждая остаётся в своей валюте.'],
   mode: ['Сделка или круг', '«Сделка» — купил и продал весь объём по одному курсу.\n\n«Круг» — купил USDT одним объёмом, а продаёшь частями по разным курсам. Пример: купил 1 000 USDT по 93 ₽, продал 600 по 94 и 400 по 94,5. Прибыль 1 200 ₽. Приложение покажет, сколько USDT ещё осталось.'],
   fees: ['Комиссии', 'Комиссия биржи — что берёт P2P-площадка за сделку: процент от суммы продажи или фиксированная сумма. Подставляется сама при выборе биржи, а настраивается в Профиле → Комиссии бирж.\n\nКомиссия вывода — плата за перевод USDT на другую биржу, обычно около 1 USDT в сети TRC20. Если покупаете и продаёте на одной бирже, нажмите «Без вывода».'],
   result: ['Как считается прибыль', 'Чистая прибыль = сколько получил при продаже − комиссии − сколько потратил на покупку.\n\nСпред — на сколько процентов курс продажи выше курса покупки.\n\nБезубыток — минимальный курс продажи, при котором вы не уходите в минус с учётом всех комиссий.'],
@@ -3016,7 +3042,7 @@ document.addEventListener('click', e => {
     if (!st.onboarded) showTour(0);
     return;
   }
-  if (b.id === 'curRUB' || b.id === 'curUSD') { st.cur = b.id === 'curRUB' ? 'RUB' : 'USD'; persist(); return render(); }
+  if (b.dataset.cur && own(SYM, b.dataset.cur)) { st.cur = b.dataset.cur; persist(); xrRefresh(true); return render(); }
   if (ds.ex) {
     d.ex = ds.ex;
     const fp = st.feePresets[ds.ex];
@@ -3161,8 +3187,18 @@ const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localSt
 // Ориентир для P2P: средний курс USDT на бирже xRocket. Открытый API, ключ не нужен. Обновляется раз в минуту,
 // пока открыт калькулятор; последний курс хранится на устройстве. Выключается в Профиле → «Отображение»
 const XR_URL = 'https://exchange.api.xrocket.exchange/api/v1/rates?base=';
-const XR_FIATS = [['KZT', '🇰🇿', '₸'], ['UAH', '🇺🇦', '₴'], ['BYN', '🇧🇾', 'Br'], ['EUR', '🇪🇺', '€']];
-let xrRate = lsGet(KEY + '.xr'), xrBusy = false;
+const XR_CURS = ['RUB', 'KZT', 'UAH', 'BYN', 'EUR'];   // в этих валютах показываем курс USDT
+let xrRate = lsGet(KEY + '.xr'), xrBusy = false;   // курс к рублю — основной (его пишет бот для графика и уведомлений)
+let xrFx = (() => { const v = lsGet(KEY + '.xrfx'); return v && typeof v === 'object' ? v : {}; })();   // курсы к другим валютам
+// Валюта курса: как в калькуляторе, если человек не выбрал другую в окне курса. Для долларов курс не показываем
+function rateCur() { const c = own(SYM, S.settings.rateCur || '') ? S.settings.rateCur : S.settings.cur; return XR_CURS.includes(c) ? c : null; }
+const rateOf = c => c === 'RUB' ? xrRate : xrFx[c];
+async function xrFxGet(c, maxAge = 55e3) {
+  if (c === 'RUB') return xrRate;
+  const have = xrFx[c]; if (have && Date.now() - have.at < maxAge) return have;
+  try { xrFx[c] = await xrFetch(c); lsSet(KEY + '.xrfx', xrFx); } catch (e) {}
+  return xrFx[c];
+}
 async function xrFetch(base) {
   const j = await (await fetch(XR_URL + base, { cache: 'no-store' })).json();
   if (!(+j?.USDT?.rate > 0)) throw new Error('no rate');
@@ -3171,48 +3207,54 @@ async function xrFetch(base) {
 async function xrRefresh(force) {
   if (xrBusy || (!force && xrRate && Date.now() - xrRate.at < 55e3)) return;
   xrBusy = true;
-  try { xrRate = await xrFetch('RUB'); lsSet(KEY + '.xr', xrRate); } catch (e) {} finally { xrBusy = false; }
-  renderRate();
+  try { xrRate = await xrFetch('RUB'); lsSet(KEY + '.xr', xrRate); const rc = rateCur(); if (rc && rc !== 'RUB') await xrFxGet(rc, 0); } catch (e) {} finally { xrBusy = false; }
+  renderRate(); renderToday();
 }
 const xrAgo = ms => ms < 120e3 ? 'только что' : ms < 3600e3 ? `${Math.round(ms / 60e3)} мин назад` : `${Math.round(ms / 3600e3)} ч назад`;
 const xrPct = v => `${v >= 0 ? '+' : '−'}${nf2.format(Math.abs(v))}%`;
 function renderRate() {
   let el = $('rateLine');
-  if (S.settings.rateOff || S.settings.cur !== 'RUB') return el?.remove();   // курс к рублю: для расчётов в $ не нужен
+  const rc = rateCur();
+  if (S.settings.rateOff || !rc) return el?.remove();   // для расчётов в долларах курс не нужен
   if (!el) {
     const row = $('buyLbl')?.closest('.row2'); if (!row) return;
     row.insertAdjacentHTML('beforebegin', '<button type="button" class="rate-line" id="rateLine" aria-label="Биржевой курс USDT, подробнее"></button>');
     el = $('rateLine');
   }
-  if (!xrRate) return el.innerHTML = '<span class="dot off"></span>USDT · загружаем курс…';
-  const age = Date.now() - xrRate.at, up = xrRate.ch >= 0;
-  el.innerHTML = `<span class="dot ${age < 5 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(xrRate.rate)} ₽</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(xrRate.ch))}%</span>· xRocket${age < 5 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
+  const R = rateOf(rc);
+  if (!R) return el.innerHTML = '<span class="dot off"></span>USDT · загружаем курс…';
+  const age = Date.now() - R.at, up = R.ch >= 0, own2 = rc !== S.settings.cur;
+  el.innerHTML = `<span class="dot ${age < 5 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(R.rate)} ${SYM[rc]}</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(R.ch))}%</span>· ${own2 ? CUR_FLAG[rc] + ' ' : ''}xRocket${age < 5 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
 }
 // Окно с подробностями: источник, сравнение сделки с биржей, другие валюты, подстановка курса
 function rateSheet() {
-  if (!xrRate) return xrRefresh(true);
-  const r = xrRate.rate, pv = id => +String($(id)?.value || '').replace(/\s/g, '').replace(',', '.') || 0, buy = pv('buy'), sell = pv('sell');
-  const cell = (label, v, good) => `<div><span class="muted small">${label}</span><br><b style="font-family:var(--f-mono);color:${v == null ? 'var(--muted)' : good ? '#3CD38A' : '#FF6B6B'}">${v == null ? '—' : xrPct(v)}</b></div>`;
+  const v = rateCur() || 'RUB', R = rateOf(v);
+  if (!R) return xrFxGet(v, 0).then(x => x ? rateSheet() : toast('Не удалось загрузить курс — проверьте интернет'));
+  const r = R.rate, sym = SYM[v], same = v === S.settings.cur, pv = id => +String($(id)?.value || '').replace(/\s/g, '').replace(',', '.') || 0, buy = same ? pv('buy') : 0, sell = same ? pv('sell') : 0;
+  const cell = (label, x, good) => `<div><span class="muted small">${label}</span><br><b style="font-family:var(--f-mono);color:${x == null ? 'var(--muted)' : good ? '#3CD38A' : '#FF6B6B'}">${x == null ? '—' : xrPct(x)}</b></div>`;
   const bP = buy ? (buy / r - 1) * 100 : null, sP = sell ? (sell / r - 1) * 100 : null, spr = buy && sell ? (sell / buy - 1) * 100 : null;
-  sheet(`<h3>Биржевой курс USDT</h3>
-    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="font-family:var(--f-display);font-size:34px">${nf2.format(r)} ₽</b>
-      <span style="color:${xrRate.ch >= 0 ? '#3CD38A' : '#FF6B6B'};font-weight:600;white-space:nowrap">${xrRate.ch >= 0 ? '▲' : '▼'} ${nf2.format(Math.abs(xrRate.ch))}% за сутки</span></div>
-    <span class="muted small">Источник: биржа <b style="color:var(--fg)">xRocket</b> (@xRocket в Telegram). Обновлено ${xrAgo(Date.now() - xrRate.at)}.<br>Это средний курс USDT на бирже — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
+  const others = XR_CURS.filter(c => c !== v);
+  sheet(`<h3>Биржевой курс USDT${v === 'RUB' ? '' : ` · ${CUR_FLAG[v]} ${CUR_NAME[v].toLowerCase()}`}</h3>
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="font-family:var(--f-display);font-size:34px">${nf2.format(r)} ${sym}</b>
+      <span style="color:${R.ch >= 0 ? '#3CD38A' : '#FF6B6B'};font-weight:600;white-space:nowrap">${R.ch >= 0 ? '▲' : '▼'} ${nf2.format(Math.abs(R.ch))}% за сутки</span></div>
+    <span class="muted small">Источник: биржа <b style="color:var(--fg)">xRocket</b> (@xRocket в Telegram). Обновлено ${xrAgo(Date.now() - R.at)}.<br>Это средний курс USDT на бирже — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
     <div class="kpi"><span class="label">График за сутки${S.settings.pro ? '' : ' · PRO'}</span><div class="xr-ch" id="xrCh"><span class="muted small">Загружаем…</span></div></div>
     <div class="kpi" id="xrAl"><span class="label">🔔 Уведомить в Telegram${S.settings.pro ? '' : ' · PRO'}</span>
-      <span class="muted small">Бот напишет, когда курс USDT станет выше или ниже вашей цены (проверка раз в 10 минут)</span>
+      ${v === 'RUB' ? `<span class="muted small">Бот напишет, когда курс USDT станет выше или ниже вашей цены (проверка раз в 10 минут)</span>
       <div class="xr-al-f"><div class="seg sm"><button data-xral-dir="above" class="${xrAlDir === 'above' ? 'on' : ''}">Выше</button><button data-xral-dir="below" class="${xrAlDir === 'below' ? 'on' : ''}">Ниже</button></div>
         <div class="inp"><input id="xrAlP" type="text" inputmode="decimal" placeholder="${nf2.format(Math.round(r * (xrAlDir === 'above' ? 1.01 : .99) * 100) / 100)}" aria-label="Курс для уведомления"><span class="unit">₽</span></div>
-        <button class="btn primary" id="xrAlAdd">Добавить</button></div>
+        <button class="btn primary" id="xrAlAdd">Добавить</button></div>`
+      : `<span class="muted small">Уведомления работают по курсу в рублях. <button class="linkbtn" data-xr-cur="RUB" style="color:var(--accent);font:inherit;background:none;border:0;padding:0;cursor:pointer">Открыть курс в ₽ ›</button></span>`}
       <div id="xrAlList"></div></div>
     <div class="kpi"><span class="label">Ваша сделка к бирже</span>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px;font-size:13px">${cell('Покупка', bP, bP != null && bP <= 0)}${cell('Продажа', sP, sP != null && sP >= 0)}${cell('Спред', spr, spr != null && spr >= 0)}</div>
-      ${buy || sell ? '' : '<span class="muted small">Введите курсы покупки и продажи — покажем, насколько они выше или ниже биржи</span>'}</div>
-    <div class="kpi"><span class="label">Другие валюты</span><div id="xrFiats" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;font-family:var(--f-mono);font-size:14px">
-      ${XR_FIATS.map(([c, f, sym]) => `<span id="xr${c}">${f} … ${sym}</span>`).join('')}</div></div>
+      ${same ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px;font-size:13px">${cell('Покупка', bP, bP != null && bP <= 0)}${cell('Продажа', sP, sP != null && sP >= 0)}${cell('Спред', spr, spr != null && spr >= 0)}</div>
+      ${buy || sell ? '' : '<span class="muted small">Введите курсы покупки и продажи — покажем, насколько они выше или ниже биржи</span>'}`
+      : `<span class="muted small">Сравнение работает, когда курс и калькулятор в одной валюте (сейчас в калькуляторе — ${CUR_NAME[S.settings.cur].toLowerCase()})</span>`}</div>
+    <div class="kpi"><span class="label">Другие валюты · нажмите, чтобы открыть</span><div id="xrFiats" class="xr-fiats">
+      ${others.map(c => `<button type="button" data-xr-cur="${c}" id="xr${c}">${CUR_FLAG[c]} <span>${rateOf(c) ? nf2.format(rateOf(c).rate) : '…'} ${SYM[c]}</span><i>›</i></button>`).join('')}</div></div>
     <button class="btn primary" data-close>Готово</button>`);
-  xrChart(); xrAlLoad();
-  XR_FIATS.forEach(([c, f, sym]) => xrFetch(c).then(x => { if ($('xr' + c)) $('xr' + c).textContent = `${f} ${nf2.format(x.rate)} ${sym}`; }, () => { if ($('xr' + c)) $('xr' + c).textContent = `${f} — ${sym}`; }));
+  xrChart(v); if (v === 'RUB') xrAlLoad();
+  others.forEach(c => xrFxGet(c, 5 * 60e3).then(x => { const el = $('xr' + c)?.querySelector('span'); if (el) el.textContent = x ? `${nf2.format(x.rate)} ${SYM[c]}` : `— ${SYM[c]}`; }));
 }
 // График за сутки и уведомления о курсе (16-rate.sql). Точки курса раз в 10 минут записывает бот
 let xrAlDir = 'above';
@@ -3224,7 +3266,7 @@ function xrChartSvg(pts, col) {
     <path d="M${xy.join(' L')} L${W},${H} L0,${H}Z" fill="url(#xrG)"/><polyline points="${xy.join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
     <circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="${col}"/></svg>`;
 }
-async function xrChart() {
+async function xrChart(v = 'RUB') {
   const el = $('xrCh'); if (!el) return;
   if (!S.settings.pro) {
     const demo = Array.from({ length: 40 }, (_, i) => 80 + Math.sin(i / 4) * .6 + i * .03);
@@ -3235,7 +3277,9 @@ async function xrChart() {
   try { const { data } = await sb.from('rate_history').select('ts, usdt').gte('ts', new Date(Date.now() - 864e5).toISOString()).order('ts'); rows = data || []; } catch (e) {}
   if (!$('xrCh')) return;
   if (rows.length < 3) return el.innerHTML = '<span class="muted small">График собирается: бот записывает курс раз в 10 минут. Загляните через час</span>';
-  const pts = rows.map(x => +x.usdt), up = pts[pts.length - 1] >= pts[0], col = up ? '#3CD38A' : '#FF6B6B';
+  // Бот записывает курс к рублю. Для другой валюты пересчитываем по текущему соотношению курсов — форма графика та же
+  const k = v === 'RUB' || !xrRate || !rateOf(v) ? 1 : rateOf(v).rate / xrRate.rate;
+  const pts = rows.map(x => +x.usdt * k), up = pts[pts.length - 1] >= pts[0], col = up ? '#3CD38A' : '#FF6B6B';
   const t = x => new Date(x).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   el.innerHTML = xrChartSvg(pts, col) + `<div class="ax"><span>${t(rows[0].ts)}</span><span>мин ${nf2.format(Math.min(...pts))} · макс ${nf2.format(Math.max(...pts))}</span><span>${t(rows[rows.length - 1].ts)}</span></div>`;
 }
@@ -3262,6 +3306,12 @@ async function xrAlAdd() {
 }
 document.addEventListener('click', e => {
   if (e.target.closest('#rateLine')) return rateSheet();
+  const xc = e.target.closest('[data-xr-cur]');
+  if (xc) {
+    const c = xc.dataset.xrCur; if (!XR_CURS.includes(c)) return;
+    S.settings.rateCur = c === S.settings.cur ? null : c; persist(false);
+    return xrFxGet(c, 5 * 60e3).then(() => { renderRate(); rateSheet(); });
+  }
   const dirB = e.target.closest('[data-xral-dir]');
   if (dirB) { xrAlDir = dirB.dataset.xralDir; document.querySelectorAll('[data-xral-dir]').forEach(x => x.classList.toggle('on', x === dirB)); if (xrRate && $('xrAlP')) $('xrAlP').placeholder = nf2.format(Math.round(xrRate.rate * (xrAlDir === 'above' ? 1.01 : .99) * 100) / 100); return; }
   if (e.target.closest('#xrAlAdd')) return xrAlAdd();
@@ -4542,7 +4592,7 @@ function monthCardData(back = 0) {
   const d = { kicker: back ? 'Прошлый месяц' : 'Мой результат', title: monTitle(y, m), neg: p < 0,
     big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
     sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${tradeDays(active)}`,
-    date: back ? 'Итоги месяца' : 'P2P · ' + (cur === 'RUB' ? 'рубли' : 'доллары'),
+    date: back ? 'Итоги месяца' : 'P2P · ' + CUR_NAME[cur].toLowerCase(),
     cells: [['Сделок', String(X.length)], ['В среднем за день', active ? plusAmt(p / active, cur) : '—'], ['Оборот', cardAmt(turn, cur)], ['Лучший день', best > 0 ? '+' + cardAmt(best, cur) : '—']], bars: M.bars };
   if (!back) return d;
   // Прошлый месяц: рост к позапрошлому и два столбика «было → стало»
@@ -4565,7 +4615,7 @@ function calCardData(ym) {
 }
 // За всё время: итог, лучший месяц и столбики по последним месяцам
 function allCardData() {
-  const cur = !S.trades.length || S.trades.some(t => t.cur === 'RUB') ? 'RUB' : 'USD', X = S.trades.filter(t => t.cur === cur);
+  const cur = mainCur(S.trades), X = S.trades.filter(t => t.cur === cur);
   const sum = f => X.reduce((a, t) => a + f(t), 0), p = sum(t => t.profit), cost = sum(t => t.cost ?? t.sum), days = new Set(X.map(t => dayKey(t.ts))).size;
   const first = X.length ? Math.min(...X.map(t => new Date(t.ts).getTime())) : Date.now();
   const byM = {}; X.forEach(t => { const d = new Date(t.ts), k = d.getFullYear() * 12 + d.getMonth(); byM[k] = (byM[k] || 0) + t.profit; });
@@ -4580,7 +4630,7 @@ function allCardData() {
 }
 // Итоги одного дня — из окна дня в календаре и для Free
 function dayCardData(k) {
-  const T = S.trades.filter(t => dayKey(t.ts) === k), cur = !T.length || T.some(t => t.cur === 'RUB') ? 'RUB' : 'USD', X = T.filter(t => t.cur === cur);
+  const T = S.trades.filter(t => dayKey(t.ts) === k), cur = mainCur(T), X = T.filter(t => t.cur === cur);
   const sum = f => X.reduce((a, t) => a + f(t), 0), p = sum(t => t.profit), cost = sum(t => t.cost ?? t.sum), best = X.length ? Math.max(...X.map(t => t.profit)) : 0;
   const g = cur === 'RUB' ? +S.settings.goal || 0 : 0, [y, m, d] = k.split('-').map(Number), dt = new Date(y, m - 1, d);
   const title = dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });

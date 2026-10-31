@@ -515,7 +515,7 @@ async function loginAnswer(cq: { id: string; data?: string; from: { id: number; 
 // В 23:59 МСК расписание будит бота ({cron:'daily'}): он находит всех, у кого сегодня были сделки, и для каждого
 // вызывает сам себя ({daily_user}) — каждая карточка рисуется в отдельном запуске, чтобы хватило ресурсов.
 // Команда /itogi присылает итоги прямо сейчас. Карточка — PNG из SVG (resvg), шрифты лежат на сайте в /fonts
-const CUR: Record<string, string> = { RUB: '₽', USD: '$' };
+const CUR: Record<string, string> = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', EUR: '€', USD: '$' };
 const money = (v: number, cur: string, dec = 2) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toLocaleString('ru-RU', { minimumFractionDigits: dec, maximumFractionDigits: dec })} ${CUR[cur] ?? cur}`;
 const plural = (n: number, a: string, b: string, c: string) => { const m = n % 100, k = n % 10; return m > 10 && m < 20 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
 type DayTrade = { ts: string; data: { profit?: number; sum?: number; cur?: string; ex?: string; bank?: string } };
@@ -1997,7 +1997,7 @@ async function chatDeal(userId: string, sum: number, buy: number, sell: number, 
     admin.from('trades').select('data').eq('user_id', userId).eq('deleted', false).order('ts', { ascending: false }).limit(1)]);
   const st = (prof?.settings ?? {}) as { cur?: string; exchanges?: string[]; banks?: string[]; feePresets?: Record<string, { ex?: number; wd?: number }>; work?: string };
   const lt = (last?.[0]?.data ?? {}) as { ex?: string };
-  const ex = String(lt.ex || st.exchanges?.[0] || 'Bybit').slice(0, 30), cur = st.cur === 'USD' ? 'USD' : 'RUB';
+  const ex = String(lt.ex || st.exchanges?.[0] || 'Bybit').slice(0, 30), cur = Object.hasOwn(CUR, String(st.cur)) ? String(st.cur) : 'RUB';
   const preset = st.feePresets?.[ex] ?? (ex === 'Bybit' ? { ex: 0.3, wd: 1 } : { ex: 0, wd: 1 });
   const feeEx = Math.max(0, Math.min(99, +(preset.ex ?? 0) || 0)), f = feeEx / 100;
   const bank = chatBank(typedBank, Array.isArray(st.banks) ? st.banks.map(String) : []);
