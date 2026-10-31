@@ -260,7 +260,13 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 
 /* goal strip */
 .goal-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.goal-val { font-family: var(--f-display); font-weight: 700; font-size: 22px; letter-spacing: -0.02em; }
+.goal-val { font-family: var(--f-display); font-weight: 700; font-size: 22px; letter-spacing: -0.02em; white-space: nowrap; }
+.goal-val .ap { font-size: .7em; opacity: .55; margin-right: 4px; font-weight: 600; }
+#todayCount { text-align: right; white-space: nowrap; }
+.today-curs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-top: -2px; }
+.today-curs::-webkit-scrollbar { display: none; }
+.today-curs span { flex: none; padding: 4px 9px; border-radius: 999px; background: var(--surface-2); font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.today-curs span.pos { color: var(--pos, #3CD38A); } .today-curs span.neg { color: var(--neg, #FF6B6B); }
 .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s; }
 .bar.pos > i { background: var(--pos); } .bar.warn > i { background: var(--fee); } .bar.neg > i { background: var(--neg); }
@@ -1143,6 +1149,7 @@ img { max-width: 100%; }
         <span class="goal-val num" id="todayProfit">0 ₽</span>
         <span class="muted small" id="todayCount"></span>
       </div>
+      <div class="today-curs" id="todayCurs" hidden></div>
       <div class="bar" id="goalBar"><i style="width:0"></i></div>
     </div>
 
@@ -1694,6 +1701,7 @@ let S = load();
 if (!S) S = JSON.parse(JSON.stringify(DEFAULT));   // structuredClone нет в Safari до 15.4
 // Примерные сделки из ранних тестовых версий удаляем, свои сделки пользователя не трогаем
 S.trades = S.trades.filter(t => !t.sample);
+if (!Object.prototype.hasOwnProperty.call(SYM, S.settings.cur)) S.settings.cur = 'RUB';   // испорченная валюта на устройстве не должна ломать расчёт
 
 function draftInput() {
   const d = S.draft, st = S.settings;
@@ -1917,11 +1925,13 @@ function renderToday() {
   const curs = Object.keys(by), missing = curs.filter(c => fxConv(1, c, cur) == null);
   if (missing.length && Date.now() - fxAsked > 60e3) { fxAsked = Date.now(); Promise.all([cur, ...missing].map(c => xrFxGet(c, 3600e3))).then(renderToday); }
   const p = curs.reduce((a, c) => a + (fxConv(by[c], c, cur) ?? 0), 0);
-  $('todayProfit').textContent = (curs.some(c => c !== cur) ? '≈ ' : '') + money(p, cur, true);
+  const mixed = curs.some(c => c !== cur);
+  $('todayProfit').innerHTML = (mixed ? '<span class="ap">≈</span>' : '') + esc(money(p, cur, true));
   $('todayProfit').className = 'goal-val num ' + cls(p);
-  $('todayCount').textContent = !t.length ? 'Пока нет сделок' : curs.length > 1 || curs[0] !== cur
-    ? curs.map(c => hid(money(by[c], c, true).replace(/^\+/, ''))).join(' + ').replace(/\+ −/g, '− ')
-    : `${t.length} ${plural(t.length, 'сделка', 'сделки', 'сделок')}`;
+  $('todayCount').textContent = t.length ? `${t.length} ${plural(t.length, 'сделка', 'сделки', 'сделок')}` : 'Пока нет сделок';
+  // Разные валюты — маленькими плашками под суммой (листаются вбок), а не длинной строкой
+  $('todayCurs').hidden = !mixed;
+  $('todayCurs').innerHTML = mixed ? CURS.map(c => c[0]).filter(c => c in by).map(c => `<span class="${cls(by[c])}">${CUR_FLAG[c]} ${esc(hid(money(by[c], c, true)))}</span>`).join('') : '';
   // Цель задаётся в Профиле в своей валюте — показываем её в выбранной
   const g = goalIn(cur) || 0, showGoal = g > 0, sy = SYM[cur];
   if (goalIn(cur) === null && Date.now() - fxAsked > 60e3) { fxAsked = Date.now(); xrFxGet(S.settings.goalCur || 'RUB', 3600e3).then(() => xrFxGet(cur, 3600e3)).then(renderToday); }
@@ -4567,6 +4577,15 @@ function tgInit() {
       tg.onEvent?.('fullscreenFailed', () => document.documentElement.classList.remove('tg-fs'));
       tg.onEvent?.('fullscreenChanged', () => document.documentElement.classList.toggle('tg-fs', !!tg.isFullscreen));
       tg.requestFullscreen();
+      // Отступ сверху считаем сами: старые версии Telegram не задают CSS-переменные или отдают 0.
+      // Вырез телефона + ряд кнопок Telegram «Закрыть» / «…» (≈46px), чтобы шапка приложения не уходила под них
+      const fsTop = () => {
+        const sa = +tg.safeAreaInset?.top || 0, ca = +tg.contentSafeAreaInset?.top || 0;
+        const top = Math.max(sa, tg.platform === 'ios' ? 47 : 24) + Math.max(ca, 46);
+        document.documentElement.style.setProperty('--fs-top', top + 'px');
+        document.documentElement.style.setProperty('--fs-bot', (+tg.safeAreaInset?.bottom || 0) + 'px');
+      };
+      fsTop(); tg.onEvent?.('safeAreaChanged', fsTop); tg.onEvent?.('contentSafeAreaChanged', fsTop); tg.onEvent?.('fullscreenChanged', fsTop);
     }
     const bg = getComputedStyle(document.body).backgroundColor;
     tg.setHeaderColor?.(bg); tg.setBackgroundColor?.(bg); tg.setBottomBarColor?.(bg);
