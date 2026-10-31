@@ -143,6 +143,16 @@ button { cursor: pointer; border: 0; background: none; }
 @keyframes fiatIn { from { opacity: 0; transform: translateY(8px); } }
 .rate-line b { transition: color .3s; }
 .rate-line.fx b { animation: symIn .35s ease-out; }
+.unit-cur { flex: none; display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; padding: 6px 2px 6px 8px; cursor: pointer; }
+.unit-cur i { font-style: normal; font-size: 10px; opacity: .6; }
+.unit-cur:active { opacity: .6; }
+.cur-list { display: flex; flex-direction: column; gap: 8px; }
+.cur-list button { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.cur-list button span:first-child { font-size: 20px; }
+.cur-list button b { font-weight: 600; flex: 1; }
+.cur-list button i { font-style: normal; color: var(--accent); font-size: 18px; }
+.cur-list button.on { border-color: var(--accent); background: var(--accent-soft); }
+.bank-cur { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .unit-sel { appearance: none; -webkit-appearance: none; border: 0; background: var(--surface-2); color: var(--muted); font: inherit; font-weight: 600; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .cur-chips .chip.fx, .cur-sym.sw, .xr-fiats button, .rate-line.fx b { animation: none; } }
 .cur-pick { display: flex; flex-direction: column; gap: 8px; }
@@ -724,7 +734,7 @@ details.fees[open] summary .chev { transform: rotate(90deg); }
 
 /* sheet + toast */
 /* Telegram во весь экран: сверху остаются кнопки Telegram («Закрыть», «•••») — сдвигаем всё под них */
-html.tg-fs { --fs-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)); --fs-bot: var(--tg-safe-area-inset-bottom, 0px); }
+html.tg-fs { --fs-top: calc(max(var(--tg-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + max(var(--tg-content-safe-area-inset-top, 0px), 46px)); --fs-bot: var(--tg-safe-area-inset-bottom, 0px); }
 html.tg-fs { padding-top: 0 !important; padding-bottom: 0 !important; }   /* отступ под вырез уже входит в --fs-top — иначе сверху двойная пустота */
 html.tg-fs body { padding-top: calc(4px + var(--fs-top)); padding-bottom: calc(104px + var(--fs-bot)); }
 html.tg-fs .nav { bottom: calc(10px + var(--fs-bot)); }
@@ -1460,15 +1470,15 @@ img { max-width: 100%; }
     </div>
     <div class="card">
       <div class="card-h"><span class="card-t">Цели и капитал</span><button class="info" data-info="capital" aria-label="Что такое капитал">i</button></div>
-      <div class="set-row"><span>Цель на день</span><div class="inp"><input id="setGoal" type="text" inputmode="decimal" placeholder="3000"><select id="setGoalCur" class="unit-sel" aria-label="Валюта цели"></select></div></div>
-      <div class="set-row"><span>Капитал в обороте</span><div class="inp"><input id="setCap" type="text" inputmode="decimal" placeholder="300000"><span class="unit">₽</span></div></div>
+      <div class="set-row"><span>Цель на день</span><div class="inp"><input id="setGoal" type="text" inputmode="decimal" placeholder="3000"><button type="button" class="unit-cur" data-curfor="goalCur" id="goalCurBtn" aria-label="Валюта цели">₽</button></div></div>
+      <div class="set-row"><span>Капитал в обороте</span><div class="inp"><input id="setCap" type="text" inputmode="decimal" placeholder="300000"><button type="button" class="unit-cur" data-curfor="capitalCur" id="capCurBtn" aria-label="Валюта капитала">₽</button></div></div>
       <div class="kpi"><span class="label">Доходность капитала за 30 дней</span><span class="v" id="roi">—</span><span class="s" id="roiSub"></span></div>
     </div>
 
     <div class="card" id="limitsCard">
       <div class="card-h"><span class="card-t">Лимиты карт в этом месяце</span><button class="info" data-info="limits" aria-label="Зачем лимиты">i</button></div>
       <div id="limits" style="display:flex;flex-direction:column;gap:14px"></div>
-      <span class="muted small">Оборот по карте = покупки + продажи по сделкам в рублях за месяц. Когда пройдёте 80% лимита, появится предупреждение.</span>
+      <span class="muted small">Оборот по карте = покупки + продажи по сделкам в валюте карты за месяц. Когда пройдёте 80% лимита, появится предупреждение.</span>
     </div>
 
     <div class="card">
@@ -1484,6 +1494,7 @@ img { max-width: 100%; }
       <span class="card-t">Мои банки</span>
       <div class="tag-edit" id="bankEdit"></div>
       <div class="add-inline"><div class="inp text"><input id="bankNew" type="text" placeholder="Название банка"></div><button class="btn slim" id="bankAdd">Добавить</button></div>
+      <div class="bank-cur"><span class="muted small">Валюта карты нового банка</span><div class="chips" id="bankCurPick"></div></div>
     </div>
 
 
@@ -1725,7 +1736,7 @@ function renderCalcStatic() {
   curSyms();
   document.querySelectorAll('[data-ft]').forEach(b => b.classList.toggle('on', st[b.dataset.ft === 'ex' ? 'feeExType' : 'feeWdType'] === b.dataset.v));
   $('exChips').innerHTML = st.exchanges.map(x => `<button class="chip ${x === d.ex ? 'on' : ''}" data-ex="${esc(x)}">${esc(x)}</button>`).join('');
-  $('bankChips').innerHTML = st.banks.map(x => `<button class="chip ${x === d.bank ? 'on' : ''}" data-bank="${esc(x)}">${esc(x)}</button>`).join('');
+  $('bankChips').innerHTML = st.banks.map(x => `<button class="chip ${x === d.bank ? 'on' : ''}" data-bank="${esc(x)}">${esc(bankLabel(x))}</button>`).join('');
   const fp = st.feePresets[d.ex];
   $('wdPreset').textContent = fp ? `Вывод с ${d.ex}: ${fp.wd} USDT` : 'Вывод: 1 USDT';
   $('feeSrc').textContent = fp ? `Комиссия ${d.ex} подставлена из Профиля: ${fp.ex}%. Поменять можно там же.` : '';
@@ -1846,7 +1857,7 @@ function curSyms() {
 }
 // Цель на день: задаётся в своей валюте (Профиль), показывается в любой — по биржевому курсу. null — курса пока нет
 function goalIn(cur) {
-  const g = +S.settings.goal || 0, gc = own(SYM, S.settings.goalCur || '') ? S.settings.goalCur : 'RUB';
+  const g = +S.settings.goal || 0, gc = curOr(S.settings.goalCur);
   if (!g) return 0;
   if (gc === cur) return g;
   const v = fxConv(g, gc, cur);
@@ -1858,10 +1869,19 @@ function mainCur(T) {
   const n = {}; T.forEach(t => n[t.cur] = (n[t.cur] || 0) + 1);
   return Object.keys(n).filter(c => own(SYM, c)).sort((a, b) => n[b] - n[a])[0] || 'RUB';
 }
-document.addEventListener('change', e => {
-  if (e.target.id !== 'setGoalCur' || !own(SYM, e.target.value)) return;
-  S.settings.goalCur = e.target.value; persist(); renderToday();
-  toast(`Цель на день — в ${SYM[e.target.value]}. В калькуляторе она пересчитается в выбранную валюту`);
+const curOr = (c, d = 'RUB') => own(SYM, c || '') ? c : d;
+// Выбор валюты для цели, капитала: кнопка ₽▾ в поле открывает список
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-curfor]');
+  if (btn) {
+    const key = btn.dataset.curfor, now = curOr(S.settings[key]), title = key === 'goalCur' ? 'Валюта цели на день' : 'Валюта капитала';
+    return sheet(`<h3>${title}</h3><div class="cur-list">${CURS.map(([k, f, n]) => `<button class="${k === now ? 'on' : ''}" data-setcur="${key}" data-v="${k}"><span>${f}</span><b>${n}</b><span class="muted">${SYM[k]}</span>${k === now ? '<i>✓</i>' : ''}</button>`).join('')}</div>`);
+  }
+  const pick = e.target.closest('[data-setcur]');
+  if (pick && ['goalCur', 'capitalCur'].includes(pick.dataset.setcur) && own(SYM, pick.dataset.v)) {
+    S.settings[pick.dataset.setcur] = pick.dataset.v; persist(); $('scrim')?.remove(); renderProfile(); renderToday();
+    toast(pick.dataset.setcur === 'goalCur' ? `Цель на день — в ${SYM[pick.dataset.v]}. В калькуляторе она пересчитается в выбранную валюту` : `Капитал — в ${SYM[pick.dataset.v]}`);
+  }
 });
 // Перевод суммы между валютами через курс USDT на бирже (сколько валюты стоит 1 USDT). null — курса пока нет
 function fxConv(v, from, to) {
@@ -1869,7 +1889,7 @@ function fxConv(v, from, to) {
   const a = rateOf(from), b = rateOf(to);
   return a && b ? v / a.rate * b.rate : null;
 }
-let fxAsked = 0;
+let fxAsked = 0, fxAskedP = 0;
 function renderToday() {
   const cur = S.settings.cur, k = dayKey(new Date());
   // Все сделки за сегодня: в другой валюте пересчитываются в выбранную по биржевому курсу
@@ -2876,9 +2896,13 @@ function confetti() {
 }
 
 /* ================= ПРОФИЛЬ ================= */
+// Валюта карты банка: задаётся при добавлении банка (Kaspi — тенге, Монобанк — гривна). Старые банки — рубли
+const bankCur = bank => curOr(S.settings.bankCur?.[bank]);
+const bankLabel = bank => (bankCur(bank) === 'RUB' ? '' : CUR_FLAG[bankCur(bank)] + ' ') + bank;
+let newBankCur = null;
 function bankUsage(bank) {
-  const now = new Date();
-  return S.trades.filter(t => t.bank === bank && t.cur === 'RUB')
+  const now = new Date(), c = bankCur(bank);
+  return S.trades.filter(t => t.bank === bank && curOr(t.cur) === c)
     .filter(t => { const d = new Date(t.ts); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
     .reduce((a, t) => a + t.sum + t.gross, 0);
 }
@@ -2911,18 +2935,22 @@ function renderProfile() {
   renderPinRow();
   const st = S.settings;
   if ($('setGoal') !== document.activeElement) $('setGoal').value = st.goal || '';
-  const gcur = own(SYM, st.goalCur || '') ? st.goalCur : 'RUB';
-  $('setGoalCur').innerHTML = CURS.map(([k]) => `<option value="${k}" ${k === gcur ? 'selected' : ''}>${SYM[k]}</option>`).join('');
+  const gcur = curOr(st.goalCur), ccur = curOr(st.capitalCur);
+  $('goalCurBtn').innerHTML = `${SYM[gcur]}<i>▾</i>`; $('capCurBtn').innerHTML = `${SYM[ccur]}<i>▾</i>`;
   if ($('setCap') !== document.activeElement) $('setCap').value = st.capital || '';
-  const p = S.trades.filter(t => t.cur === 'RUB' && inPeriod(t, '30')).reduce((a, t) => a + t.profit, 0);
+  // Прибыль за 30 дней во всех валютах — в валюте капитала по биржевому курсу
+  const by30 = {}; S.trades.filter(t => inPeriod(t, '30')).forEach(t => by30[curOr(t.cur)] = (by30[curOr(t.cur)] || 0) + (+t.profit || 0));
+  const miss = Object.keys(by30).filter(c => fxConv(1, c, ccur) == null);
+  if (st.capital && miss.length && Date.now() - fxAskedP > 60e3) { fxAskedP = Date.now(); Promise.all([ccur, ...miss].map(c => xrFxGet(c, 3600e3))).then(() => current === 'prof' && renderProfile()); }
+  const p = Object.entries(by30).reduce((a, [c, v]) => a + (fxConv(v, c, ccur) ?? 0), 0), mixed = Object.keys(by30).some(c => c !== ccur);
   $('roi').textContent = st.capital ? (st.incog ? '•••' : pct(p / st.capital * 100)) : '—';
   $('roi').className = 'v ' + (st.capital ? cls(p) : '');
-  $('roiSub').textContent = st.capital ? `${money(p, 'RUB', true)} на капитал ${money(+st.capital, 'RUB')}` : 'Укажите капитал, чтобы увидеть доходность';
+  $('roiSub').textContent = st.capital ? `${mixed ? '≈ ' : ''}${money(p, ccur, true)} на капитал ${money(+st.capital, ccur)}` : 'Укажите капитал, чтобы увидеть доходность';
   if (!document.activeElement?.dataset?.limit) {
     $('limits').innerHTML = st.banks.length ? st.banks.map(b => {
       const lim = +st.limits[b] || 0, used = bankUsage(b), r = lim ? used / lim : 0;
-      return `<div class="limit"><div class="limit-h"><span>${esc(b)}</span><span class="num">${money(used, 'RUB')} из
-        <input class="limit-in" type="text" inputmode="numeric" data-limit="${esc(b)}" value="${lim || ''}" placeholder="лимит" aria-label="Месячный лимит ${esc(b)}"> ₽</span></div>
+      return `<div class="limit"><div class="limit-h"><span>${esc(bankLabel(b))}</span><span class="num">${money(used, bankCur(b))} из
+        <input class="limit-in" type="text" inputmode="numeric" data-limit="${esc(b)}" value="${lim || ''}" placeholder="лимит" aria-label="Месячный лимит ${esc(b)}"> ${SYM[bankCur(b)]}</span></div>
         <div class="bar ${r >= 1 ? 'neg' : r >= .8 ? 'warn' : 'pos'}"><i style="width:${Math.min(100, r * 100)}%"></i></div></div>`;
     }).join('') : '<span class="muted">Добавьте банки ниже</span>';
   }
@@ -2932,7 +2960,9 @@ function renderProfile() {
         return `<span>${esc(x)}</span>` + ['ex', 'wd'].map(k => `<input class="limit-in" style="width:100%;padding:8px" type="text" inputmode="decimal" step="0.01" data-preset="${esc(x)}" data-pk="${k}" value="${+fp[k] || 0}" aria-label="${esc(x)}: ${k === 'ex' ? 'комиссия P2P' : 'вывод'}">`).join(''); }).join('');
   }
   $('exEdit').innerHTML = st.exchanges.map(x => `<span class="chip on">${esc(x)}<button data-rm-ex="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
-  $('bankEdit').innerHTML = st.banks.map(x => `<span class="chip on">${esc(x)}<button data-rm-bank="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
+  $('bankEdit').innerHTML = st.banks.map(x => `<span class="chip on">${esc(bankLabel(x))}<button data-rm-bank="${esc(x)}" aria-label="Убрать ${esc(x)}">×</button></span>`).join('');
+  const nb = curOr(newBankCur, curOr(st.cur));
+  $('bankCurPick').innerHTML = CURS.map(([k, f]) => `<button type="button" class="chip ${k === nb ? 'on' : ''}" data-bankcur="${k}">${f} ${k}</button>`).join('');
   $('plansInline').innerHTML = plansHtml(); $('plansInline').hidden = !!st.pro;
   $('subBox').hidden = !st.pro && !trialAvail();
   $('subBox').innerHTML = st.pro ? subHtml() + '<button class="btn" id="giftOpen">🎁 Подарить PRO другу</button>'
@@ -3198,12 +3228,14 @@ document.addEventListener('click', e => {
   if (ds.cpdel) return confirmSheet('Удалить контрагента?', ds.cpdel, 'Удалить', () => { S.cps = S.cps.filter(c => c.name !== ds.cpdel); persist(); renderCp(); }, true);
   // Убрали выбранную биржу или банк — выбираем первую оставшуюся, иначе сделка сохранилась бы с удалённой
   if (ds.rmEx) { st.exchanges = st.exchanges.filter(x => x !== ds.rmEx); if (d.ex === ds.rmEx) d.ex = st.exchanges[0] || '—'; if (S.tools.px.ex === ds.rmEx) S.tools.px.ex = st.exchanges[0] || '—'; persist(); return renderProfile(); }
-  if (ds.rmBank) { st.banks = st.banks.filter(x => x !== ds.rmBank); if (d.bank === ds.rmBank) d.bank = st.banks[0] || '—'; persist(); return renderProfile(); }
+  if (ds.bankcur && own(SYM, ds.bankcur)) { newBankCur = ds.bankcur; return renderProfile(); }
+  if (ds.rmBank) { if (st.bankCur && typeof st.bankCur === 'object') delete st.bankCur[ds.rmBank]; st.banks = st.banks.filter(x => x !== ds.rmBank); if (d.bank === ds.rmBank) d.bank = st.banks[0] || '—'; persist(); return renderProfile(); }
   if (b.id === 'exAdd' || b.id === 'bankAdd') {
     const isEx = b.id === 'exAdd', inp = $(isEx ? 'exNew' : 'bankNew'), v = inp.value.trim(), arr = isEx ? st.exchanges : st.banks;
     if (!v) return toast('Введите название'); if (arr.includes(v)) return toast('Уже есть в списке');
     arr.push(v); if (isEx) st.feePresets[v] ||= { ex: 0, wd: 1 };
-    inp.value = ''; persist(); return renderProfile();
+    if (!isEx) { const c = curOr(newBankCur, curOr(st.cur)); st.bankCur = { ...(st.bankCur && typeof st.bankCur === 'object' ? st.bankCur : {}) }; if (c === 'RUB') delete st.bankCur[v]; else st.bankCur[v] = c; }
+    inp.value = ''; persist(); if (!isEx) toast(`Банк добавлен: ${bankLabel(v)} · ${CUR_NAME[bankCur(v)].toLowerCase()}`); return renderProfile();
   }
   if (ds.themeSet) { st.theme = ds.themeSet; persist(); applyTheme(); return renderProfile(); }
   if (b.id === 'delAccBtn') return confirmSheet('Удалить аккаунт?', 'Аккаунт, все сделки, контрагенты, настройки и подписка будут удалены навсегда — с сервера и с этого устройства. Отменить это нельзя.', 'Удалить навсегда', deleteAccount, true);
@@ -3256,10 +3288,12 @@ let xrFx = (() => { const v = lsGet(KEY + '.xrfx'); return v && typeof v === 'ob
 function rateCur() { const c = own(SYM, S.settings.rateCur || '') ? S.settings.rateCur : S.settings.cur; return XR_CURS.includes(c) ? c : null; }
 const rateOf = c => c === 'RUB' ? xrRate : xrFx[c];
 async function xrFxGet(c, maxAge = 55e3) {
-  if (c === 'RUB') return xrRate;
-  const have = xrFx[c]; if (have && Date.now() - have.at < maxAge) return have;
-  try { xrFx[c] = await xrFetch(c); lsSet(KEY + '.xrfx', xrFx); } catch (e) {}
-  return xrFx[c];
+  const have = rateOf(c); if (have && Date.now() - have.at < maxAge) return have;
+  try {
+    const x = await xrFetch(c);
+    if (c === 'RUB') { xrRate = x; lsSet(KEY + '.xr', xrRate); } else { xrFx[c] = x; lsSet(KEY + '.xrfx', xrFx); }
+  } catch (e) {}
+  return rateOf(c);
 }
 async function xrFetch(base) {
   const j = await (await fetch(XR_URL + base, { cache: 'no-store' })).json();
@@ -3405,7 +3439,7 @@ const canon = o => JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Ar
 const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
 const fp = o => hash(canon(o) || '');
 // В облако идут только настройки расчёта. Тема, инкогнито и подписка — свои у каждого устройства или у сервера
-const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'goalCur', 'capital', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
+const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'goalCur', 'capital', 'capitalCur', 'bankCur', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
 const cloudSettings = () => Object.fromEntries(CLOUD_SET.filter(k => S.settings[k] !== undefined).map(k => [k, S.settings[k]]));
 const cpKey = c => String(c.name || '').trim().toLowerCase();
 // Отпечатки старой версии считались без сортировки ключей. Пересчитываем те, что совпадают, — иначе все записи
