@@ -1064,12 +1064,20 @@ async function renderBc() {
       <div class="card-t" style="margin-top:18px">Текст</div><textarea class="inp" id="bcT" style="min-height:200px" placeholder="Например: **Новое в P2Pro** — календарь прибыли и оплата картой. Откройте приложение 👇">${esc(BC.text)}</textarea>
       <p class="hint" style="margin-top:8px">**Жирный** — двумя звёздочками с каждой стороны. Под сообщением будет кнопка, как на превью. Итог рассылки бот пришлёт тебе в Telegram.</p>
       <div class="inl" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="bcTest">Отправить себе тест</button><button class="btn pri" id="bcGo">Отправить</button></div></div>
-      <div class="card"><div class="card-t">Как увидят <span class="muted">превью</span></div><div class="tgprev"><div class="bubble" id="bcP"></div><div class="tgbtn" id="bcB">🚀 Открыть P2Pro</div></div></div></div>`;
+      <div class="card"><div class="card-t">Как увидят <span class="muted">превью</span></div><div class="tgprev"><div class="bubble" id="bcP"></div><div class="tgbtn" id="bcB">🚀 Открыть P2Pro</div></div></div></div>
+    <div class="card" style="margin-top:16px"><div class="card-t">👋 Напоминание ушедшим</div>
+      <p class="hint" style="margin:6px 0 12px">Кто 10+ дней не записывал сделки. Список с никами придёт тебе в бот — там можно отправить напоминание, убрать кого-то из списка или отменить. Каждый день в 12:00 список приходит сам.</p>
+      <button class="btn pri" id="wbGo">Прислать список в бот</button></div>`;
   const prev = () => { BC.text = $('bcT').value; $('bcP').innerHTML = (esc(BC.text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>') || '<span class="muted">Здесь появится текст…</span>') + `<span class="tm">${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>`;
     $('bcB').textContent = BC.aud === 'exp' || BC.aud === 'free' ? '⭐ Продлить PRO' : '🚀 Открыть P2Pro'; };
   prev(); $('bcT').oninput = prev;
   $('bcA').onclick = e => { const b = e.target.closest('[data-aud]'); if (!b) return; BC.aud = b.dataset.aud; document.querySelectorAll('[data-aud]').forEach(x => x.classList.toggle('on', x === b)); prev(); };
   $('bcTest').onclick = async () => { if (!BC.text.trim()) return toast('Напишите текст', true); $('bcTest').disabled = true; try { await api('bc_test', { text: BC.text }); toast('Тест отправлен тебе в бот'); } catch (e) { toast(e.message, true); } $('bcTest').disabled = false; };
+  $('wbGo').onclick = async () => {
+    $('wbGo').disabled = true;
+    try { const r = await api('wb_propose'); toast(r.all ? `Список отправлен в бот: ${r.all} ${plural(r.all, 'человек', 'человека', 'человек')}` : 'Сейчас некому напоминать — сообщение в боте'); } catch (e) { toast(e.message, true); }
+    $('wbGo').disabled = false;
+  };
   $('bcGo').onclick = async () => {
     if (!BC.text.trim()) return toast('Напишите текст', true);
     if ($('bcGo').disabled) return;   // второе нажатие, пока открыто подтверждение, — не вторая рассылка

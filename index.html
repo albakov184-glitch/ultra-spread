@@ -4256,16 +4256,16 @@ function trialSheet() {
     <span class="muted small" style="text-align:center">Через 7 дней PRO выключится сам — без списаний. Один раз на аккаунт</span>`);
 }
 // Предложение пробного PRO при входе: после того как подписка пришла с сервера (у кого есть PRO — не покажется),
-// один раз на устройство. Если открыто другое окно, PIN-код или обзор — ждём, пока закроют
+// один раз на устройство. Если открыто другое окно, PIN-код или обзор — ждём, пока закроют (проверяем раз в секунду)
 let trialPromptT = 0;
 function trialPrompt(tries = 0) {
   clearTimeout(trialPromptT);
-  if (S.settings.trialSeen || !trialAvail() || tries > 20) return;
+  if (S.settings.trialSeen || !trialAvail() || tries > 400) return;
   trialPromptT = setTimeout(() => {
     if (S.settings.trialSeen || !trialAvail()) return;
     if ($('scrim') || $('pinLock') || !S.settings.onboarded || document.hidden) return trialPrompt(tries + 1);
     S.settings.trialSeen = true; persist(false); trialSheet();
-  }, tries ? 15000 : 2500);
+  }, tries ? 1200 : 700);
 }
 async function trialStart() {
   const b = $('trialGo'); if (!b || b.disabled) return;

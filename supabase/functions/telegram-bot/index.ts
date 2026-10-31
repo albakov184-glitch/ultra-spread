@@ -1112,7 +1112,7 @@ async function tick() {
   await watchdog().catch((e) => console.error('watchdog', e));
   // 10. Возврат ушедших — раз в день после 12:00 МСК
   const wb = await stGet('winback', { day: '' });
-  if (hourMsk >= 12 && wb.day !== today) { await stSet('winback', { day: today }); background(winback().catch((e) => console.error('winback', e))); background(cardsCleanup().catch((e) => console.error('cards cleanup', e))); }
+  if (hourMsk >= 12 && wb.day !== today) { await stSet('winback', { day: today }); background(wbCandidates().then((c) => c.some((x) => !x.skip) ? wbShow(ADMIN_ID, null, false, c) : undefined).catch((e) => console.error('winback', e))); background(cardsCleanup().catch((e) => console.error('cards cleanup', e))); }
 }
 
 // Пробный период закончился и PRO не купили — пишем один раз, с итогами недели
@@ -2184,20 +2184,47 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
 
 /* ---------- Возврат ушедших ---------- */
 // Кто 10–45 дней не записывал сделки — одно сообщение с курсом и его лучшим месяцем. Один раз за перерыв.
-// Кто выключил итоги дня кнопкой в боте, тому не пишем
-async function winback() {
-  const [tgs, users, trades] = await Promise.all([rowsAll<{ user_id: string; tg_id: number; daily_off: boolean | null }>('tg_users', 'user_id, tg_id, daily_off', 'tg_id'),
-    allUsers(), allTrades('user_id, ts')]);
-  const banned = new Set(users.filter(isBanned).map((u) => u.id)), last = new Map<string, number>(), now = Date.now();
+// Кто выключил итоги дня кнопкой в боте, тому не пишем. Сами не отправляем: в 12:00 владелец получает список
+// с кнопками «Напомнить» / «Отмена» и может убрать человека из списка (он не получит напоминаний, пока его не вернут)
+type WbCand = { user_id: string; tg_id: number; label: string; days: number; last: number; skip: boolean };
+async function wbCandidates(): Promise<WbCand[]> {
+  const [tgs, users, trades, skip] = await Promise.all([rowsAll<{ user_id: string; tg_id: number; daily_off: boolean | null; username: string | null }>('tg_users', 'user_id, tg_id, daily_off, username', 'tg_id'),
+    allUsers(), allTrades('user_id, ts'), stGet<string[]>('wb_skip', [])]);
+  const byId = new Map(users.map((u) => [u.id, u])), last = new Map<string, number>(), now = Date.now(), skipSet = new Set(skip);
   for (const t of trades) last.set(t.user_id, Math.max(last.get(t.user_id) ?? 0, Date.parse(t.ts)));
-  const cand = tgs.filter((t) => { const l = last.get(t.user_id); return !!l && !t.daily_off && !banned.has(t.user_id) && Number(t.tg_id) !== ADMIN_ID && now - l >= 10 * DAY && now - l < 45 * DAY; });
-  if (!cand.length) return;
   const done = new Map((await rowsAll<{ key: string; value: { last: number } }>('bot_state', 'key, value', 'key', (q) => q.like('key', 'wb:%'))).map((x) => [x.key, x.value?.last]));
-  const rate = await usdtRate();
+  return tgs.filter((t) => { const l = last.get(t.user_id), u = byId.get(t.user_id);
+    return !!l && !!u && !t.daily_off && !isBanned(u) && Number(t.tg_id) !== ADMIN_ID && now - l >= 10 * DAY && now - l < 45 * DAY && done.get('wb:' + t.user_id) !== l; })
+    .map((t) => { const l = last.get(t.user_id)!, u = byId.get(t.user_id)!;
+      return { user_id: t.user_id, tg_id: Number(t.tg_id), label: t.username ? '@' + t.username : nameOf(u), days: Math.floor((now - l) / DAY), last: l, skip: skipSet.has(t.user_id) }; })
+    .sort((a, b) => a.days - b.days).slice(0, 300);
+}
+// Список владельцу в бот. edit — правка «кого убрать»: кнопка на каждого
+async function wbShow(chat: number, msgId: number | null, edit = false, fresh?: WbCand[]) {
+  const c = fresh ?? await wbCandidates();
+  await stSet('wb_pending', { ids: c.map((x) => x.user_id), at: Date.now() });
+  const on = c.filter((x) => !x.skip);
+  if (!c.length) return show(chat, msgId, '👋 <b>Напоминание ушедшим</b>\n\nСейчас некому напоминать: все, кто давно не заходил, уже получили напоминание.', kb([[{ text: '‹ Меню', callback_data: 'm' }]]));
+  const line = (x: WbCand, i: number) => `${i + 1}. ${x.skip ? '<s>' : ''}${esc(x.label)} — ${x.days} ${plural(x.days, 'день', 'дня', 'дней')}${x.skip ? '</s> · убран' : ''}`;
+  const off = c.length - on.length;
+  const text = `👋 <b>Напоминание ушедшим</b>\n\nНе записывали сделки 10+ дней: <b>${c.length} ${plural(c.length, 'человек', 'человека', 'человек')}</b>` +
+    (off ? ` (убрано из списка: ${off})` : '') + `\n\n` + c.slice(0, 40).map(line).join('\n') + (c.length > 40 ? `\n…и ещё ${c.length - 40}` : '') +
+    (edit ? '\n\n<i>Нажмите на человека, чтобы убрать его из списка или вернуть. Убранные не получают напоминаний, пока их не вернут.</i>' : '');
+  const rows: Btn[][] = [];
+  if (edit) {
+    const b = c.slice(0, 40).map((x, i) => ({ text: `${x.skip ? '➕' : '✖'} ${x.label}`.slice(0, 30), callback_data: 'wb:t:' + i }));
+    for (let i = 0; i < b.length; i += 2) rows.push(b.slice(i, i + 2));
+    rows.push([{ text: '‹ Готово', callback_data: 'wb:bk' }]);
+  } else {
+    if (on.length) rows.push([{ text: `✅ Напомнить (${on.length})`, callback_data: 'wb:go' }]);
+    rows.push([{ text: '✏️ Убрать / вернуть', callback_data: 'wb:ed' }, { text: '✖ Отмена', callback_data: 'wb:no' }]);
+  }
+  await show(chat, msgId, text, kb(rows));
+}
+async function wbSend(ids: string[]) {
+  const c = (await wbCandidates()).filter((x) => !x.skip && ids.includes(x.user_id)), rate = await usdtRate(), now = Date.now();
   let n = 0;
-  for (const t of cand.slice(0, 300)) {
-    const l = last.get(t.user_id)!;
-    if (done.get('wb:' + t.user_id) === l) continue;
+  for (const t of c) {
     const { data } = await admin.from('trades').select('ts, data').eq('user_id', t.user_id).eq('deleted', false).limit(5000);
     const by: Record<string, number> = {};
     for (const x of (data ?? []) as { ts: string; data: ATrade['data'] }[]) { if ((x.data?.cur ?? 'RUB') !== 'RUB') continue; const k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + (+(x.data?.profit ?? 0) || 0); }
@@ -2207,11 +2234,37 @@ async function winback() {
       `Записывайте сделки, чтобы статистика оставалась полной.`;
     let r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() });
     if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() }); }
-    await stSet('wb:' + t.user_id, { last: l, at: now });
+    await stSet('wb:' + t.user_id, { last: t.last, at: now });
     if (r?.ok) n++;
     await sleep(50);
   }
-  if (n) await tg('sendMessage', { chat_id: ADMIN_ID, text: `👋 Возврат ушедших: напомнили о P2Pro ${n} ${plural(n, 'человеку', 'людям', 'людям')}, кто 10+ дней не записывал сделки.` });
+  await tg('sendMessage', { chat_id: ADMIN_ID, text: `👋 Напоминание отправлено: ${n} из ${c.length}${c.length - n ? ` (остальные закрыли бота)` : ''}.` });
+  return n;
+}
+// Кнопки под списком в боте (только владелец)
+async function wbCallback(cq: { id: string; data?: string; message?: { chat: { id: number }; message_id: number } }) {
+  const d = cq.data ?? '', chat = cq.message?.chat.id ?? ADMIN_ID, mid = cq.message?.message_id ?? null;
+  const pend = await stGet<{ ids: string[] } | null>('wb_pending', null);
+  if (d === 'wb:no') { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Отменено' }); await stSet('wb_pending', { ids: [] });
+    return show(chat, mid, '👋 Напоминание ушедшим — <b>отменено</b>. Список придёт снова завтра в 12:00 или по кнопке в админке.', kb([[{ text: '‹ Меню', callback_data: 'm' }]])); }
+  if (d === 'wb:go') {
+    if (!pend?.ids?.length) return tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Список устарел — откройте заново', show_alert: true });
+    await stSet('wb_pending', { ids: [] });
+    await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Отправляю…' });
+    await show(chat, mid, '👋 Напоминание ушедшим — <b>отправляю</b>… Итог придёт отдельным сообщением.', null);
+    background(wbSend(pend.ids).catch((e) => console.error('wb send', e)));
+    return;
+  }
+  if (d.startsWith('wb:t:')) {
+    const id = pend?.ids?.[+d.slice(5)];
+    if (!id) return tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Список устарел — откройте заново', show_alert: true });
+    const skip = await stGet<string[]>('wb_skip', []), on = skip.includes(id);
+    await stSet('wb_skip', on ? skip.filter((x) => x !== id) : [...skip, id].slice(-2000));
+    await tg('answerCallbackQuery', { callback_query_id: cq.id, text: on ? 'Возвращён в список' : 'Убран из списка' });
+    return wbShow(chat, mid, true);
+  }
+  await tg('answerCallbackQuery', { callback_query_id: cq.id });
+  return wbShow(chat, mid, d === 'wb:ed');
 }
 
 /* ---------- Итоги месяца: 1-го числа после 11:00 МСК каждому, у кого были сделки (карточка рисуется в отдельном запуске) ---------- */
@@ -2477,6 +2530,7 @@ async function adminApi(body: Record<string, unknown>) {
       return aj({ ok: true });
     }
     if (act === 'partner_payout_del') { const { error } = await admin.from('partner_payouts').delete().eq('id', Number(body.id)); if (error) throw error; return aj({ ok: true }); }
+    if (act === 'wb_propose') { const c = await wbCandidates(); await wbShow(ADMIN_ID, null, false, c); return aj({ ok: true, n: c.filter((x) => !x.skip).length, all: c.length }); }
     if (act === 'bc_counts') { const n = await Promise.all((['all', 'pro', 'exp', 'free'] as Aud[]).map((a) => recipients(a).then((r) => r.length))); return aj({ all: n[0], pro: n[1], exp: n[2], free: n[3] }); }
     if (act === 'bc_test' || act === 'bc_send') {
       const t = String(body.text ?? '').trim(); if (!t) throw new Error('Пустой текст');
@@ -2541,6 +2595,7 @@ Deno.serve(async (req) => {
   }
   if (cq && cq.data === 'pc:r' && SERVICE) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Обновляю…' }); await partnerCabinet(cq.from.id, cq.message?.message_id ?? null).catch((e) => console.error('pc', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
+  if (cq && /^wb:/.test(cq.data ?? '') && isAdmin(cq.from?.id)) { await wbCallback(cq).catch((e) => console.error('wb', e)); return new Response('ok'); }
   if (cq) {
     if (isAdmin(cq.from?.id)) await adminCallback(cq).catch(() => {});
     else await tg('answerCallbackQuery', { callback_query_id: cq.id });
