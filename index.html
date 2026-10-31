@@ -132,6 +132,17 @@ button { cursor: pointer; border: 0; background: none; }
 .xr-fiats button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.1)); background: transparent; color: var(--fg); font: inherit; font-family: var(--f-mono); font-size: 14px; text-align: left; cursor: pointer; }
 .xr-fiats button:active { transform: scale(.97); }
 .xr-fiats button i { margin-left: auto; font-style: normal; opacity: .4; }
+.cur-chips .chip.fx { animation: chipPop .42s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes chipPop { 0% { transform: scale(.9); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+.cur-sym.sw { animation: symIn .35s ease-out; display: inline-block; }
+@keyframes symIn { from { opacity: 0; transform: translateY(6px) scale(.8); } }
+.xr-fiats button { animation: fiatIn .4s ease-out backwards; }
+.xr-fiats button:nth-child(2) { animation-delay: .05s; } .xr-fiats button:nth-child(3) { animation-delay: .1s; } .xr-fiats button:nth-child(4) { animation-delay: .15s; }
+@keyframes fiatIn { from { opacity: 0; transform: translateY(8px); } }
+.rate-line b { transition: color .3s; }
+.rate-line.fx b { animation: symIn .35s ease-out; display: inline-block; }
+.unit-sel { appearance: none; -webkit-appearance: none; border: 0; background: var(--surface-2); color: var(--muted); font: inherit; font-weight: 600; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .cur-chips .chip.fx, .cur-sym.sw, .xr-fiats button, .rate-line.fx b { animation: none; } }
 .cur-pick { display: flex; flex-direction: column; gap: 8px; }
 .cur-chips .chip { flex: none; }
 .chip { flex: none; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 500; border: 1px solid var(--line); color: var(--muted); background: transparent; white-space: nowrap; }
@@ -1316,6 +1327,7 @@ img { max-width: 100%; }
     <div id="tool-price" class="app">
       <div class="card">
         <div class="card-h"><span class="card-t">Подбор курса</span><button class="info" data-info="price" aria-label="Как работает подбор курса">i</button></div>
+        <div class="cur-pick" data-curpick></div>
         <div class="seg sm">
           <button data-pxdir="sell" class="on">Ищу цену продажи</button>
           <button data-pxdir="buy">Ищу цену покупки</button>
@@ -1323,13 +1335,13 @@ img { max-width: 100%; }
         <div class="field"><span>Биржа (для комиссии)</span><div class="chips" id="pxEx"></div></div>
         <div class="row2">
           <label class="field"><span id="pxRateLbl">Купил по курсу</span>
-            <div class="inp"><input id="pxRate" type="text" inputmode="decimal" step="0.01" placeholder="83.50"><span class="unit">₽</span></div></label>
+            <div class="inp"><input id="pxRate" type="text" inputmode="decimal" step="0.01" placeholder="83.50"><span class="unit cur-sym">₽</span></div></label>
           <label class="field"><span>Сумма покупки</span>
-            <div class="inp"><input id="pxSum" type="text" inputmode="decimal" step="1" placeholder="100000"><span class="unit">₽</span></div></label>
+            <div class="inp"><input id="pxSum" type="text" inputmode="decimal" step="1" placeholder="100000"><span class="unit cur-sym">₽</span></div></label>
         </div>
         <div class="field"><span>Хочу заработать</span>
           <div class="inp"><input id="pxGoal" type="text" inputmode="decimal" step="0.1" placeholder="1">
-            <div class="unit-toggle"><button data-pxg="pct">%</button><button data-pxg="rub">₽</button></div></div>
+            <div class="unit-toggle"><button data-pxg="pct">%</button><button data-pxg="rub" class="cur-sym">₽</button></div></div>
         </div>
         <div class="chips"><button class="chip" id="pxWd">С выводом на другую биржу</button></div>
       </div>
@@ -1349,8 +1361,9 @@ img { max-width: 100%; }
       <div id="cbBody" class="app">
       <div class="card">
         <div class="card-h"><span class="card-t">Курсы на биржах</span><button class="info" data-info="combo" aria-label="Как работают связки">i</button></div>
+        <div class="cur-pick" data-curpick></div>
         <label class="field"><span>Сумма покупки</span>
-          <div class="inp"><input id="cbSum" type="text" inputmode="decimal" step="1" placeholder="100000"><span class="unit">₽</span></div></label>
+          <div class="inp"><input id="cbSum" type="text" inputmode="decimal" step="1" placeholder="100000"><span class="unit cur-sym">₽</span></div></label>
         <div class="rate-grid" id="cbGrid"></div>
         <span class="muted small" id="cbAge"></span>
       </div>
@@ -1445,7 +1458,7 @@ img { max-width: 100%; }
     </div>
     <div class="card">
       <div class="card-h"><span class="card-t">Цели и капитал</span><button class="info" data-info="capital" aria-label="Что такое капитал">i</button></div>
-      <div class="set-row"><span>Цель на день</span><div class="inp"><input id="setGoal" type="text" inputmode="decimal" placeholder="3000"><span class="unit">₽</span></div></div>
+      <div class="set-row"><span>Цель на день</span><div class="inp"><input id="setGoal" type="text" inputmode="decimal" placeholder="3000"><select id="setGoalCur" class="unit-sel" aria-label="Валюта цели"></select></div></div>
       <div class="set-row"><span>Капитал в обороте</span><div class="inp"><input id="setCap" type="text" inputmode="decimal" placeholder="300000"><span class="unit">₽</span></div></div>
       <div class="kpi"><span class="label">Доходность капитала за 30 дней</span><span class="v" id="roi">—</span><span class="s" id="roiSub"></span></div>
     </div>
@@ -1707,8 +1720,8 @@ function renderCalcStatic() {
   $('cp2Field').hidden = !tri || parts;
   $('cpRow').classList.toggle('two', tri && !parts);
   if (parts) renderSellers();
-  $('curChips').innerHTML = CURS.map(([k, f]) => `<button class="chip ${k === st.cur ? 'on' : ''}" data-cur="${k}" aria-pressed="${k === st.cur}">${f} ${k}</button>`).join('');
-  document.querySelectorAll('.cur-sym').forEach(el => el.textContent = SYM[st.cur]);
+  $('curChips').innerHTML = curChips();
+  curSyms();
   document.querySelectorAll('[data-ft]').forEach(b => b.classList.toggle('on', st[b.dataset.ft === 'ex' ? 'feeExType' : 'feeWdType'] === b.dataset.v));
   $('exChips').innerHTML = st.exchanges.map(x => `<button class="chip ${x === d.ex ? 'on' : ''}" data-ex="${esc(x)}">${esc(x)}</button>`).join('');
   $('bankChips').innerHTML = st.banks.map(x => `<button class="chip ${x === d.bank ? 'on' : ''}" data-bank="${esc(x)}">${esc(x)}</button>`).join('');
@@ -1808,12 +1821,32 @@ function tween(el, to, fmt) {
     el.textContent = fmt(from + (to - from) * e); if (k < 1) el._raf = requestAnimationFrame(step); };
   el._raf = requestAnimationFrame(step);
 }
+// Выбор валюты — один на всё приложение: в калькуляторе, подборе курса и связках одни и те же кнопки
+let curFx = false;   // только что сменили валюту — подсветить выбор и значки
+const curChips = () => CURS.map(([k, f]) => `<button class="chip ${k === S.settings.cur ? 'on' + (curFx ? ' fx' : '') : ''}" data-cur="${k}" aria-pressed="${k === S.settings.cur}">${f} ${k}</button>`).join('');
+function curSyms() {
+  document.querySelectorAll('.cur-sym').forEach(el => { if (el.textContent !== SYM[S.settings.cur]) { el.textContent = SYM[S.settings.cur]; if (curFx) { el.classList.remove('sw'); void el.offsetWidth; el.classList.add('sw'); } } });
+  document.querySelectorAll('[data-curpick]').forEach(el => el.innerHTML = '<span class="muted small">Валюта</span><div class="chips cur-chips">' + curChips() + '</div>');
+}
+// Цель на день: задаётся в своей валюте (Профиль), показывается в любой — по биржевому курсу. null — курса пока нет
+function goalIn(cur) {
+  const g = +S.settings.goal || 0, gc = own(SYM, S.settings.goalCur || '') ? S.settings.goalCur : 'RUB';
+  if (!g) return 0;
+  if (gc === cur) return g;
+  const v = fxConv(g, gc, cur);
+  return v == null ? null : v >= 1000 ? Math.round(v / 10) * 10 : Math.round(v);
+}
 // Валюта для карточек и месяца: выбранная в калькуляторе, если в ней есть сделки, иначе та, где сделок больше
 function mainCur(T) {
   if (!T.length || T.some(t => t.cur === S.settings.cur)) return S.settings.cur;
   const n = {}; T.forEach(t => n[t.cur] = (n[t.cur] || 0) + 1);
   return Object.keys(n).filter(c => own(SYM, c)).sort((a, b) => n[b] - n[a])[0] || 'RUB';
 }
+document.addEventListener('change', e => {
+  if (e.target.id !== 'setGoalCur' || !own(SYM, e.target.value)) return;
+  S.settings.goalCur = e.target.value; persist(); renderToday();
+  toast(`Цель на день — в ${SYM[e.target.value]}. В калькуляторе она пересчитается в выбранную валюту`);
+});
 // Перевод суммы между валютами через курс USDT на бирже (сколько валюты стоит 1 USDT). null — курса пока нет
 function fxConv(v, from, to) {
   if (from === to) return v;
@@ -1834,8 +1867,9 @@ function renderToday() {
   $('todayCount').textContent = !t.length ? 'Пока нет сделок' : curs.length > 1 || curs[0] !== cur
     ? curs.map(c => hid(money(by[c], c, true).replace(/^\+/, ''))).join(' + ').replace(/\+ −/g, '− ')
     : `${t.length} ${plural(t.length, 'сделка', 'сделки', 'сделок')}`;
-  // Цель задаётся в Профиле в рублях — показываем её в выбранной валюте
-  const gRub = +S.settings.goal || 0, gx = fxConv(gRub, 'RUB', cur), g = gx == null ? 0 : cur === 'RUB' ? gx : Math.round(gx / 10) * 10, showGoal = g > 0, sy = SYM[cur];
+  // Цель задаётся в Профиле в своей валюте — показываем её в выбранной
+  const g = goalIn(cur) || 0, showGoal = g > 0, sy = SYM[cur];
+  if (goalIn(cur) === null && Date.now() - fxAsked > 60e3) { fxAsked = Date.now(); xrFxGet(S.settings.goalCur || 'RUB', 3600e3).then(() => xrFxGet(cur, 3600e3)).then(renderToday); }
   $('goalOf').textContent = showGoal ? (p >= g ? 'Цель выполнена' : `цель ${hid(nf0.format(g))} ${sy} · осталось ${hid(nf0.format(g - Math.max(p, 0)))} ${sy}`) : '';
   $('goalBar').hidden = !showGoal;
   $('goalBar').className = 'bar' + (p >= g ? ' pos' : '');
@@ -2092,10 +2126,10 @@ function renderCal() {
 function calDay(k) {
   if (!S.settings.pro) return openPlans('cal');
   const T = S.trades.filter(t => dayKey(t.ts) === k && t.cur === sCur), tot = T.reduce((a, t) => a + t.profit, 0);
-  const g = sCur === 'RUB' ? +S.settings.goal || 0 : 0, [y, m, d] = k.split('-').map(Number);
+  const g = goalIn(sCur) || 0, [y, m, d] = k.split('-').map(Number);
   const title = new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
   sheet(`<h3>${title[0].toUpperCase() + title.slice(1)}</h3>
-    <div class="cal-tot"><b class="${cls(tot)}">${money(tot, sCur, true)}</b><span class="muted small">${T.length} ${plural(T.length, 'сделка', 'сделки', 'сделок')}${g ? ` · цель ${nf0.format(g)} ₽: ${Math.round(tot / g * 100)}%` : ''}</span></div>
+    <div class="cal-tot"><b class="${cls(tot)}">${money(tot, sCur, true)}</b><span class="muted small">${T.length} ${plural(T.length, 'сделка', 'сделки', 'сделок')}${g ? ` · цель ${nf0.format(g)} ${SYM[sCur]}: ${Math.round(tot / g * 100)}%` : ''}</span></div>
     <div class="list">${T.map(itemHtml).join('')}</div>
     <div class="row2"><button class="btn" data-day-card="${k}">Карточка дня</button><button class="btn primary" data-close>Готово</button></div>`);
 }
@@ -2176,6 +2210,7 @@ function buyFor(sell, sum, target, fees) {
 }
 function renderTools() {
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
+  curSyms();
   ['price', 'combo', 'cp'].forEach(k => $('tool-' + k).hidden = k !== tool);
   if (tool === 'price') renderPrice();
   if (tool === 'combo') renderCombo();
@@ -2202,11 +2237,15 @@ function renderPrice() {
   const goal = +p.goal || 0, main = solve(tgt(goal));
   const buy = p.dir === 'sell' ? r0 : main, sell = p.dir === 'sell' ? main : r0;
   pxLast = { buy, sell, sum };
-  $('pxOut').textContent = rate(main) + ' ₽'; $('pxOut').className = 'result-big';
-  $('pxOutSub').textContent = money(tgt(goal), 'RUB', true); $('pxOutSub').className = 'badge ' + (tgt(goal) > 0 ? 'pos' : 'zero');
-  const steps = p.goalType === 'pct' ? [0, 0.5, 1, 1.5, 2] : [0, 500, 1000, 2000, 3000];
-  $('pxTargets').innerHTML = steps.map(g => `<span>${g === 0 ? 'Безубыток' : p.goalType === 'pct' ? '+' + nf2.format(g) + '%' : '+' + nf0.format(g) + ' ₽'}</span>
-    <span class="mid muted">${g === 0 ? '0 ₽' : money(tgt(g), 'RUB', true)}</span><span class="num">${rate(solve(tgt(g)))} ₽</span>`).join('');
+  const cur = S.settings.cur, sy = SYM[cur];
+  $('pxOut').textContent = rate(main) + ' ' + sy; $('pxOut').className = 'result-big';
+  $('pxOutSub').textContent = money(tgt(goal), cur, true); $('pxOutSub').className = 'badge ' + (tgt(goal) > 0 ? 'pos' : 'zero');
+  // Шаги в деньгах — примерно 500…3000 ₽ в выбранной валюте, округлённые до красивых чисел
+  const nice = v => { const e = Math.pow(10, Math.max(0, Math.floor(Math.log10(v)) - 1)); return Math.round(v / e) * e; };
+  const k1000 = cur === 'RUB' ? 1000 : fxConv(1000, 'RUB', cur) ?? 1000;
+  const steps = p.goalType === 'pct' ? [0, 0.5, 1, 1.5, 2] : [0, .5, 1, 2, 3].map(x => x ? nice(k1000 * x) : 0);
+  $('pxTargets').innerHTML = steps.map(g => `<span>${g === 0 ? 'Безубыток' : p.goalType === 'pct' ? '+' + nf2.format(g) + '%' : '+' + nf0.format(g) + ' ' + sy}</span>
+    <span class="mid muted">${g === 0 ? '0 ' + sy : money(tgt(g), cur, true)}</span><span class="num">${rate(solve(tgt(g)))} ${sy}</span>`).join('');
 }
 function renderCombo() {
   const c = S.tools.cb, pro = S.settings.pro;
@@ -2231,7 +2270,7 @@ function renderComboList() {
   comboCache = out;
   $('cbList').innerHTML = out.length ? out.slice(0, 6).map((o, i) => `
     <div class="combo-item ${i === 0 && o.r.profit > 0 ? 'best' : ''}">
-      <div class="combo-top"><span>Купить на <b>${esc(o.a)}</b> → продать на <b>${esc(o.b)}</b></span><span class="num ${cls(o.r.profit)}" style="font-weight:600;white-space:nowrap">${money(o.r.profit, 'RUB', true)}</span></div>
+      <div class="combo-top"><span>Купить на <b>${esc(o.a)}</b> → продать на <b>${esc(o.b)}</b></span><span class="num ${cls(o.r.profit)}" style="font-weight:600;white-space:nowrap">${money(o.r.profit, S.settings.cur, true)}</span></div>
       <div class="combo-top"><span class="muted small">${rate(o.buy)} → ${rate(o.sell)} · ${pct(o.r.profitPct)} · ${o.a !== o.b ? 'перевод ' + presetOf(o.a).wd + ' USDT' : 'на одной бирже'}</span>
       <button class="chip" data-cbgo="${i}">В расчёт</button></div>
     </div>`).join('') : '<span class="muted">Впишите курс покупки хотя бы на одной бирже и курс продажи хотя бы на одной.</span>';
@@ -2856,6 +2895,8 @@ function renderProfile() {
   renderPinRow();
   const st = S.settings;
   if ($('setGoal') !== document.activeElement) $('setGoal').value = st.goal || '';
+  const gcur = own(SYM, st.goalCur || '') ? st.goalCur : 'RUB';
+  $('setGoalCur').innerHTML = CURS.map(([k]) => `<option value="${k}" ${k === gcur ? 'selected' : ''}>${SYM[k]}</option>`).join('');
   if ($('setCap') !== document.activeElement) $('setCap').value = st.capital || '';
   const p = S.trades.filter(t => t.cur === 'RUB' && inPeriod(t, '30')).reduce((a, t) => a + t.profit, 0);
   $('roi').textContent = st.capital ? (st.incog ? '•••' : pct(p / st.capital * 100)) : '—';
@@ -3042,7 +3083,12 @@ document.addEventListener('click', e => {
     if (!st.onboarded) showTour(0);
     return;
   }
-  if (b.dataset.cur && own(SYM, b.dataset.cur)) { st.cur = b.dataset.cur; persist(); xrRefresh(true); return render(); }
+  if (b.dataset.cur && own(SYM, b.dataset.cur)) {
+    if (st.cur === b.dataset.cur) return;
+    st.cur = b.dataset.cur; persist(); curFx = true; render(); curFx = false; xrRefresh(true);
+    const tg = window.Telegram?.WebApp?.HapticFeedback; if (tg) tg.selectionChanged(); else navigator.vibrate?.(8);
+    return;
+  }
   if (ds.ex) {
     d.ex = ds.ex;
     const fp = st.feePresets[ds.ex];
@@ -3224,6 +3270,8 @@ function renderRate() {
   const R = rateOf(rc);
   if (!R) return el.innerHTML = '<span class="dot off"></span>USDT · загружаем курс…';
   const age = Date.now() - R.at, up = R.ch >= 0, own2 = rc !== S.settings.cur;
+  if (el.dataset.c && el.dataset.c !== rc && !reduceMotion) { el.classList.remove('fx'); void el.offsetWidth; el.classList.add('fx'); }
+  el.dataset.c = rc;
   el.innerHTML = `<span class="dot ${age < 5 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(R.rate)} ${SYM[rc]}</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(R.ch))}%</span>· ${own2 ? CUR_FLAG[rc] + ' ' : ''}xRocket${age < 5 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
 }
 // Окно с подробностями: источник, сравнение сделки с биржей, другие валюты, подстановка курса
@@ -3341,7 +3389,7 @@ const canon = o => JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Ar
 const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
 const fp = o => hash(canon(o) || '');
 // В облако идут только настройки расчёта. Тема, инкогнито и подписка — свои у каждого устройства или у сервера
-const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'capital', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
+const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'goalCur', 'capital', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
 const cloudSettings = () => Object.fromEntries(CLOUD_SET.filter(k => S.settings[k] !== undefined).map(k => [k, S.settings[k]]));
 const cpKey = c => String(c.name || '').trim().toLowerCase();
 // Отпечатки старой версии считались без сортировки ключей. Пересчитываем те, что совпадают, — иначе все записи
@@ -4632,7 +4680,7 @@ function allCardData() {
 function dayCardData(k) {
   const T = S.trades.filter(t => dayKey(t.ts) === k), cur = mainCur(T), X = T.filter(t => t.cur === cur);
   const sum = f => X.reduce((a, t) => a + f(t), 0), p = sum(t => t.profit), cost = sum(t => t.cost ?? t.sum), best = X.length ? Math.max(...X.map(t => t.profit)) : 0;
-  const g = cur === 'RUB' ? +S.settings.goal || 0 : 0, [y, m, d] = k.split('-').map(Number), dt = new Date(y, m - 1, d);
+  const g = goalIn(cur) || 0, [y, m, d] = k.split('-').map(Number), dt = new Date(y, m - 1, d);
   const title = dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
   return { kicker: 'Итоги дня', title: title[0].toUpperCase() + title.slice(1), neg: p < 0, big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
     sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${X.length} ${plural(X.length, 'сделка', 'сделки', 'сделок')}`, date: String(y),

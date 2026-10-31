@@ -537,7 +537,7 @@ async function daySummary(userId: string, day: string) {
   const pair = count((t) => [t.data.ex, t.data.bank].filter(Boolean).join(' · '))[0];
   const others = [...byCur.entries()].filter(([c]) => c !== cur).map(([c, l]) => money(l.reduce((a, t) => a + (+t.data.profit! || 0), 0), c));
   const { data: prof } = await admin.from('profiles').select('settings').eq('id', userId).maybeSingle();
-  const goal = cur === 'RUB' ? +(prof?.settings?.goal ?? 0) || 0 : 0;
+  const goal = cur === (prof?.settings?.goalCur || 'RUB') ? +(prof?.settings?.goal ?? 0) || 0 : 0;   // цель — в своей валюте из Профиля
   return { n: list.length, cur, profit, turnover, best, exes, pair, others, goal, rateOff: !!prof?.settings?.rateOff };
 }
 // Биржевой курс USDT в рублях на конец дня — с биржи xRocket (тот же, что в калькуляторе). Не ответила — без курса
@@ -616,7 +616,7 @@ async function dailySend(userId: string, day: string, manual = false) {
     `💰 Прибыль: <b>${money(d.profit, d.cur)}</b>${d.others.length ? ` (и ${d.others.join(', ')})` : ''}\n` +
     `🔁 Сделок: ${d.n} · оборот ${Math.round(d.turnover).toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}\n` +
     `🏆 Лучшая сделка: ${money(d.best, d.cur)}\n` +
-    (d.goal ? `🎯 Цель ${d.goal.toLocaleString('ru-RU')} ₽: ${goalPct >= 100 ? `выполнена на ${goalPct}% ✅` : `${goalPct}%`}\n` : '') +
+    (d.goal ? `🎯 Цель ${d.goal.toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}: ${goalPct >= 100 ? `выполнена на ${goalPct}% ✅` : `${goalPct}%`}\n` : '') +
     (d.pair ? `🔥 Чаще всего: ${esc(d.pair[0])} (${d.pair[1]})\n` : '') +
     (xr ? `💱 Курс USDT на конец дня: ${rub2(xr.rate)} ₽ (${xr.ch >= 0 ? '+' : '−'}${rub2(Math.abs(xr.ch))}% за сутки) · биржа xRocket\n` : '') +
     (pro ? '' : `\n<i>Карточка без водяного знака — в PRO.</i>`);
@@ -626,7 +626,7 @@ async function dailySend(userId: string, day: string, manual = false) {
     const svg = dayCardSvg({ pro, date: dateLong, rate: xr ? `USDT ${rub2(xr.rate)} ₽ · xRocket` : '', title, big: money(d.profit, d.cur), pos: d.profit >= 0,
       sub: `${pct >= 0 ? '+' : ''}${pct.toFixed(2).replace('.', ',')}% к обороту · средняя ${money(avg, d.cur)}`,
       count: String(d.n), turnover: `${Math.round(d.turnover).toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}`, best: money(d.best, d.cur, 0),
-      goalLabel: d.goal ? `Цель ${d.goal.toLocaleString('ru-RU')} ₽` : 'Средняя сделка', goal: d.goal ? `${goalPct}%${goalPct >= 100 ? ' ✓' : ''}` : money(avg, d.cur, 0),
+      goalLabel: d.goal ? `Цель ${d.goal.toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}` : 'Средняя сделка', goal: d.goal ? `${goalPct}%${goalPct >= 100 ? ' ✓' : ''}` : money(avg, d.cur, 0),
       pair: d.pair ? `${d.pair[0]} · ${d.pair[1]} ${plural(d.pair[1], 'раз', 'раза', 'раз')}`.slice(0, 40) : '—' });
     png = new r.Resvg(svg, { font: { fontBuffers: r.fonts, defaultFontFamily: 'Onest', loadSystemFonts: false }, fitTo: { mode: 'width', value: 1080 } }).render().asPng();
   } catch (e) { console.error('day card', e); }
