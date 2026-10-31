@@ -1863,6 +1863,25 @@ function goalIn(cur) {
   const v = fxConv(g, gc, cur);
   return v == null ? null : v >= 1000 ? Math.round(v / 10) * 10 : Math.round(v);
 }
+// Аналитика и карточки: одна валюта или «Все» (ALL) — тогда сделки в других валютах пересчитываются
+// в валюту калькулятора по текущему биржевому курсу. Сами сделки не меняются: это копии для подсчёта (_o — оригинал)
+const ALL = 'ALL';
+let fxEnsureAt = 0;
+function curView(T, cur) {
+  if (cur !== ALL) return { cur, X: T.filter(t => t.cur === cur), mixed: false };
+  const base = curOr(S.settings.cur), X = []; let miss = false;
+  T.forEach(t => {
+    const c = curOr(t.cur); if (c === base) return X.push(t);
+    const k = fxConv(1, c, base); if (k == null) { miss = true; return; }
+    X.push({ ...t, _o: t, cur: base, profit: (+t.profit || 0) * k, sum: (+t.sum || 0) * k, comm: (+t.comm || 0) * k, cost: (+(t.cost ?? t.sum) || 0) * k, gross: (+t.gross || 0) * k });
+  });
+  if (miss && Date.now() - fxEnsureAt > 60e3) {   // курса какой-то валюты ещё нет — подгружаем и перерисовываем
+    fxEnsureAt = Date.now();
+    Promise.all([...new Set([base, ...T.map(t => curOr(t.cur))])].map(c => xrFxGet(c, 3600e3))).then(() => { if (current === 'stats') renderStats(); });
+  }
+  return { cur: base, X, mixed: true };
+}
+const tradeCurs = () => CURS.map(c => c[0]).filter(c => S.trades.some(t => t.cur === c));
 // Валюта для карточек и месяца: выбранная в калькуляторе, если в ней есть сделки, иначе та, где сделок больше
 function mainCur(T) {
   if (!T.length || T.some(t => t.cur === S.settings.cur)) return S.settings.cur;
@@ -2088,12 +2107,11 @@ function renderStats() {
     .map(([k, l]) => `<button class="chip ${k === sPeriod ? 'on' : ''}" data-sp="${k}">${l}${pro || k === '7' ? '' : ' 🔒'}</button>`).join('');
   // Рубли и доллары считаются раздельно (в старой версии они складывались)
   // Каждая валюта — отдельно: складывать рубли с тенге нельзя
-  const curs = CURS.map(c => c[0]).filter(c => S.trades.some(t => t.cur === c));
-  if (!curs.includes(sCur)) sCur = curs.includes(S.settings.cur) ? S.settings.cur : curs[0] || S.settings.cur;
+  const curs = tradeCurs(), opts = curs.length > 1 ? [ALL, ...curs] : curs;
+  if (!opts.includes(sCur)) sCur = curs.includes(S.settings.cur) ? S.settings.cur : curs[0] || S.settings.cur;
   $('sCurSeg').hidden = curs.length < 2;
-  $('sCurSeg').innerHTML = curs.map(c => `<button class="chip ${c === sCur ? 'on' : ''}" data-scur="${c}">${CUR_FLAG[c]} ${CUR_NAME[c]}</button>`).join('');
-  const T = S.trades.filter(t => t.cur === sCur && inPeriod(t, sPeriod));
-  const c = sCur, n = T.length;
+  $('sCurSeg').innerHTML = opts.map(c => `<button class="chip ${c === sCur ? 'on' : ''}" data-scur="${c}">${c === ALL ? '🌐 Все' : CUR_FLAG[c] + ' ' + CUR_NAME[c]}</button>`).join('');
+  const V = curView(S.trades.filter(t => inPeriod(t, sPeriod)), sCur), T = V.X, c = V.cur, n = T.length, ap = V.mixed ? '≈ ' : '';
   $('sEmpty').hidden = n > 0;
   document.querySelectorAll('#tab-stats > .card').forEach(c => c.hidden = !S.trades.length);
   if (!n) $('sEmpty').innerHTML = S.trades.length ? (pro ? emptyHtml('chart', 'За этот период сделок нет', 'Выберите период побольше — например, «Всё время»')
@@ -2103,9 +2121,9 @@ function renderStats() {
   const profit = sum(t => t.profit), turn = sum(t => t.sum), fees = sum(t => t.comm), cost = sum(t => t.cost ?? t.sum);
   const wins = T.filter(t => t.profit > 0).length;
   const days = new Set(T.map(t => dayKey(t.ts))).size;
-  $('sProfit').textContent = money(profit, c, true); $('sProfit').className = 'v ' + cls(profit);
+  $('sProfit').textContent = ap + money(profit, c, true); $('sProfit').className = 'v ' + cls(profit);
   $('sProfitSub').textContent = n ? `${pct(cost ? profit / cost * 100 : 0)} к вложенному · в среднем ${money(profit / days, c, true)} за торговый день` : 'Нет сделок за период';
-  $('sTurn').textContent = money(turn, c); $('sTurnSub').textContent = 'сумма покупок';
+  $('sTurn').textContent = ap + money(turn, c); $('sTurnSub').textContent = V.mixed ? `все валюты в ${SYM[c]} по курсу` : 'сумма покупок';
   $('sCount').textContent = n; $('sWin').textContent = n ? `${Math.round(wins / n * 100)}% в плюсе` : '';
   $('sSpread').textContent = n ? pct(sum(t => t.spreadPct) / n, false) : '—'; $('sAvg').textContent = n ? `≈ ${money(profit / n, c, true)} со сделки` : '';
   $('sFees').textContent = money(fees, c); $('sFeesSub').textContent = turn ? `${nf2.format(fees / turn * 100)}% от оборота` : '';
@@ -2126,18 +2144,19 @@ const monTitle = (y, m) => { const x = new Date(y, m, 1).toLocaleDateString('ru-
 // Сделки месяца в одной валюте (по умолчанию — рубли, если они есть): сумма по каждому дню и итоги
 function monthStats(y, m, cur) {
   const T = S.trades.filter(t => { const d = new Date(t.ts); return d.getMonth() === m && d.getFullYear() === y; });
-  cur = cur || mainCur(T);
-  const X = T.filter(t => t.cur === cur), n = new Date(y, m + 1, 0).getDate(), bars = Array(n).fill(0), cnt = Array(n).fill(0);
+  const V = curView(T, cur || mainCur(T)), X = V.X, n = new Date(y, m + 1, 0).getDate(), bars = Array(n).fill(0), cnt = Array(n).fill(0);
+  cur = V.cur;
+  const byCur = {}; X.forEach(t => { const o = t._o || t, k = curOr(o.cur); byCur[k] = (byCur[k] || 0) + (+o.profit || 0); });
   X.forEach(t => { const i = new Date(t.ts).getDate() - 1; bars[i] += t.profit; cnt[i]++; });
   const sum = f => X.reduce((a, t) => a + f(t), 0), active = cnt.filter(Boolean).length;
-  return { y, m, cur, X, bars, cnt, active, p: sum(t => t.profit), turn: sum(t => t.sum), cost: sum(t => t.cost ?? t.sum),
+  return { y, m, cur, X, bars, cnt, active, mixed: V.mixed, byCur, p: sum(t => t.profit), turn: sum(t => t.sum), cost: sum(t => t.cost ?? t.sum),
     plus: bars.filter((v, i) => cnt[i] && v > 0).length, best: active ? Math.max(...bars.filter((v, i) => cnt[i])) : 0 };
 }
 let calYM = null;   // какой месяц показан в календаре; null — текущий
 function renderCal() {
   const pro = S.settings.pro, now = new Date();
   if (!calYM) calYM = { y: now.getFullYear(), m: now.getMonth() };
-  const { y, m } = calYM, ms = monthStats(y, m, sCur), c = sCur;
+  const { y, m } = calYM, ms = monthStats(y, m, sCur), c = ms.cur;
   const first = (new Date(y, m, 1).getDay() + 6) % 7, max = Math.max(1, ...ms.bars.map(Math.abs));
   const isNow = y === now.getFullYear() && m === now.getMonth();
   const oldest = S.trades.reduce((a, t) => Math.min(a, new Date(t.ts).getTime()), Date.now()), o = new Date(oldest);
@@ -2151,7 +2170,7 @@ function renderCal() {
   const wave = calFx; calFx = false;
   $('calBody').innerHTML = `<div class="cal-h"><span class="card-t">Календарь прибыли</span><div class="cal-nav"><button data-cal-nav="-1" aria-label="Прошлый месяц" ${canBack ? '' : 'disabled'}>‹</button><button data-cal-nav="1" aria-label="Следующий месяц" ${isNow ? 'disabled' : ''}>›</button></div></div>
     <div class="cal-m">${monTitle(y, m)}</div>
-    <div class="cal-sum"><span>Итого <b class="${cls(ms.p)}">${money(ms.p, c, true)}</b></span><span>${ms.active} ${plural(ms.active, 'торговый день', 'торговых дня', 'торговых дней')}${ms.active ? ` · ${ms.plus} в плюсе` : ''}</span></div>
+    <div class="cal-sum"><span>Итого <b class="${cls(ms.p)}">${ms.mixed ? '≈ ' : ''}${money(ms.p, c, true)}</b></span><span>${ms.active} ${plural(ms.active, 'торговый день', 'торговых дня', 'торговых дней')}${ms.active ? ` · ${ms.plus} в плюсе` : ''}</span></div>
     <div class="cal-w">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(x => `<span>${x}</span>`).join('')}</div>
     <div class="cal-g${wave ? ' wave' : ''}">${cells}</div>
     <div class="cal-leg">меньше <s style="background:rgba(60,211,138,.25)"></s><s style="background:rgba(60,211,138,.5)"></s><s style="background:rgba(60,211,138,.8)"></s> больше · <s style="background:rgba(255,107,107,.5)"></s> минус</div>
@@ -2161,11 +2180,11 @@ function renderCal() {
 // Окно дня: итог, процент цели и сделки этого дня
 function calDay(k) {
   if (!S.settings.pro) return openPlans('cal');
-  const T = S.trades.filter(t => dayKey(t.ts) === k && t.cur === sCur), tot = T.reduce((a, t) => a + t.profit, 0);
-  const g = goalIn(sCur) || 0, [y, m, d] = k.split('-').map(Number);
+  const V = curView(S.trades.filter(t => dayKey(t.ts) === k), sCur), T = V.X.map(t => t._o || t), c = V.cur, tot = V.X.reduce((a, t) => a + t.profit, 0);
+  const g = goalIn(c) || 0, [y, m, d] = k.split('-').map(Number);
   const title = new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
   sheet(`<h3>${title[0].toUpperCase() + title.slice(1)}</h3>
-    <div class="cal-tot"><b class="${cls(tot)}">${money(tot, sCur, true)}</b><span class="muted small">${T.length} ${plural(T.length, 'сделка', 'сделки', 'сделок')}${g ? ` · цель ${nf0.format(g)} ${SYM[sCur]}: ${Math.round(tot / g * 100)}%` : ''}</span></div>
+    <div class="cal-tot"><b class="${cls(tot)}">${V.mixed ? '≈ ' : ''}${money(tot, c, true)}</b><span class="muted small">${T.length} ${plural(T.length, 'сделка', 'сделки', 'сделок')}${g ? ` · цель ${nf0.format(g)} ${SYM[c]}: ${Math.round(tot / g * 100)}%` : ''}</span></div>
     <div class="list">${T.map(itemHtml).join('')}</div>
     <div class="row2"><button class="btn" data-day-card="${k}">Карточка дня</button><button class="btn primary" data-close>Готово</button></div>`);
 }
@@ -3176,7 +3195,7 @@ document.addEventListener('click', e => {
   if (ds.calDay) return calDay(ds.calDay);
   if (ds.calCard !== undefined) return showCard('cal', calYM);
   if (ds.dayCard) return showCard('day', ds.dayCard);
-  if (ds.scur) { sCur = ds.scur; return renderStats(); }
+  if (ds.scur) { sCur = ds.scur; calFx = true; return renderStats(); }
   if (b.id === 'chBar' || b.id === 'chCum') { chartMode = b.id === 'chBar' ? 'bar' : 'cum'; $('chBar').classList.toggle('on', chartMode === 'bar'); $('chCum').classList.toggle('on', chartMode !== 'bar'); chartFx = true; return renderStats(); }
   if (b.id === 'reportBtn') return monthReport();
   if (ds.openPlans !== undefined) return openPlans(ds.openPlans);
@@ -4683,59 +4702,72 @@ function dealCardData(t) {
 const MON_DAT = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню', 'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
 const plusAmt = (v, cur) => (v > 0 ? '+' : '') + cardAmt(v, cur);
 const tradeDays = n => `${n} ${plural(n, 'торговый день', 'торговых дня', 'торговых дней')}`;
+// Валюта карточек: одна или «Все». Для «Все» в плитках — прибыль по каждой валюте отдельно, без пересчёта
+let cardCur = null;
+const cardCurNow = () => cardCur || sCur || mainCur(S.trades);
+function curCells(byCur, extra) {
+  const rows = CURS.map(c => c[0]).filter(c => byCur[c]).map(c => [CUR_NAME[c], cardHide ? '•••' : plusAmt(byCur[c], c)]);
+  return [...rows, ...extra].slice(0, 4);
+}
 // Карточка месяца. back = 0 — текущий месяц, 1 — прошлый (со сравнением с позапрошлым)
 function monthCardData(back = 0) {
   const now = new Date(), at = new Date(now.getFullYear(), now.getMonth() - back, 1), y = at.getFullYear(), m = at.getMonth();
-  const M = monthStats(y, m), { cur, X, p, turn, cost, active, best } = M;
+  const M = monthStats(y, m, cardCurNow()), { cur, X, p, turn, cost, active, best } = M, ap = M.mixed ? '≈ ' : '';
   const d = { kicker: back ? 'Прошлый месяц' : 'Мой результат', title: monTitle(y, m), neg: p < 0,
-    big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
-    sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${tradeDays(active)}`,
-    date: back ? 'Итоги месяца' : 'P2P · ' + CUR_NAME[cur].toLowerCase(),
+    big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : ap + plusAmt(p, cur),
+    sub: M.mixed ? `все валюты в ${SYM[cur]} по курсу · ${tradeDays(active)}` : `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${tradeDays(active)}`,
+    date: back ? 'Итоги месяца' : 'P2P · ' + (M.mixed ? 'все валюты' : CUR_NAME[cur].toLowerCase()),
     cells: [['Сделок', String(X.length)], ['В среднем за день', active ? plusAmt(p / active, cur) : '—'], ['Оборот', cardAmt(turn, cur)], ['Лучший день', best > 0 ? '+' + cardAmt(best, cur) : '—']], bars: M.bars };
+  if (M.mixed) d.cells = curCells(M.byCur, [['Сделок', String(X.length)], ['Торговых дней', String(active)]]);
   if (!back) return d;
   // Прошлый месяц: рост к позапрошлому и два столбика «было → стало»
-  const P = monthStats(m ? y : y - 1, m ? m - 1 : 11, cur);
+  const P = monthStats(m ? y : y - 1, m ? m - 1 : 11, M.mixed ? ALL : cur);
   if (P.X.length && P.p > 0 && X.length) {
     const g = Math.round((p - P.p) / P.p * 100);
     d.sub = `к ${MON_DAT[P.m]}`; d.chip = { text: `${g >= 0 ? '▲ +' : '▼ −'}${Math.abs(g)}%`, neg: g < 0 };
   }
-  d.cells = [['Сделок', String(X.length)], ['Торговых дней', String(active)], ['Оборот', cardAmt(turn, cur)], ['В среднем за день', active ? plusAmt(p / active, cur) : '—']];
+  d.cells = M.mixed ? curCells(M.byCur, [['Сделок', String(X.length)], ['Торговых дней', String(active)]])
+    : [['Сделок', String(X.length)], ['Торговых дней', String(active)], ['Оборот', cardAmt(turn, cur)], ['В среднем за день', active ? plusAmt(p / active, cur) : '—']];
   if (P.X.length) { d.bars = [P.p, p]; d.barLabels = [monTitle(P.y, P.m).split(' ')[0], monTitle(y, m).split(' ')[0]]; d.barsTitle = 'Было → стало'; }
   else d.bars = M.bars;
   return d;
 }
 // Календарь месяца: каждый день цветом
 function calCardData(ym) {
-  const now = new Date(), { y, m } = ym || { y: now.getFullYear(), m: now.getMonth() }, M = monthStats(y, m);
-  return { kicker: 'Календарь прибыли', title: monTitle(y, m), neg: M.p < 0, big: cardHide ? '•••' : plusAmt(M.p, M.cur),
+  const now = new Date(), { y, m } = ym || { y: now.getFullYear(), m: now.getMonth() }, M = monthStats(y, m, cardCurNow());
+  return { kicker: 'Календарь прибыли', title: monTitle(y, m), neg: M.p < 0, big: cardHide ? '•••' : (M.mixed ? '≈ ' : '') + plusAmt(M.p, M.cur),
     sub: `${tradeDays(M.active)}${M.active ? ` · ${M.plus} в плюсе` : ''}${M.best > 0 ? ` · лучший +${cardAmt(M.best, M.cur)}` : ''}`,
-    date: 'Мой месяц', cal: { first: (new Date(y, m, 1).getDay() + 6) % 7, bars: M.bars, cnt: M.cnt } };
+    date: M.mixed ? 'Все валюты' : 'Мой месяц', cal: { first: (new Date(y, m, 1).getDay() + 6) % 7, bars: M.bars, cnt: M.cnt } };
 }
 // За всё время: итог, лучший месяц и столбики по последним месяцам
 function allCardData() {
-  const cur = mainCur(S.trades), X = S.trades.filter(t => t.cur === cur);
+  const V = curView(S.trades, cardCurNow()), cur = V.cur, X = V.X;
   const sum = f => X.reduce((a, t) => a + f(t), 0), p = sum(t => t.profit), cost = sum(t => t.cost ?? t.sum), days = new Set(X.map(t => dayKey(t.ts))).size;
+  const byCur = {}; X.forEach(t => { const o = t._o || t; byCur[curOr(o.cur)] = (byCur[curOr(o.cur)] || 0) + (+o.profit || 0); });
   const first = X.length ? Math.min(...X.map(t => new Date(t.ts).getTime())) : Date.now();
   const byM = {}; X.forEach(t => { const d = new Date(t.ts), k = d.getFullYear() * 12 + d.getMonth(); byM[k] = (byM[k] || 0) + t.profit; });
   const top = Object.entries(byM).sort((a, b) => b[1] - a[1])[0], now = new Date(), nk = now.getFullYear() * 12 + now.getMonth();
   const f = new Date(first), n = Math.min(6, Math.max(2, nk - (f.getFullYear() * 12 + f.getMonth()) + 1)), ks = Array.from({ length: n }, (_, i) => nk - n + 1 + i);
   const mName = k => new Date(Math.floor(k / 12), k % 12, 1).toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '');
-  return { kicker: 'За всё время', title: 'Мой P2P в цифрах', neg: p < 0, big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
-    sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${tradeDays(days)}`,
+  const allD = { kicker: 'За всё время', title: 'Мой P2P в цифрах', neg: p < 0, big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : (V.mixed ? '≈ ' : '') + plusAmt(p, cur),
+    sub: V.mixed ? `все валюты в ${SYM[cur]} по курсу · ${tradeDays(days)}` : `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${tradeDays(days)}`,
     date: 'с ' + f.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
     cells: [['Сделок', String(X.length)], ['Оборот', cardAmt(sum(t => t.sum), cur)], ['Лучший месяц', top && top[1] > 0 ? monTitle(Math.floor(top[0] / 12), top[0] % 12).split(' ')[0] : '—'], ['В среднем за день', days ? plusAmt(p / days, cur) : '—']],
     bars: ks.map(k => byM[k] || 0), barLabels: ks.map(k => { const x = mName(k); return x[0].toUpperCase() + x.slice(1); }), barsTitle: 'Прибыль по месяцам' };
+  if (V.mixed) allD.cells = curCells(byCur, [['Сделок', String(X.length)], ['Торговых дней', String(days)]]);
+  return allD;
 }
 // Итоги одного дня — из окна дня в календаре и для Free
 function dayCardData(k) {
-  const T = S.trades.filter(t => dayKey(t.ts) === k), cur = mainCur(T), X = T.filter(t => t.cur === cur);
+  const T = S.trades.filter(t => dayKey(t.ts) === k), dc = cardCur && (cardCur === ALL || T.some(t => t.cur === cardCur)) ? cardCur : mainCur(T), V = curView(T, dc), cur = V.cur, X = V.X;
   const sum = f => X.reduce((a, t) => a + f(t), 0), p = sum(t => t.profit), cost = sum(t => t.cost ?? t.sum), best = X.length ? Math.max(...X.map(t => t.profit)) : 0;
   const g = goalIn(cur) || 0, [y, m, d] = k.split('-').map(Number), dt = new Date(y, m - 1, d);
   const title = dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
   return { kicker: 'Итоги дня', title: title[0].toUpperCase() + title.slice(1), neg: p < 0, big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : plusAmt(p, cur),
     sub: `${cardPct(cost ? p / cost * 100 : 0)} к вложенному · ${X.length} ${plural(X.length, 'сделка', 'сделки', 'сделок')}`, date: String(y),
     cells: [['Сделок', String(X.length)], ['Оборот', cardAmt(sum(t => t.sum), cur)], ['Лучшая сделка', X.length ? plusAmt(best, cur) : '—'],
-      g ? [`Цель ${nf0.format(g)} ₽`, `${Math.round(p / g * 100)}%${p >= g ? ' ✓' : ''}`] : ['Средняя сделка', X.length ? plusAmt(p / X.length, cur) : '—']] };
+      g ? [`Цель ${nf0.format(g)} ${SYM[cur]}`, `${Math.round(p / g * 100)}%${p >= g ? ' ✓' : ''}`] : ['Средняя сделка', X.length ? plusAmt(p / X.length, cur) : '—']],
+    ...(V.mixed ? { big: cardHide ? cardPct(cost ? p / cost * 100 : 0) : '≈ ' + plusAmt(p, cur), sub: `все валюты в ${SYM[cur]} по курсу · ${X.length} ${plural(X.length, 'сделка', 'сделки', 'сделок')}` } : {}) };
 }
 async function drawCard(d) {
   try { await Promise.all(['700 40px Unbounded', '500 24px Onest', '600 24px Onest', '500 30px "JetBrains Mono"'].map(f => document.fonts.load(f))); } catch (e) {}
@@ -4824,9 +4856,12 @@ async function showCard(kind, id) {
   if (kind === 'deal' && !t) return;
   if (!S.settings.pro && !['deal', 'day'].includes(kind)) return openPlans('cards');
   cardHide = !!S.settings.incog;
-  const multi = CARD_KINDS.some(([k]) => k === kind);
+  const multi = CARD_KINDS.some(([k]) => k === kind), curs = tradeCurs(), copts = curs.length > 1 ? [ALL, ...curs] : [];
+  cardCur = copts.includes(sCur) ? sCur : null;
+  if (kind === 'day' && !copts.includes(sCur)) cardCur = null;
   sheet(`<h3 id="cardH">${CARD_TITLE[kind]}</h3>
     ${multi ? `<div class="chips card-kinds" id="cardKinds">${CARD_KINDS.map(([k, l]) => `<button class="chip ${k === kind ? 'on' : ''}" data-ck="${k}">${l}</button>`).join('')}</div>` : ''}
+    ${copts.length && kind !== 'deal' ? `<div class="chips card-kinds" id="cardCurs">${copts.map(c => `<button class="chip ${c === cardCurNow() ? 'on' : ''}" data-ccur="${c}">${c === ALL ? '🌐 Все' : CUR_FLAG[c] + ' ' + CUR_NAME[c]}</button>`).join('')}</div>` : ''}
     <img class="share-prev" id="cardImg" alt="Предпросмотр карточки">
     <div class="sw-row"><span>Скрыть суммы, оставить проценты</span><button class="toggle" role="switch" id="cardHideBtn" aria-checked="${cardHide}" aria-label="Скрыть суммы"></button></div>
     ${S.settings.pro ? '' : '<button class="pw-why" data-open-plans="card" style="width:100%">На Free на карточке водяной знак · <b style="color:var(--accent)">убрать в PRO</b></button>'}
@@ -4859,6 +4894,10 @@ async function showCard(kind, id) {
     const b = e.target.closest('[data-ck]'); if (!b || b.dataset.ck === kind) return;
     kind = b.dataset.ck; id = kind === 'cal' ? calYM : undefined; name = `P2Pro-${kind}.png`; $('cardH').textContent = CARD_TITLE[kind];
     document.querySelectorAll('[data-ck]').forEach(x => x.classList.toggle('on', x === b)); await draw();
+  };
+  if ($('cardCurs')) $('cardCurs').onclick = async e => {
+    const b = e.target.closest('[data-ccur]'); if (!b || b.dataset.ccur === cardCurNow()) return;
+    cardCur = b.dataset.ccur; document.querySelectorAll('[data-ccur]').forEach(x => x.classList.toggle('on', x === b)); await draw();
   };
   $('cardSave').onclick = save;
   $('cardShare').onclick = async () => {
