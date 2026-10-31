@@ -1230,7 +1230,7 @@ async function wlPanel(chatId: number, msgId: number | null) {
 async function wlButtons(chatId: number, msgId: number | null) {
   const cfg = await stGet<WCfg>('welcome', {});
   const rows = Object.entries(WB_DEF).map(([k, [def, what]]) => [{ text: `${what}: ${cfg.btn?.[k]?.t || def}${cfg.btn?.[k]?.e ? ' ✨' : ''}`.slice(0, 60), callback_data: 'wl:e:' + k }]);
-  await show(chatId, msgId, '🔘 <b>Кнопки под приветствием</b>\n\nНажмите на кнопку, которую хотите изменить. ✨ — у кнопки премиум-эмодзи.', kb([...rows, [{ text: '‹ Назад', callback_data: 'wl' }]]));
+  await show(chatId, msgId, '🔘 <b>Кнопки под приветствием</b>\n\nНажмите на кнопку, которую хотите изменить. ✨ — у кнопки премиум-эмодзи.', kb([...rows, [{ text: '🔍 Проверить иконки', callback_data: 'wl:chk' }], [{ text: '‹ Назад', callback_data: 'wl' }]]));
 }
 async function wlCallback(chatId: number, msgId: number | null, a: string, b: string) {
   if (!a) return wlPanel(chatId, msgId);
@@ -1244,6 +1244,15 @@ async function wlCallback(chatId: number, msgId: number | null, a: string, b: st
     return show(chatId, msgId, '✏️ Пришлите новый текст приветствия одним сообщением.\n\nМожно: <b>жирный</b>, <i>курсив</i>, ссылки и ваши премиум-эмодзи. Вместо имени человека напишите <code>{имя}</code>.\n\nПример: <code>Привет, {имя}! 👋</code>', kb([[{ text: 'Отмена', callback_data: 'wl' }]]));
   }
   if (a === 'b') return wlButtons(chatId, msgId);
+  if (a === 'chk') {   // что Telegram знает о каждом эмодзи на кнопках
+    const cfg = await stGet<WCfg>('welcome', {}), list = Object.entries(cfg.btn ?? {}).filter(([, v]) => v.e);
+    if (!list.length) return tg('sendMessage', { chat_id: chatId, text: 'На кнопках нет премиум-эмодзи.' });
+    const r = await tg('getCustomEmojiStickers', { custom_emoji_ids: list.map(([, v]) => v.e) });
+    const info = new Map(((r?.result ?? []) as { custom_emoji_id: string; is_animated: boolean; is_video: boolean; set_name?: string; emoji?: string }[]).map((x) => [x.custom_emoji_id, x]));
+    const lines = list.map(([k, v]) => { const x = info.get(v.e!);
+      return `${x ? '✅' : '❌'} ${esc(WB_DEF[k]?.[1] ?? k)}: ${x ? `${x.emoji ?? ''} пак «${esc(x.set_name ?? '?')}», ${x.is_animated ? 'анимированный (TGS)' : x.is_video ? 'видео' : 'статичный'}` : 'Telegram не нашёл этот эмодзи'}`; });
+    return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `🔍 <b>Иконки кнопок</b>\n\n${lines.join('\n')}${r?.ok ? '' : '\n\nОшибка Telegram: ' + esc(String(r?.description ?? ''))}` });
+  }
   if (a === 'e' && WB_DEF[b]) {
     await stSet('await', { kind: 'wlb', key: b, at: Date.now() });
     return show(chatId, msgId, `🔘 Новый текст кнопки «${WB_DEF[b][1]}» — одним сообщением.\n\nЧтобы поставить премиум-эмодзи иконкой, начните текст с него: например <code>⭐ Мой PRO</code>, где ⭐ — ваше эмодзи.\nНапишите <code>-</code>, чтобы вернуть стандартный текст.`, kb([[{ text: 'Отмена', callback_data: 'wl:b' }]]));
