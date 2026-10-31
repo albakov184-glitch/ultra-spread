@@ -132,15 +132,17 @@ button { cursor: pointer; border: 0; background: none; }
 .xr-fiats button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.1)); background: transparent; color: var(--fg); font: inherit; font-family: var(--f-mono); font-size: 14px; text-align: left; cursor: pointer; }
 .xr-fiats button:active { transform: scale(.97); }
 .xr-fiats button i { margin-left: auto; font-style: normal; opacity: .4; }
-.cur-chips .chip.fx { animation: chipPop .42s cubic-bezier(.3, 1.5, .5, 1); }
-@keyframes chipPop { 0% { transform: scale(.9); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
-.cur-sym.sw { animation: symIn .35s ease-out; display: inline-block; }
-@keyframes symIn { from { opacity: 0; transform: translateY(6px) scale(.8); } }
+.cur-chips { padding: 2px 2px 4px; margin: -2px -2px 0; scroll-padding: 0 12px; }
+.cur-chips .chip { transition: background .25s, border-color .25s, color .25s; }
+.cur-chips .chip.fx { animation: chipGlow .6s ease-out; }
+@keyframes chipGlow { 0% { box-shadow: inset 0 0 0 1px var(--accent), inset 0 0 16px color-mix(in srgb, var(--accent) 45%, transparent); } 100% { box-shadow: inset 0 0 0 0 transparent, inset 0 0 0 transparent; } }
+.cur-sym.sw { animation: symIn .3s ease-out; }
+@keyframes symIn { from { opacity: 0; } }
 .xr-fiats button { animation: fiatIn .4s ease-out backwards; }
 .xr-fiats button:nth-child(2) { animation-delay: .05s; } .xr-fiats button:nth-child(3) { animation-delay: .1s; } .xr-fiats button:nth-child(4) { animation-delay: .15s; }
 @keyframes fiatIn { from { opacity: 0; transform: translateY(8px); } }
 .rate-line b { transition: color .3s; }
-.rate-line.fx b { animation: symIn .35s ease-out; display: inline-block; }
+.rate-line.fx b { animation: symIn .35s ease-out; }
 .unit-sel { appearance: none; -webkit-appearance: none; border: 0; background: var(--surface-2); color: var(--muted); font: inherit; font-weight: 600; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .cur-chips .chip.fx, .cur-sym.sw, .xr-fiats button, .rate-line.fx b { animation: none; } }
 .cur-pick { display: flex; flex-direction: column; gap: 8px; }
@@ -1720,7 +1722,6 @@ function renderCalcStatic() {
   $('cp2Field').hidden = !tri || parts;
   $('cpRow').classList.toggle('two', tri && !parts);
   if (parts) renderSellers();
-  $('curChips').innerHTML = curChips();
   curSyms();
   document.querySelectorAll('[data-ft]').forEach(b => b.classList.toggle('on', st[b.dataset.ft === 'ex' ? 'feeExType' : 'feeWdType'] === b.dataset.v));
   $('exChips').innerHTML = st.exchanges.map(x => `<button class="chip ${x === d.ex ? 'on' : ''}" data-ex="${esc(x)}">${esc(x)}</button>`).join('');
@@ -1823,10 +1824,25 @@ function tween(el, to, fmt) {
 }
 // Выбор валюты — один на всё приложение: в калькуляторе, подборе курса и связках одни и те же кнопки
 let curFx = false;   // только что сменили валюту — подсветить выбор и значки
-const curChips = () => CURS.map(([k, f]) => `<button class="chip ${k === S.settings.cur ? 'on' + (curFx ? ' fx' : '') : ''}" data-cur="${k}" aria-pressed="${k === S.settings.cur}">${f} ${k}</button>`).join('');
+// Кнопки создаются один раз и дальше только переключаются: так лента не прыгает в начало,
+// а выбранная валюта всегда видна (EUR и USD — в конце ленты)
+function fillCurChips(box) {
+  if (!box) return;
+  if (box.children.length !== CURS.length) box.innerHTML = CURS.map(([k, f]) => `<button class="chip" data-cur="${k}">${f} ${k}</button>`).join('');
+  box.querySelectorAll('[data-cur]').forEach(b => {
+    const on = b.dataset.cur === S.settings.cur;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+    if (!on) return b.classList.remove('fx');
+    if (curFx && !reduceMotion) { b.classList.remove('fx'); void b.offsetWidth; b.classList.add('fx'); }
+    const r = box.getBoundingClientRect(), br = b.getBoundingClientRect();
+    if (r.width && br.left < r.left) box.scrollBy({ left: br.left - r.left - 12, behavior: curFx ? 'smooth' : 'auto' });
+    else if (r.width && br.right > r.right) box.scrollBy({ left: br.right - r.right + 12, behavior: curFx ? 'smooth' : 'auto' });
+  });
+}
 function curSyms() {
-  document.querySelectorAll('.cur-sym').forEach(el => { if (el.textContent !== SYM[S.settings.cur]) { el.textContent = SYM[S.settings.cur]; if (curFx) { el.classList.remove('sw'); void el.offsetWidth; el.classList.add('sw'); } } });
-  document.querySelectorAll('[data-curpick]').forEach(el => el.innerHTML = '<span class="muted small">Валюта</span><div class="chips cur-chips">' + curChips() + '</div>');
+  document.querySelectorAll('.cur-sym').forEach(el => { if (el.textContent !== SYM[S.settings.cur]) { el.textContent = SYM[S.settings.cur]; if (curFx && !reduceMotion) { el.classList.remove('sw'); void el.offsetWidth; el.classList.add('sw'); } } });
+  document.querySelectorAll('[data-curpick]').forEach(el => { if (!el.querySelector('.cur-chips')) el.innerHTML = '<span class="muted small">Валюта</span><div class="chips cur-chips"></div>'; });
+  document.querySelectorAll('.cur-chips').forEach(fillCurChips);
 }
 // Цель на день: задаётся в своей валюте (Профиль), показывается в любой — по биржевому курсу. null — курса пока нет
 function goalIn(cur) {
