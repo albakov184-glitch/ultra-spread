@@ -1195,7 +1195,7 @@ async function sendWelcome(chat: number, tgId: number, rawName: string): Promise
   if (cfg.text) {
     // Подставляем имя вместо {имя} и сдвигаем разметку после него
     let text = cfg.text, ents = (cfg.ents ?? []).map((e) => ({ ...e }));
-    const name = rawName.slice(0, 40), tag = '{имя}';
+    const name = rawName.trim().slice(0, 40) || 'друг', tag = '{имя}';
     for (let i = text.indexOf(tag); i >= 0; i = text.indexOf(tag, i + name.length)) {
       const d = u16(name) - u16(tag);
       text = text.slice(0, i) + name + text.slice(i + tag.length);
@@ -1205,6 +1205,7 @@ async function sendWelcome(chat: number, tgId: number, rawName: string): Promise
     for (const [i, t] of tries.entries()) {
       const r = await tg('sendMessage', { chat_id: chat, text, entities: t.ents, link_preview_options: { is_disabled: true }, reply_markup: t.kb });
       if (r?.ok) return { ok: true, plain: i > 0 };
+      if (/blocked|not found|deactivated/i.test(String(r?.description))) return { ok: false };   // человек закрыл бота — повторять незачем
       console.error('welcome', r?.description);
     }
   } else {
