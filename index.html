@@ -1542,7 +1542,7 @@ img { max-width: 100%; }
         <div class="seg sm"><button data-theme-set="system" class="on">Авто</button><button data-theme-set="dark">Тёмная</button><button data-theme-set="light">Светлая</button></div></div>
     </div>
 
-    <!-- Тест-панель: видна только владельцу (ADMIN_EMAIL). Перед запуском поставить TEST_PANEL = false -->
+    <!-- Тест-панель: видна только владельцу (выключена) -->
     <div class="card test-panel" id="testPanel" hidden>
       <div class="card-h"><span class="card-t">🧪 Тест-панель</span><span class="muted small">видна только в тестовой версии</span></div>
       <span class="label">Тариф — сразу, без оплаты</span>
@@ -4540,7 +4540,7 @@ document.addEventListener('click', e => {
 /* ================= ТЕСТ-ПАНЕЛЬ ================= */
 // Быстро переключать тариф и состояния, пока идут тесты. Перед запуском — false
 // Видна только владельцу (по почте аккаунта). Сервер тоже пускает к демо-функциям только эту почту — см. supabase/03-admin.sql
-const TEST_PANEL = false, ADMIN_EMAIL = 'albakov184@gmail.com';
+const TEST_PANEL = false, ADMIN_EMAIL = '';   // тест-панель выключена; почту владельца в открытом коде не храним
 const tpOn = () => TEST_PANEL && me()?.email?.toLowerCase() === ADMIN_EMAIL;
 function renderTestPanel() {
   const el = $('testPanel'); el.hidden = !tpOn(); if (!tpOn()) return;
