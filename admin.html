@@ -52,6 +52,30 @@ a { color: var(--acc); }
 .btn:disabled { opacity: .55; pointer-events: none; }
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: rot .8s linear infinite; display: inline-block; }
 @keyframes rot { to { transform: rotate(360deg); } }
+/* Экран загрузки при входе */
+.boot { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--bg); transition: opacity .35s, visibility .35s; }
+.boot.out { opacity: 0; visibility: hidden; }
+.boot-in { display: flex; flex-direction: column; align-items: center; gap: 18px; animation: up .5s both; }
+.boot .tile { animation: bpulse 1.6s ease-in-out infinite; }
+.boot-bar { width: 140px; height: 4px; border-radius: 4px; background: var(--s3); overflow: hidden; position: relative; }
+.boot-bar i { position: absolute; inset: 0; width: 40%; border-radius: 4px; background: var(--acc); animation: bslide 1.1s ease-in-out infinite; }
+.boot-t { font-size: 13px; color: var(--muted); }
+@keyframes bpulse { 50% { transform: scale(1.06); filter: drop-shadow(0 0 18px rgba(242,181,75,.35)); } }
+@keyframes bslide { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+/* Автоматика */
+.au-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; } .au-row > div { flex: 1; min-width: 0; }
+.sw { position: relative; width: 46px; height: 26px; flex: none; border-radius: 13px; background: var(--s3); border: 1px solid var(--line); transition: background .2s, border-color .2s; padding: 0; }
+.sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--muted); transition: transform .25s cubic-bezier(.3,1.4,.5,1), background .2s; }
+.sw.on { background: var(--pos-s); border-color: rgba(60,211,138,.5); } .sw.on::after { transform: translateX(20px); background: var(--pos); }
+.sw:disabled { opacity: .5; }
+.wl { display: flex; flex-direction: column; gap: 8px; }
+.wl > div { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); font-size: 14px; min-width: 0; }
+.wl .d { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--pos); box-shadow: 0 0 0 4px var(--pos-s); }
+.wl .bad .d { background: var(--neg); box-shadow: 0 0 0 4px var(--neg-s); }
+.wl small { color: var(--muted); margin-left: auto; text-align: right; overflow-wrap: anywhere; }
+.wl .bad small { color: var(--neg); }
+.au-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+@media (max-width: 400px) { .au-grid { grid-template-columns: 1fr; } }
 @keyframes up { from { opacity: 0; transform: translateY(14px); } }
 
 /* каркас */
@@ -270,6 +294,7 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
 </head>
 <body>
 <div class="bgfx"></div>
+<div class="boot" id="boot" role="status" aria-live="polite"><div class="boot-in"><div class="tile"><b>P2</b><i>PRO</i></div><div class="boot-bar"><i></i></div><div class="boot-t" id="bootT">Загрузка…</div></div></div>
 
 <!-- Посторонним — обычная «страница не найдена». Панель открывается только владельцу: вход по одноразовой ссылке из бота (/admin → «Веб-админка») -->
 <div class="gate" id="gate" hidden>
@@ -360,8 +385,9 @@ async function api(action, extra = {}) {
 // код меняется на сессию, дальше сервер на каждый запрос проверяет, что это именно владелец
 // Приложение «P2Pro Админ» добавляет к браузеру метку P2ProAdmin: там вместо 404 — экран ввода кода
 const IN_APP = /P2ProAdmin/.test(navigator.userAgent);
+const bootDone = () => $('boot').classList.add('out');
 function notFound() {
-  closeUser?.(); $('app').hidden = true;
+  bootDone(); closeUser?.(); $('app').hidden = true;
   if (IN_APP) { $('gate').hidden = true; $('codeGate').hidden = false; document.title = 'P2Pro Админ'; return; }
   $('codeGate').hidden = true; $('gate').hidden = false; document.title = 'Страница не найдена · P2Pro';
 }
@@ -382,10 +408,14 @@ $('codeGo').onclick = async () => {
   $('codeGo').disabled = true; $('codeErr').textContent = '';
   const r = await redeem(code);
   $('codeGo').disabled = false;
-  if (r === true) { $('codeIn').value = ''; return boot(); }
+  if (r === true) { $('codeIn').value = ''; $('bootT').textContent = 'Входим…'; $('boot').classList.remove('out'); return boot(); }
   $('codeErr').textContent = r;
 };
 async function boot() {
+  const slow = setTimeout(() => $('bootT').textContent = 'Медленный интернет, ещё немного…', 6000);
+  try { await boot2(); } catch (e) { notFound(); } finally { clearTimeout(slow); }
+}
+async function boot2() {
   const k = (location.hash.match(/k=([A-Za-z0-9]{12})/) || [])[1];
   if (k) { history.replaceState(null, '', location.pathname); await redeem(k); }   // код одноразовый — из адресной строки убираем сразу
   const { data } = await sb.auth.getSession();
@@ -394,7 +424,7 @@ async function boot() {
     const me = await api('me');
     $('meName').textContent = me.name || 'Владелец'; $('meAva').textContent = (me.name || 'P')[0].toUpperCase();
     document.title = 'P2Pro — админ-панель';
-    $('gate').hidden = true; $('codeGate').hidden = true; $('app').hidden = false; blCountsLoad(); go((location.hash.slice(1) || 'dash').replace(/^k=.*/, 'dash'));
+    $('gate').hidden = true; $('codeGate').hidden = true; $('app').hidden = false; bootDone(); blCountsLoad(); go((location.hash.slice(1) || 'dash').replace(/^k=.*/, 'dash'));
   } catch (e) { notFound(); }
 }
 document.addEventListener('click', async e => {
@@ -409,6 +439,7 @@ const IC = {
   promo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V5a2 2 0 0 1 2-2h4l12 12-6 6L3 9z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
   bc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h3l6 5V5L7 10H4a1 1 0 0 0-1 1zM17 8a5 5 0 0 1 0 8M20 5a9 9 0 0 1 0 14"/></svg>',
   bl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="M12 8v5M12 16.5v.01"/></svg>',
+  auto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   ref: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>',
 };
@@ -446,7 +477,7 @@ function countUps() {
     requestAnimationFrame(step);
   });
 }
-const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка']];
+const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка'], ['auto', 'Автоматика']];
 // На телефоне внизу только 4 главные вкладки, остальные — под кнопкой «Ещё»
 const MOB = ['dash', 'users', 'bl', 'pays'], SHORT = { users: 'Люди', bl: 'База' };
 $('nav').innerHTML = PAGES.map(([k, n]) => `<button class="nav-b" data-go="${k}">${IC[k]}${n}</button>`).join('');
@@ -468,7 +499,7 @@ function go(p, force) {
   $('moreB').classList.toggle('on', !MOB.includes(p)); $('moreM').hidden = true; $('moreM').classList.remove('on');
   moveInd();
   const v = $('view'); v.classList.remove('vin'); void v.offsetWidth; v.classList.add('vin');
-  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc })[p](force);
+  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc, auto: renderAuto })[p](force);
   scrollTo(0, 0);
 }
 const skel = () => `<div class="grid kpis">${'<div class="card"><div class="sk" style="height:14px;width:50%"></div><div class="sk" style="height:30px;width:70%;margin-top:16px"></div></div>'.repeat(4)}</div><div class="card" style="margin-top:16px"><div class="sk" style="height:240px"></div></div>`;
@@ -1090,6 +1121,66 @@ async function renderBc() {
     try { const r = await api('bc_send', { text: BC.text, aud: BC.aud }); toast(`Рассылка пошла: ${r.n} получателей. Итог придёт в бот`); BC.text = ''; $('bcT').value = ''; prev(); } catch (e) { toast(e.message, true); }
     $('bcGo').disabled = false;
   };
+}
+
+/* ---------- Автоматика: то же, что в боте /admin — сторож, канал, курс, утренний отчёт, запланированное ---------- */
+let AU = null, CH = { text: '' };
+const dt = t => new Date(t).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }) + ' МСК';
+const AUDN = { all: 'всем', pro: 'с PRO', exp: 'PRO кончается ≤ 7 дн', free: 'без PRO' };
+async function renderAuto(force) {
+  killCharts();
+  $('view').innerHTML = head('Автоматика', 'Сторож, канал, курс и отчёты бота') + '<div class="au-grid">' + '<div class="card"><div class="sk" style="height:180px"></div></div>'.repeat(2) + '</div>';
+  try { if (force || !AU) AU = await api('auto'); } catch (e) { return fail(e); }
+  if (page !== 'auto') return;
+  drawAuto();
+}
+const swB = (id, on) => `<button class="sw ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${!!on}"></button>`;
+function watchList(list) { return list.map(w => `<div class="${w.bad ? 'bad' : ''}"><i class="d"></i><span>${esc(w.n)}</span><small>${w.bad ? esc(w.detail || 'не отвечает') + (w.since ? ' · ' + ago(new Date(w.since).toISOString()) : '') : 'в порядке'}</small></div>`).join(''); }
+function drawAuto() {
+  const a = AU, bad = a.watch.filter(w => w.bad).length;
+  $('view').innerHTML = head('Автоматика', 'Сторож, канал, курс и отчёты бота — то же, что в /admin', refBtn('auto')) + `<div class="au-grid">
+    <div class="card"><div class="card-t">🛡 Сторож <span class="${bad ? 'neg' : 'pos'} small">${bad ? 'есть проблемы: ' + bad : 'всё работает'}</span></div>
+      <div class="wl" id="auW">${watchList(a.watch)}</div>
+      <p class="hint" style="margin:10px 0 12px">Проверяет каждые 5 минут. Если что-то сломалось дважды подряд — пишет тебе в бот.</p>
+      <button class="btn" id="auHc">🔍 Проверить сейчас</button></div>
+    <div class="card"><div class="card-t">📢 Канал</div>
+      <div class="au-row"><div><b>Автопосты</b><p class="hint">Раз в неделю совет по P2P с кнопкой P2Pro${a.autopost.last ? ' · последний ' + dt(a.autopost.last) : ''}</p></div>${swB('auAp', a.autopost.on)}</div>
+      <button class="btn" id="auTip" style="margin-top:12px">💡 Опубликовать совет сейчас</button>
+      <div class="card-t" style="margin:18px 0 8px">Свой пост</div>
+      <textarea class="inp" id="chT" style="min-height:120px;width:100%" placeholder="Текст поста. **Жирный** — двумя звёздочками">${esc(CH.text)}</textarea>
+      <p class="hint" style="margin-top:6px">Под постом будет кнопка «🚀 Открыть P2Pro». Премиум-эмодзи и отложенный пост — в боте.</p>
+      <div class="inl" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="chTest">Тест себе</button><button class="btn pri" id="chGo">Опубликовать</button></div></div>
+    <div class="card"><div class="card-t">📈 Курс в канал</div>
+      <div class="au-row"><div><b>Карточка курса USDT</b><p class="hint">Публикуется в канал в выбранные часы (МСК)</p></div>${swB('auRc', a.ratepost.on)}</div>
+      <div class="chips" id="auH" style="margin-top:12px">${a.hours.map(h => `<button class="chip ${a.ratepost.times.includes(h) ? 'on' : ''}" data-h="${h}">${String(h).padStart(2, '0')}:00</button>`).join('')}</div>
+      <div class="inl" style="margin-top:12px;flex-wrap:wrap"><button class="btn" id="rcMe">Прислать мне</button><button class="btn pri" id="rcCh">Опубликовать сейчас</button></div></div>
+    <div class="card"><div class="card-t">☀️ Утренний отчёт</div>
+      <div class="au-row"><div><b>Каждое утро в бот</b><p class="hint">Итоги вчерашнего дня: новые люди, PRO, оплаты</p></div>${swB('auRp', a.report.on)}</div>
+      <button class="btn" id="rpNow" style="margin-top:12px">Прислать сейчас</button></div>
+    <div class="card"><div class="card-t">⏰ Запланировано <span class="muted small">${a.sched.length || ''}</span></div>
+      ${a.sched.length ? '<div class="wl">' + a.sched.map(x => `<div><span>${x.kind === 'post' ? '📢 Пост в канал' : '✉️ Рассылка ' + esc(AUDN[x.aud] || 'всем')}</span><small>${dt(x.at)}</small><button class="btn danger" style="padding:6px 10px" data-sx="${esc(x.id)}">✖</button></div>`).join('') + '</div>'
+        : '<p class="hint">Ничего не запланировано. Отложенные посты и рассылки ставятся в боте: /admin → Рассылка или Канал → «⏰ Отложить».</p>'}</div>
+  </div>`;
+  const busy = async (b, fn) => { if (b.disabled) return; b.disabled = true; try { await fn(); } catch (e) { toast(e.message, true); } b.disabled = false; };
+  const tog = (id, act, key, okOn, okOff) => $(id).onclick = () => busy($(id), async () => { const r = await api(act); key(r.on); $(id).classList.toggle('on', !!r.on); $(id).setAttribute('aria-checked', !!r.on); toast(r.on ? okOn : okOff); });
+  tog('auAp', 'ap_toggle', v => a.autopost.on = v, 'Автопосты включены', 'Автопосты выключены');
+  tog('auRc', 'rc_toggle', v => a.ratepost.on = v, 'Курс в канал включён', 'Курс в канал выключен');
+  tog('auRp', 'rp_toggle', v => a.report.on = v, 'Утренний отчёт включён', 'Утренний отчёт выключен');
+  $('auHc').onclick = () => busy($('auHc'), async () => { $('auHc').textContent = 'Проверяю…'; try { const r = await api('health_now'); $('auW').innerHTML = watchList(r.checks); const n = r.checks.filter(x => x.bad).length; toast(n ? 'Есть проблемы: ' + n : 'Всё работает'); } finally { $('auHc').textContent = '🔍 Проверить сейчас'; } });
+  $('auTip').onclick = () => busy($('auTip'), async () => { if (!await confirmBox('Опубликовать совет?', 'Следующий совет по P2P уйдёт в канал.', 'Опубликовать')) return; const r = await api('tip_now'); if (r.ok) { a.autopost.last = Date.now(); toast('Совет опубликован в канале'); } else toast('Не удалось: дайте боту право «Публикация сообщений» в канале', true); });
+  $('chT').oninput = () => CH.text = $('chT').value;
+  $('chTest').onclick = () => busy($('chTest'), async () => { if (!CH.text.trim()) return toast('Напишите текст', true); await api('ch_post', { text: CH.text, test: true }); toast('Тест отправлен тебе в бот'); });
+  $('chGo').onclick = () => busy($('chGo'), async () => { if (!CH.text.trim()) return toast('Напишите текст', true);
+    if (!await confirmBox('Опубликовать в канале?', 'Пост увидят все подписчики. Удалить можно будет только в самом канале.', 'Опубликовать')) return;
+    await api('ch_post', { text: CH.text }); CH.text = ''; $('chT').value = ''; toast('Пост опубликован'); });
+  $('auH').onclick = e => { const b = e.target.closest('[data-h]'); if (!b) return; busy(b, async () => { const r = await api('rc_hour', { h: +b.dataset.h }); a.ratepost.times = r.times; document.querySelectorAll('#auH [data-h]').forEach(x => x.classList.toggle('on', r.times.includes(+x.dataset.h))); }); };
+  $('rcMe').onclick = () => busy($('rcMe'), async () => { await api('rc_send'); toast('Карточка курса придёт тебе в бот'); });
+  $('rcCh').onclick = () => busy($('rcCh'), async () => { if (!await confirmBox('Опубликовать курс?', 'Карточка курса USDT уйдёт в канал прямо сейчас.', 'Опубликовать')) return; await api('rc_send', { channel: true }); toast('Карточка курса публикуется в канале'); });
+  $('rpNow').onclick = () => busy($('rpNow'), async () => { await api('rp_send'); toast('Отчёт придёт тебе в бот'); });
+  document.querySelectorAll('[data-sx]').forEach(b => b.onclick = () => busy(b, async () => {
+    if (!await confirmBox('Отменить?', 'Запланированное сообщение не будет отправлено.', 'Отменить отправку', true)) return;
+    await api('sched_cancel', { sid: b.dataset.sx }); a.sched = a.sched.filter(x => x.id !== b.dataset.sx); drawAuto(); toast('Отменено');
+  }));
 }
 
 boot();

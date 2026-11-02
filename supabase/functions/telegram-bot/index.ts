@@ -2653,6 +2653,34 @@ async function adminApi(body: Record<string, unknown>) {
       return aj({ ok: true });
     }
     if (act === 'partner_payout_del') { const { error } = await admin.from('partner_payouts').delete().eq('id', Number(body.id)); if (error) throw error; return aj({ ok: true }); }
+    // Автоматика (то же, что в меню бота): сторож, канал, курс в канал, утренний отчёт, запланированное
+    if (act === 'auto') {
+      const [ap, rp, rep, sched, watch] = await Promise.all([stGet('autopost', { on: false, idx: 0, last: 0 }), stGet<RatePost>('ratepost', RP_DEF), stGet('report', { on: true, day: '' }),
+        stGet<Sched[]>('sched', []), stGet<Record<string, { n: number; since: number; alerted: boolean; detail: string }>>('watch', {})]);
+      return aj({ autopost: { on: !!ap.on, last: ap.last || 0 }, ratepost: { on: !!rp.on, times: rp.times }, hours: RP_HOURS, report: { on: rep.on !== false },
+        sched: sched.map((x) => ({ id: x.id, kind: x.kind, aud: x.aud ?? null, at: x.at })).sort((x, y) => x.at - y.at),
+        watch: Object.entries(WATCH_NAMES).map(([k, n]) => ({ k, n, bad: (watch[k]?.n ?? 0) >= 2, detail: watch[k]?.detail ?? '', since: watch[k]?.since ?? 0 })) });
+    }
+    if (act === 'health_now') { const bad = await watchChecks(); return aj({ checks: Object.entries(WATCH_NAMES).map(([k, n]) => ({ k, n, bad: !!bad[k], detail: bad[k] ?? '' })) }); }
+    if (act === 'ap_toggle') { const ap = await stGet('autopost', { on: false, idx: 0, last: 0 }); await stSet('autopost', { ...ap, on: !ap.on }); return aj({ ok: true, on: !ap.on }); }
+    if (act === 'tip_now') return aj({ ok: await postTip(true) });
+    if (act === 'ch_post') {
+      const t = String(body.text ?? '').trim(); if (!t) throw new Error('Пустой текст');
+      const r = await tg('sendMessage', { chat_id: body.test ? ADMIN_ID : CHANNEL, text: fmtText(t), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: kb([[{ text: '🚀 Открыть P2Pro', url: BOT_LINK }]]) });
+      if (!r?.ok) throw new Error(body.test ? 'Telegram не принял текст' : 'Не удалось: дайте боту право «Публикация сообщений» в канале');
+      return aj({ ok: true });
+    }
+    if (act === 'rc_toggle' || act === 'rc_hour') {
+      const rp = await stGet<RatePost>('ratepost', RP_DEF), day = mskDay(Date.now()), hour = new Date(Date.now() + 3 * 3600e3).getUTCHours();
+      if (act === 'rc_toggle') rp.on = !rp.on;
+      else { const h = Number(body.h); if (!RP_HOURS.includes(h)) throw new Error('Нет такого часа'); rp.times = rp.times.includes(h) ? rp.times.filter((x) => x !== h) : [...rp.times, h]; }
+      for (const h of rp.times) if (h <= hour && rp.done[h] !== day) rp.done[h] = day;
+      await stSet('ratepost', rp); return aj({ ok: true, on: rp.on, times: rp.times });
+    }
+    if (act === 'rc_send') { background(selfCall({ rate_post: body.channel ? 'channel' : 'admin' })); return aj({ ok: true }); }
+    if (act === 'rp_toggle') { const rp = await stGet('report', { on: true, day: '' }); await stSet('report', { ...rp, on: !rp.on }); return aj({ ok: true, on: !rp.on }); }
+    if (act === 'rp_send') { background(morningReport()); return aj({ ok: true }); }
+    if (act === 'sched_cancel') { const list = await stGet<Sched[]>('sched', []); await stSet('sched', list.filter((x) => x.id !== String(body.sid ?? ''))); return aj({ ok: true }); }
     if (act === 'wl_open') { await wlPanel(ADMIN_ID, null); return aj({ ok: true }); }
     if (act === 'wb_propose') { const c = await wbCandidates(); await wbShow(ADMIN_ID, null, false, c); return aj({ ok: true, n: c.filter((x) => !x.skip).length, all: c.length }); }
     if (act === 'bc_counts') { const n = await Promise.all((['all', 'pro', 'exp', 'free'] as Aud[]).map((a) => recipients(a).then((r) => r.length))); return aj({ all: n[0], pro: n[1], exp: n[2], free: n[3] }); }
