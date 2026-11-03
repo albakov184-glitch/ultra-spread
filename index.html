@@ -4413,7 +4413,7 @@ function subHtml() {
         <div><b>${left}</b><span>${plural(left, 'день', 'дня', 'дней')}</span></div></div>
       <div class="sub-info"><div class="sub-t">PRO · ${st.proPeriod === 'y' ? 'год' : 'месяц'} <span class="pill-ok ${st.autoRenew ? '' : 'off'}">${st.autoRenew ? 'активна' : 'отменена'}</span></div>
         <span class="muted small">${st.autoRenew ? 'Следующее списание' : 'Действует до'} <b style="color:var(--fg)">${fmtLong(st.proUntil)}</b></span>
-        <span class="muted small">${PERIOD_PRICE[st.proPeriod]} ₽ · ${METHOD_NAME[st.payMethod] || METHOD_NAME.card}</span></div></div>
+        <span class="muted small">${PERIOD_PRICE[st.proPeriod] || PERIOD_PRICE.m} ₽ · ${METHOD_NAME[st.payMethod] || METHOD_NAME.card}</span></div></div>
     <div class="sw-row"><span>Автопродление</span><button class="toggle" role="switch" data-sub="auto" aria-checked="${!!st.autoRenew}" aria-label="Автопродление"></button></div>
     ${st.autoRenew ? '' : `<div class="pw-why">Подписка отменена: PRO работает до ${fmtLong(st.proUntil)}, потом — тариф Free. История и контрагенты сохранятся.</div>`}
     <div class="row2"><button class="btn" data-sub="hist">История платежей</button><button class="btn primary" data-sub="renew">${st.proPeriod === 'm' ? 'Год со скидкой' : 'Продлить'}</button></div>
