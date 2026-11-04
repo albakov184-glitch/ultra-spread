@@ -30,6 +30,6 @@ jobs:
           version: latest
       # Telegram и приложение зовут функции без JWT — проверку JWT оставляем выключенной, как сейчас
       - name: Deploy telegram-bot
-        run: supabase functions deploy telegram-bot --project-ref "$PROJECT" --no-verify-jwt --use-api
+        run: supabase functions deploy telegram-bot --project-ref "$PROJECT" --no-verify-jwt --use-api --yes
       - name: Deploy telegram-auth
-        run: supabase functions deploy telegram-auth --project-ref "$PROJECT" --no-verify-jwt --use-api
+        run: supabase functions deploy telegram-auth --project-ref "$PROJECT" --no-verify-jwt --use-api --yes
