@@ -1076,6 +1076,7 @@ async function tick() {
   await stSet('seen', { at: nowIso });
   // Старые запросы входа на сайт больше не нужны
   await admin.from('login_requests').delete().lt('created_at', new Date(now - DAY).toISOString()).then(() => {}, () => {});
+  await admin.from('feature_usage').delete().lt('day', mskDay(now - 120 * DAY)).then(() => {}, () => {});   // статистику функций храним 4 месяца
 
   const hourMsk = new Date(now + 3 * 3600e3).getUTCHours();
   // 2. Раз в день после 12:00 МСК — напоминания «PRO закончится через 3 дня»
@@ -2594,6 +2595,23 @@ async function adminApi(body: Record<string, unknown>) {
   try {
     if (act === 'me') return aj({ ok: true, name: nameOfU(ud.user as AUser) });
     if (act === 'dash') return aj(await adminDash());
+    if (act === 'usage') {
+      // Статистика функций (25-usage.sql): сколько людей и сколько раз пользовались каждой функцией за 7 и 30 дней
+      type UR = { day: string; feature: string; user_id: string; cnt: number };
+      const since = mskDay(Date.now() - 29 * DAY), d7 = mskDay(Date.now() - 6 * DAY);
+      let rows: UR[];
+      try { rows = await rowsAll<UR>('feature_usage', 'day, feature, user_id, cnt', 'day', (q) => q.gte('day', since).order('feature').order('user_id')); }
+      catch (_) { return aj({ missing: true }); }
+      const F = new Map<string, { u7: Set<string>; u30: Set<string>; c7: number; c30: number }>(), D = new Map<string, Set<string>>(), a7 = new Set<string>(), a30 = new Set<string>();
+      for (const r of rows) {
+        const f = F.get(r.feature) ?? { u7: new Set(), u30: new Set(), c7: 0, c30: 0 }; F.set(r.feature, f);
+        f.u30.add(r.user_id); f.c30 += r.cnt; a30.add(r.user_id);
+        if (r.day >= d7) { f.u7.add(r.user_id); f.c7 += r.cnt; a7.add(r.user_id); }
+        (D.get(r.day) ?? D.set(r.day, new Set()).get(r.day)!).add(r.user_id);
+      }
+      const days = Array.from({ length: 30 }, (_, i) => mskDay(Date.now() - (29 - i) * DAY)).map((d) => ({ d, n: D.get(d)?.size ?? 0 }));
+      return aj({ a7: a7.size, a30: a30.size, days, feats: [...F].map(([k, v]) => ({ k, u7: v.u7.size, u30: v.u30.size, c7: v.c7, c30: v.c30 })).sort((x, y) => y.u30 - x.u30 || y.c30 - x.c30) });
+    }
     if (act === 'users') return aj({ users: await adminUsers() });
     if (act === 'payments') {
       const [users, subs, nicks] = await Promise.all([allUsers(), allSubs(), nicksMap()]), byUser = new Map(users.map((u) => [u.id, u])), out = [];

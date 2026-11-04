@@ -68,6 +68,9 @@ a { color: var(--acc); }
 .boot-t { font-size: 13px; color: var(--muted); }
 @keyframes bpulse { 50% { transform: scale(1.06); filter: drop-shadow(0 0 18px rgba(242,181,75,.35)); } }
 @keyframes bslide { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+.ftab{display:flex;flex-direction:column;gap:6px}.frow{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(60px,1fr) auto;gap:14px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line)}.frow.zero{opacity:.45}
+.fn b{display:block;font-size:14px}.fn span{font-size:12px;color:var(--muted)}.fb{height:8px;border-radius:4px;background:var(--s3);overflow:hidden}.fb i{display:block;height:100%;background:var(--acc);border-radius:4px}
+.fv{text-align:right;min-width:70px}.fv b{display:block;font-family:var(--f-m);font-size:15px}.fv span{font-size:11.5px;color:var(--muted);font-family:var(--f-m)}
 /* Автоматика */
 .au-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; } .au-row > div { flex: 1; min-width: 0; }
 .sw { position: relative; width: 46px; height: 26px; flex: none; border-radius: 13px; background: var(--s3); border: 1px solid var(--line); transition: background .2s, border-color .2s; padding: 0; }
@@ -445,6 +448,7 @@ const IC = {
   promo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V5a2 2 0 0 1 2-2h4l12 12-6 6L3 9z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
   bc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h3l6 5V5L7 10H4a1 1 0 0 0-1 1zM17 8a5 5 0 0 1 0 8M20 5a9 9 0 0 1 0 14"/></svg>',
   bl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="M12 8v5M12 16.5v.01"/></svg>',
+  feat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M17.5 14v7M14 17.5h7"/></svg>',
   auto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   ref: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>',
@@ -483,7 +487,7 @@ function countUps() {
     requestAnimationFrame(step);
   });
 }
-const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка'], ['auto', 'Автоматика']];
+const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка'], ['auto', 'Автоматика'], ['feat', 'Функции']];
 // На телефоне внизу только 4 главные вкладки, остальные — под кнопкой «Ещё»
 const MOB = ['dash', 'users', 'bl', 'pays'], SHORT = { users: 'Люди', bl: 'База' };
 $('nav').innerHTML = PAGES.map(([k, n]) => `<button class="nav-b" data-go="${k}">${IC[k]}${n}</button>`).join('');
@@ -505,7 +509,7 @@ function go(p, force) {
   $('moreB').classList.toggle('on', !MOB.includes(p)); $('moreM').hidden = true; $('moreM').classList.remove('on');
   moveInd();
   const v = $('view'); v.classList.remove('vin'); void v.offsetWidth; v.classList.add('vin');
-  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc, auto: renderAuto })[p](force);
+  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc, auto: renderAuto, feat: renderFeat })[p](force);
   scrollTo(0, 0);
 }
 const skel = () => `<div class="grid kpis">${'<div class="card"><div class="sk" style="height:14px;width:50%"></div><div class="sk" style="height:30px;width:70%;margin-top:16px"></div></div>'.repeat(4)}</div><div class="card" style="margin-top:16px"><div class="sk" style="height:240px"></div></div>`;
@@ -1187,6 +1191,37 @@ function drawAuto() {
     if (!await confirmBox('Отменить?', 'Запланированное сообщение не будет отправлено.', 'Отменить отправку', true)) return;
     await api('sched_cancel', { sid: b.dataset.sx }); a.sched = a.sched.filter(x => x.id !== b.dataset.sx); drawAuto(); toast('Отменено');
   }));
+}
+
+/* ---------- Функции: чем пользуются (25-usage.sql) ---------- */
+const FEAT = { tab_calc: ['Расчёт', 'вкладка'], tab_hist: ['История', 'вкладка'], tab_stats: ['Аналитика', 'вкладка'], tab_tools: ['Инструменты', 'вкладка'], tab_prof: ['Профиль', 'вкладка'],
+  save_deal: ['Сохранена сделка', 'калькулятор'], save_circle: ['Сохранён круг', 'калькулятор'], save_tri: ['Сохранён треугольник', 'калькулятор'], repeat_trade: ['«Как в прошлой сделке»', 'калькулятор'], currency: ['Смена валюты', 'калькулятор'],
+  tool_price: ['Подбор курса', 'инструменты'], tool_combo: ['Связки', 'инструменты'], tool_cp: ['Контрагенты', 'инструменты'], cp_open: ['Карточка контрагента', 'инструменты'],
+  bl_check: ['Проверка по базе мошенников', 'защита'], bl_report: ['Жалоба на мошенника', 'защита'],
+  cal_day: ['День в календаре', 'аналитика'], trade_open: ['Сделка из истории', 'история'], share_card: ['Карточка для шеринга', 'аналитика'], excel: ['Выгрузка в Excel', 'история'],
+  rate_sheet: ['Курс USDT (окно)', 'курс'], rate_alert: ['Уведомление о курсе', 'курс'], incognito: ['Режим инкогнито', 'шапка'],
+  plans_open: ['Окно тарифов PRO', 'оплата'], trial_start: ['Запуск пробного PRO', 'оплата'], gift: ['Подарок PRO', 'оплата'], guide: ['Видео-гайд', 'справка'], tour: ['Обзор-тур', 'справка'] };
+let FT = null;
+async function renderFeat(force) {
+  killCharts();
+  $('view').innerHTML = head('Функции', 'Чем пользуются в приложении') + skel();
+  try { if (force || !FT) FT = await api('usage'); } catch (e) { return fail(e); }
+  if (page !== 'feat') return;
+  const d = FT;
+  if (d.missing) { $('view').innerHTML = head('Функции', 'Чем пользуются в приложении', refBtn('feat')) + `<div class="card"><b>Статистика ещё не включена</b><p class="muted" style="margin:8px 0 0">Запустите в Supabase → SQL Editor файл <b>supabase/25-usage.sql</b> из репозитория. Цифры начнут копиться сразу после этого.</p></div>`; return; }
+  const all = Object.keys(FEAT).map(k => d.feats.find(x => x.k === k) || { k, u7: 0, u30: 0, c7: 0, c30: 0 }).concat(d.feats.filter(x => !FEAT[x.k]));
+  all.sort((a, b) => b.u30 - a.u30 || b.c30 - a.c30);
+  const mx = Math.max(1, ...all.map(x => x.u30));
+  $('view').innerHTML = head('Функции', 'Сколько людей пользуются каждой функцией · без сумм и сделок', refBtn('feat')) +
+    `<div class="grid kpis">${kpi(0, 'users', '#5AA9FF', 'Активны за 7 дней', cu(d.a7), 'хоть раз что-то нажали')}${kpi(1, 'users', '#3CD38A', 'Активны за 30 дней', cu(d.a30), 'уникальных людей')}${kpi(2, 'bolt', '#F2B54B', 'Функций в ходу', cu(all.filter(x => x.u30).length), 'из ' + all.length)}${kpi(3, 'trend', '#A78BFA', 'Действий за 7 дней', cu(all.reduce((a, x) => a + x.c7, 0)), 'нажатий и сохранений')}</div>
+    <div class="card" style="margin-top:16px"><div class="card-t">Активные люди по дням</div><div style="height:200px"><canvas id="chFeat"></canvas></div></div>
+    <div class="card" style="margin-top:16px"><div class="card-t">Функции <span class="muted small">люди за 30 дней · за 7 дней · раз за 30 дней</span></div>
+    <div class="ftab">${all.map(x => `<div class="frow${x.u30 ? '' : ' zero'}"><div class="fn"><b>${esc((FEAT[x.k] || [x.k])[0])}</b><span>${esc((FEAT[x.k] || ['', 'другое'])[1])}</span></div>
+      <div class="fb"><i style="width:${(x.u30 / mx * 100).toFixed(1)}%"></i></div><div class="fv"><b>${nf0.format(x.u30)}</b><span>${nf0.format(x.u7)} · ${nf0.format(x.c30)}×</span></div></div>`).join('')}</div>
+    <p class="hint" style="margin-top:12px">Серые строки — функцией никто не пользовался за 30 дней. Кандидаты на улучшение или удаление.</p></div>`;
+  countUps();
+  chart('chFeat', { type: 'bar', data: { labels: d.days.map(x => { const [, m, dd] = x.d.split('-'); return `${+dd}.${m}`; }), datasets: [{ data: d.days.map(x => x.n), backgroundColor: '#5AA9FF', borderRadius: 4, maxBarThickness: 16 }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: anim, plugins: { legend: { display: false }, tooltip: { ...tip, callbacks: { label: c => ` ${c.raw} ${plural(c.raw, 'человек', 'человека', 'человек')}` } } }, scales: { x: axX, y: axY() } } });
 }
 
 boot();

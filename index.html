@@ -29,7 +29,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
+<!-- Chart.js грузится только при открытии «Аналитики» (loadChart): первый экран открывается быстрее -->
 <style>
 /* Layout: one 480px phone column, cards stacked, fixed bottom tab bar. Dark-first "trading desk": ink navy + amber accent, green/red reserved for P&L. */
 :root {
@@ -1521,7 +1521,7 @@ img { max-width: 100%; }
     <div class="card">
       <span class="card-t">Мы в соцсетях</span>
       <a class="social" href="https://www.instagram.com/movsar.io/" target="_blank" rel="noopener">
-        <img src="icons/instagram.png" alt="" width="44" height="44">
+        <img loading="lazy" decoding="async" src="icons/instagram.png" alt="" width="44" height="44">
         <span><b>Instagram</b>@movsar.io · новости P2Pro и P2P</span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>
       </a>
@@ -2209,8 +2209,15 @@ function breakdown(id, T, key, c) {
     <span class="v ${cls(v.p)}">${money(v.p, c, true)}</span></div>`).join('') : '<span class="muted">Нет сделок за период</span>';
 }
 const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// Библиотека графиков (~60 КБ) нужна только в «Аналитике» — подгружаем её при первом показе графика
+let chartLoad = null;
+function loadChart() {
+  return chartLoad ||= new Promise((ok, no) => { const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js'; sc.integrity = 'sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD'; sc.crossOrigin = 'anonymous';
+    sc.onload = ok; sc.onerror = () => { chartLoad = null; no(); }; document.head.appendChild(sc); });
+}
 function drawChart(T, c) {
-  if (!window.Chart) return;
+  if (!window.Chart) { loadChart().then(() => drawChart(T, c), () => {}); return; }
   const first = T.length ? Math.min(...T.map(t => +new Date(t.ts))) : Date.now();
   const span = sPeriod === 'all' ? Math.max(7, Math.ceil((Date.now() - first) / 864e5) + 1) : +sPeriod;
   const keys = []; for (let i = span - 1; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); keys.push(dayKey(d)); }
@@ -4248,7 +4255,7 @@ const FAQ = [['Нужно ли давать доступ к бирже или AP
   <div class="ld-navw" id="ldNav"><div class="ld-w ld-nav"><div class="logo">P2</div><span class="ld-nm">P2Pro</span>
     <div class="ld-ln"><button data-ld-go="ldFeat">Возможности</button><button data-ld-go="ldLive">Курс</button><button data-ld-go="ldPrice">Тарифы</button><button data-ld-go="ldFaq">Вопросы</button>
       <div class="ld-qrw" id="ldQrw"><button class="ld-in ld-qrb" id="ldQrB" aria-expanded="false">📱 На телефон</button>
-        <div class="ld-qr" role="dialog" aria-label="QR-код бота"><img src="img/qr-bot.svg" width="200" height="200" alt="QR-код: t.me/P2ProAppBot"><b>Наведите камеру телефона</b><span>Откроется бот @P2ProAppBot — вход в P2Pro в один тап</span></div></div>
+        <div class="ld-qr" role="dialog" aria-label="QR-код бота"><img loading="lazy" decoding="async" src="img/qr-bot.svg" width="200" height="200" alt="QR-код: t.me/P2ProAppBot"><b>Наведите камеру телефона</b><span>Откроется бот @P2ProAppBot — вход в P2Pro в один тап</span></div></div>
       <button class="ld-in" data-ld-auth="in">Войти</button></div></div></div>
   <div class="ld-w"><div class="ld-hero"><div><span class="ld-tag ld-a" style="--i:0"><i></i>Бесплатно в Telegram</span>
     <h1>${W}</h1>
@@ -4286,11 +4293,11 @@ const FAQ = [['Нужно ли давать доступ к бирже или AP
     <div class="ld-faq">${FAQ.map(([q, a], k) => `<div class="ld-q rv" style="--i:${k % 4}"><button aria-expanded="false">${q}<i aria-hidden="true"></i></button><div><p>${a}</p></div></div>`).join('')}</div>
     <div class="ld-ss rv" style="margin-top:34px">Не нашли ответ? Напишите нам</div>
     <div class="ld-soc rv" style="--i:1">
-      <a class="ld-sc tg" href="https://t.me/MVSR_P2P" target="_blank" rel="noopener"><img src="img/tg.png" width="48" height="48" alt=""><span>Поддержка в Telegram<b>@MVSR_P2P</b></span><em>→</em></a>
-      <a class="ld-sc ig" href="${IG_URL}" target="_blank" rel="noopener"><img src="img/ig.png" width="48" height="48" alt=""><span>Instagram<b>@movsar.io</b></span><em>→</em></a></div></div>
+      <a class="ld-sc tg" href="https://t.me/MVSR_P2P" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="img/tg.png" width="48" height="48" alt=""><span>Поддержка в Telegram<b>@MVSR_P2P</b></span><em>→</em></a>
+      <a class="ld-sc ig" href="${IG_URL}" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="img/ig.png" width="48" height="48" alt=""><span>Instagram<b>@movsar.io</b></span><em>→</em></a></div></div>
   <div class="ld-w"><div class="ld-foot"><span>© ${new Date().getFullYear()} P2Pro · Калькулятор и журнал P2P-сделок</span>
     <nav><a href="tariffs.html" target="_blank" rel="noopener">Тарифы</a><a href="legal.html#terms" target="_blank" rel="noopener">Оферта</a><a href="legal.html#privacy" target="_blank" rel="noopener">Конфиденциальность</a><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener">Поддержка @MVSR_P2P</a></nav>
-    <div class="ld-fsoc"><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener" aria-label="Поддержка в Telegram"><img src="img/tg.png" alt=""></a><a href="${IG_URL}" target="_blank" rel="noopener" aria-label="Instagram @movsar.io"><img src="img/ig.png" alt=""></a></div></div></div>`;
+    <div class="ld-fsoc"><a href="https://t.me/MVSR_P2P" target="_blank" rel="noopener" aria-label="Поддержка в Telegram"><img loading="lazy" decoding="async" src="img/tg.png" alt=""></a><a href="${IG_URL}" target="_blank" rel="noopener" aria-label="Instagram @movsar.io"><img loading="lazy" decoding="async" src="img/ig.png" alt=""></a></div></div></div>`;
   document.body.appendChild(el); document.documentElement.style.overflow = 'hidden';
   el.addEventListener('click', e => {
     const q = e.target.closest('.ld-q > button');
@@ -4988,6 +4995,43 @@ bootAccount();
 addEventListener('resize', () => movePill(true));
 document.fonts?.ready.then(() => movePill(true));
 if (newSaved) navBadge();
+/* ---------- Статистика функций для админки ----------
+   Считаем только «какой функцией воспользовались» — без сумм, курсов и сделок. Раз в минуту отправляем пачку
+   на сервер (25-usage.sql). Не вошёл в аккаунт или нет связи — счётчики просто копятся до следующего раза */
+const USAGE_KEY = 'p2pro.usage';
+function usageLoad() { try { const u = JSON.parse(localStorage.getItem(USAGE_KEY) || '{}'); return u && typeof u === 'object' && !Array.isArray(u) ? u : {}; } catch (e) { return {}; } }
+let usageQ = usageLoad(), usageBusy = false;
+function track(k) {
+  if (!/^[a-z][a-z0-9_]{1,30}$/.test(k)) return;
+  usageQ[k] = Math.min((usageQ[k] || 0) + 1, 500);
+  try { localStorage.setItem(USAGE_KEY, JSON.stringify(usageQ)); } catch (e) {}
+}
+async function usageFlush() {
+  if (usageBusy || !sb || !U || !Object.keys(usageQ).length) return;
+  usageBusy = true; const batch = usageQ; usageQ = {};
+  try { localStorage.setItem(USAGE_KEY, '{}'); const { error } = await sb.rpc('track_usage', { p: batch }); if (error) throw error; }
+  catch (e) { for (const [k, v] of Object.entries(batch)) usageQ[k] = Math.min((usageQ[k] || 0) + v, 500); try { localStorage.setItem(USAGE_KEY, JSON.stringify(usageQ)); } catch (_) {} }
+  usageBusy = false;
+}
+setInterval(usageFlush, 60e3);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') usageFlush(); });
+// Вешаем счётчик на готовые функции: сама функция работает как раньше
+(() => {
+  const wrap = (name, key) => { const f = window[name]; if (typeof f !== 'function') return;
+    window[name] = function (...a) { try { const k = typeof key === 'function' ? key(...a) : key; if (k) track(k); } catch (e) {} return f.apply(this, a); }; };
+  wrap('save', () => { const r = buildTrade(); return r && !r.err ? 'save_' + (r.t?.mode || 'deal') : ''; });
+  wrap('show', tab => tab && tab !== current ? 'tab_' + tab : '');
+  [['calDay', 'cal_day'], ['openTrade', 'trade_open'], ['openCp', 'cp_open'], ['blCheck', 'bl_check'], ['blReportSheet', 'bl_report'],
+   ['rateSheet', 'rate_sheet'], ['xrAlAdd', 'rate_alert'], ['showCard', 'share_card'], ['csvExport', 'excel'], ['giftSheet', 'gift'],
+   ['showGuide', 'guide'], ['showTour', 'tour'], ['repeat', 'repeat_trade'], ['trialStart', 'trial_start'], ['openPlans', 'plans_open']].forEach(([n, k]) => wrap(n, k));
+})();
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-tool], #incogBtn, [data-scur], [data-cur]'); if (!t) return;
+  if (t.dataset.tool) track('tool_' + t.dataset.tool);
+  else if (t.id === 'incogBtn') track('incognito');
+  else track('currency');
+}, true);
+
 </script>
 
 </body>
