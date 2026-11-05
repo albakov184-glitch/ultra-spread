@@ -2130,7 +2130,7 @@ async function chatDeal(userId: string, sum: number, buy: number, sell: number, 
     // Комиссия мейкера — один раз, с ордера на продажу (с отданного покупателю объёма USDT)
     const qGet = sum / buy, qGive = sum / sell, feeU = qGive * f, profitU = qGet - qGive - feeU;
     return { mode: 'tri', ex, bank: '—', cur, sum, buy, sell, feeEx, feeExType: 'pct', feeWd: 0, feeWdType: 'fixed', qty: qGet, soldQty: qGive, gross: sum, cost: sum,
-      commEx: feeU * buy, commWd: 0, comm: feeU * buy, net: sum, profit: profitU * buy, profitU, profitPct: profitU / qGive * 100, spreadPct: (sell - buy) / buy * 100 };
+      commEx: feeU * sell, commWd: 0, comm: feeU * sell, net: sum, profit: profitU * buy, profitU, profitPct: profitU / qGive * 100, spreadPct: (sell - buy) / buy * 100 };
   }
   const feeWd = st.work === 'inter' ? Math.max(0, +(preset.wd ?? 0) || 0) : 0;
   const qty = sum / buy, gross = qty * sell, cost = sum;

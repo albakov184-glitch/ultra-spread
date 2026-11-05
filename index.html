@@ -1669,7 +1669,8 @@ function compute(i) {
     const f = feeEx / 100, qGive = matched / sell;
     const feeU = qGive * f, profitU = qGet - qGive - feeU;
     return { qty: qGet, soldQty: qGive, left: sum - matched, matched, avgBuy, gross: matched, avgSell: sell, cost: matched,
-      commEx: feeU * avgBuy, commWd: 0, comm: feeU * avgBuy, net: matched, profit: profitU * avgBuy, profitU, feeU,
+      // Комиссию в деньгах показываем по курсу продажи: это ровно feeEx% от суммы ордера (как считает биржа). На прибыль не влияет
+      commEx: feeU * sell, commWd: 0, comm: feeU * sell, net: matched, profit: profitU * avgBuy, profitU, feeU,
       profitPct: profitU / qGive * 100, spreadPct: (sell - avgBuy) / avgBuy * 100, breakEven: avgBuy * (1 + f) };
   }
   if (buy <= 0 || sum <= 0) return null;
@@ -2087,7 +2088,7 @@ function openTrade(id) {
         <div><span class="k">Продал${t.mode === 'circle' ? ' (средн.)' : ''}</span><span class="v">${rate(t.sell.toFixed(4))} ${s}</span></div>
         <div><span class="k">Сумма</span><span class="v">${hid(nf2.format(t.sum))} ${s}</span></div>
         <div><span class="k">USDT</span><span class="v">${hid(nf2.format(t.qty))}</span></div>
-        <div><span class="k">${t.mode === 'tri' ? 'Комиссия мейкера' : 'Комиссия биржи'}</span><span class="v fee">${feeLbl(t.feeEx, t.feeExType)}${t.mode === 'tri' && +t.buy ? ` · ${hid(nf2.format(t.commEx / t.buy))} USDT ≈` : ' ·'} ${hid(nf2.format(t.commEx))} ${s}</span></div>
+        <div><span class="k">${t.mode === 'tri' ? 'Комиссия мейкера' : 'Комиссия биржи'}</span><span class="v fee">${feeLbl(t.feeEx, t.feeExType)}${t.mode === 'tri' && +t.sell ? ` · ${hid(nf2.format(t.commEx / t.sell))} USDT ≈` : ' ·'} ${hid(nf2.format(t.commEx))} ${s}</span></div>
         <div><span class="k">Комиссия вывода</span><span class="v fee">${feeLbl(t.feeWd, t.feeWdType, 1)} · ${hid(nf2.format(t.commWd))} ${s}</span></div>
         <div><span class="k">Спред</span><span class="v">${pct(t.spreadPct, false)}</span></div>
         <div><span class="k">Выручка</span><span class="v">${hid(nf2.format(t.gross))} ${s}</span></div>
