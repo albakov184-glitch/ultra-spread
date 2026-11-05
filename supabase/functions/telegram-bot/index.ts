@@ -2103,7 +2103,7 @@ function dealCardSvg(d: { sum: number; buy: number; sell: number; usdt: number; 
 // Биржа — как в последней сделке человека (или первая из его списка), комиссии — из его настроек в приложении.
 // Расчёт тот же, что в приложении: у сделки комиссия биржи от суммы продажи (вывод — только в режиме «между биржами»),
 // у треугольника мейкер платит комиссию с обоих ордеров, прибыль — оставшийся USDT
-type ChatDeal = { mode: 'deal' | 'tri'; ex: string; bank: string; cur: string; sum: number; buy: number; sell: number; feeEx: number; feeExType: string; feeWd: number; feeWdType: string;
+type ChatDeal = { feeOrders?: number; mode: 'deal' | 'tri'; ex: string; bank: string; cur: string; sum: number; buy: number; sell: number; feeEx: number; feeExType: string; feeWd: number; feeWdType: string;
   qty: number; soldQty: number; gross: number; cost: number; commEx: number; commWd: number; comm: number; net: number; profit: number; profitU: number | null; profitPct: number; spreadPct: number };
 const BANK_ALIAS: Record<string, string> = { 'тинькофф': 'т-банк', 'тинек': 'т-банк', 'тиньк': 'т-банк', 'тбанк': 'т-банк', 'т банк': 'т-банк', 'сбербанк': 'сбер', 'альфа': 'альфа-банк', 'альфабанк': 'альфа-банк', 'озон': 'ozon банк', 'ozon': 'ozon банк' };
 // Банк из запроса: если он есть в списке банков человека — пишем как у него, иначе как написал
@@ -2119,7 +2119,7 @@ async function chatDeal(userId: string, sum: number, buy: number, sell: number, 
   const [{ data: prof }, { data: last }] = await Promise.all([
     admin.from('profiles').select('settings').eq('id', userId).maybeSingle(),
     admin.from('trades').select('data').eq('user_id', userId).eq('deleted', false).order('ts', { ascending: false }).limit(1)]);
-  const st = (prof?.settings ?? {}) as { cur?: string; exchanges?: string[]; banks?: string[]; feePresets?: Record<string, { ex?: number; wd?: number }>; work?: string };
+  const st = (prof?.settings ?? {}) as { cur?: string; exchanges?: string[]; banks?: string[]; feePresets?: Record<string, { ex?: number; wd?: number }>; work?: string; triFee?: number };
   const lt = (last?.[0]?.data ?? {}) as { ex?: string };
   const ex = String(lt.ex || st.exchanges?.[0] || 'Bybit').slice(0, 30), cur = Object.hasOwn(CUR, String(st.cur)) ? String(st.cur) : 'RUB';
   const preset = st.feePresets?.[ex] ?? (ex === 'Bybit' ? { ex: 0.3, wd: 1 } : { ex: 0, wd: 1 });
@@ -2127,8 +2127,10 @@ async function chatDeal(userId: string, sum: number, buy: number, sell: number, 
   const bank = chatBank(typedBank, Array.isArray(st.banks) ? st.banks.map(String) : []);
   if (!bank) {
     // Треугольник: покупаем USDT у продавца по buy, продаём покупателю по sell на ту же сумму
-    const qGet = sum / buy, qGive = sum / sell, feeU = (qGet + qGive) * f, profitU = qGet - qGive - feeU;
-    return { mode: 'tri', ex, bank: '—', cur, sum, buy, sell, feeEx, feeExType: 'pct', feeWd: 0, feeWdType: 'fixed', qty: qGet, soldQty: qGive, gross: sum, cost: sum,
+    // Комиссия мейкера: с двух ордеров (оба объявления свои) или с одного — как выбрано в приложении
+    const ord = +(st.triFee ?? 2) === 1 ? 1 : 2;
+    const qGet = sum / buy, qGive = sum / sell, feeU = (ord === 2 ? qGet + qGive : qGet) * f, profitU = qGet - qGive - feeU;
+    return { feeOrders: ord, mode: 'tri', ex, bank: '—', cur, sum, buy, sell, feeEx, feeExType: 'pct', feeWd: 0, feeWdType: 'fixed', qty: qGet, soldQty: qGive, gross: sum, cost: sum,
       commEx: feeU * buy, commWd: 0, comm: feeU * buy, net: sum, profit: profitU * buy, profitU, profitPct: profitU / qGive * 100, spreadPct: (sell - buy) / buy * 100 };
   }
   const feeWd = st.work === 'inter' ? Math.max(0, +(preset.wd ?? 0) || 0) : 0;
@@ -2181,7 +2183,7 @@ async function saveChatDeal(cq: { id: string; data?: string; from: { id: number 
   const t = { id, ts: now, cur: d.cur, mode: d.mode ?? 'deal', ex: d.ex, bank: d.bank, note: 'Из чата', profitU: d.profitU ?? null, buy: d.buy, sum: d.sum, sell: d.sell,
     cp: '', cp2: '', sellers: null, cpNote: '', cp2Note: '', sales: null, feeEx: d.feeEx, feeExType: d.feeExType, feeWd: d.feeWd, feeWdType: d.feeWdType,
     qty: d.qty, soldQty: d.soldQty ?? d.qty, gross: d.gross, cost: d.cost, commEx: d.commEx, commWd: d.commWd, comm: d.comm, profit: d.profit, profitPct: d.profitPct,
-    spreadPct: d.spreadPct, fav: false, src: 'chat' };
+    spreadPct: d.spreadPct, fav: false, src: 'chat', ...(d.feeOrders ? { feeOrders: d.feeOrders } : {}) };
   const { error } = await admin.from('trades').upsert({ user_id: v.uid, id, ts: now, data: t, deleted: false }, { onConflict: 'user_id,id', ignoreDuplicates: true });
   if (error) { console.error('save chat deal', error); return ans('Не получилось сохранить — попробуйте ещё раз', true); }
   await stSet('sv:' + token, { ...v, saved: true });
@@ -2254,7 +2256,7 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
           `💰 Сумма: <b>${money2(sum)} ${cs}</b>`,
           `📥 ${tri ? 'Купил у продавца' : 'Курс покупки'}: <b>${money2(buy)} ${cs}</b>`,
           `📤 ${tri ? 'Продал покупателю' : 'Курс продажи'}: <b>${money2(sell)} ${cs}</b>`,
-          `💸 ${tri ? `Комиссия мейкера (${fee})` : `Комиссия ${esc(d.ex)} (${fee}${d.commWd ? ' + вывод' : ''})`}: <b>−${money2(d.comm)} ${cs}</b>`, '',
+          `💸 ${tri ? `Комиссия мейкера (${fee} × ${d.feeOrders === 1 ? 1 : 2} орд.)` : `Комиссия ${esc(d.ex)} (${fee}${d.commWd ? ' + вывод' : ''})`}: <b>−${money2(d.comm)} ${cs}</b>`, '',
           `${d.profit >= 0 ? '✅ <b>Чистая прибыль' : '🔻 <b>Убыток'}: ${sg}${money2(Math.abs(d.profit))} ${cs}</b>`,
           tri ? `Остаток: ${sg}${money2(Math.abs(d.profitU ?? 0))} USDT` : `Доходность: ${sg}${money2(Math.abs(d.profitPct))}%`].join('\n');
         const markup = token ? kb([[{ text: '💾 Сохранить в историю', callback_data: 'sv:' + token }], [{ text: '🚀 Открыть P2Pro', url: 'https://t.me/P2ProAppBot?start=inline' }]]) : open;
