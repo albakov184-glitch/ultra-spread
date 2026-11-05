@@ -175,7 +175,6 @@ button { cursor: pointer; border: 0; background: none; }
 .unit-toggle button { padding: 5px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .unit-toggle button.on { background: var(--accent); color: var(--accent-ink); }
 .quick { display: flex; gap: 6px; flex-wrap: wrap; }
-.quick button.on { background: var(--accent-soft); color: var(--accent); }
 .quick button { padding: 5px 10px; border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--muted); font-family: var(--f-mono); }
 
 details.fees { border-top: 1px solid var(--line); padding-top: 12px; }
@@ -1208,7 +1207,6 @@ img { max-width: 100%; }
           <div class="field"><span id="feeExLbl">Комиссия биржи</span>
             <div class="inp"><input id="feeEx" type="text" inputmode="decimal" step="0.01" placeholder="0">
               <div class="unit-toggle"><button data-ft="ex" data-v="pct">%</button><button data-ft="ex" data-v="fixed" class="cur-sym">₽</button></div></div>
-            <div class="quick" id="triFeeSeg" hidden><button data-trifee="2">С 2 ордеров — оба объявления мои</button><button data-trifee="1">С 1 ордера — моё одно</button></div>
           </div>
           <div class="field" id="wdField"><span>Комиссия вывода (перевод между биржами)</span>
             <div class="inp"><input id="feeWd" type="text" inputmode="decimal" step="0.01" placeholder="0">
@@ -1656,7 +1654,7 @@ function compute(i) {
   const feeEx = +i.feeEx || 0, feeWd = +i.feeWd || 0;
   // Треугольник: мейкер продаёт USDT по sell и покупает у одного или нескольких продавцов
   // на ту же сумму в рублях. Рубли идут от покупателя к продавцам напрямую,
-  // у мейкера остаётся разница в USDT. Комиссия мейкера feeEx% — с каждого ордера.
+  // у мейкера остаётся разница в USDT. Комиссия мейкера feeEx% — один раз, с ордера на продажу.
   // Прибыль считается по связанной части (сумма продавцов), остаток показывается отдельно.
   if (i.mode === 'tri') {
     const sell = +i.sell || 0;
@@ -1667,13 +1665,12 @@ function compute(i) {
     const matched = parts.reduce((a, x) => a + x.s, 0);
     if (matched <= 0) return null;
     const qGet = parts.reduce((a, x) => a + x.s / x.r, 0), avgBuy = matched / qGet;
-    // Комиссия мейкера — с тех ордеров, где объявление ваше: оба своих (2) или одно (1, считаем с купленного объёма)
-    const orders = +(i.feeOrders ?? i.triFee ?? 2) === 1 ? 1 : 2;
+    // Комиссия мейкера — только с одного ордера: с вашего объявления на продажу (с проданного объёма USDT)
     const f = feeEx / 100, qGive = matched / sell;
-    const feeU = (orders === 2 ? qGive + qGet : qGet) * f, profitU = qGet - qGive - feeU;
+    const feeU = qGive * f, profitU = qGet - qGive - feeU;
     return { qty: qGet, soldQty: qGive, left: sum - matched, matched, avgBuy, gross: matched, avgSell: sell, cost: matched,
       commEx: feeU * avgBuy, commWd: 0, comm: feeU * avgBuy, net: matched, profit: profitU * avgBuy, profitU, feeU,
-      profitPct: profitU / qGive * 100, spreadPct: (sell - avgBuy) / avgBuy * 100, breakEven: f < 1 ? (orders === 2 ? avgBuy * (1 + f) / (1 - f) : avgBuy / (1 - f)) : NaN, orders };
+      profitPct: profitU / qGive * 100, spreadPct: (sell - avgBuy) / avgBuy * 100, breakEven: avgBuy * (1 + f) };
   }
   if (buy <= 0 || sum <= 0) return null;
   const qty = sum / buy;
@@ -1710,7 +1707,7 @@ if (!Object.prototype.hasOwnProperty.call(SYM, S.settings.cur)) S.settings.cur =
 function draftInput() {
   const d = S.draft, st = S.settings;
   return { mode: d.mode, buy: d.buy, sell: d.sell, sum: d.sum, sales: d.sales, triParts: d.triParts, sellers: d.sellers,
-    feeEx: d.feeEx, feeWd: d.feeWd, feeExType: st.feeExType, feeWdType: st.feeWdType, triFee: d.triFee ?? st.triFee ?? 2 };
+    feeEx: d.feeEx, feeWd: d.feeWd, feeExType: st.feeExType, feeWdType: st.feeWdType };
 }
 
 /* ================= КАЛЬКУЛЯТОР ================= */
@@ -1730,9 +1727,7 @@ function renderCalcStatic() {
   $('buyLbl').textContent = tri ? 'Моя покупка по' : 'Купил по курсу';
   $('sellLbl').textContent = tri ? 'Моя продажа по' : 'Продал по курсу';
   $('sumLbl').textContent = tri ? 'Сумма сделки' : 'Сумма покупки';
-  $('feeExLbl').textContent = tri ? 'Комиссия мейкера, %' : 'Комиссия биржи';
-  const tf = +(d.triFee ?? st.triFee ?? 2) === 1 ? '1' : '2';
-  $('triFeeSeg').hidden = !tri; $('triFeeSeg').querySelectorAll('[data-trifee]').forEach(b => b.classList.toggle('on', b.dataset.trifee === tf));
+  $('feeExLbl').textContent = tri ? 'Комиссия мейкера, % (с ордера на продажу)' : 'Комиссия биржи';
   $('feeEx').nextElementSibling.hidden = tri;
   $('bankField').hidden = tri; $('wdField').hidden = tri; $('triWarn').hidden = !tri;
   // Треугольник частями: курс покупки у каждого продавца свой, общее поле курса прячем
@@ -1792,7 +1787,7 @@ function renderResult() {
   const r = compute(draftInput());
   const big = $('rProfit'), badge = $('rPct');
   const fe = +d.feeEx || 0, fw = +d.feeWd || 0;
-  $('feesSummary').textContent = d.mode === 'tri' ? `· мейкер ${fe}% × ${+(d.triFee ?? S.settings.triFee ?? 2) === 1 ? '1 ордер' : '2 ордера'}` : (fe || fw) ? `· биржа ${fe}${S.settings.feeExType === 'pct' ? '%' : ' ' + SYM[cur]}, вывод ${fw}${S.settings.feeWdType === 'pct' ? '%' : ' USDT'}` : '· без комиссий';
+  $('feesSummary').textContent = d.mode === 'tri' ? `· мейкер ${fe}% с продажи` : (fe || fw) ? `· биржа ${fe}${S.settings.feeExType === 'pct' ? '%' : ' ' + SYM[cur]}, вывод ${fw}${S.settings.feeWdType === 'pct' ? '%' : ' USDT'}` : '· без комиссий';
   const tri = d.mode === 'tri';
   $('rQty').previousElementSibling.textContent = tri ? 'Отдаю покупателю' : 'Объём USDT';
   $('rGross').previousElementSibling.textContent = tri ? (d.triParts ? 'Получаю от продавцов' : 'Получаю от продавца') : 'Сумма продажи';
@@ -1964,7 +1959,7 @@ function buildTrade() {
     cp: (d.cp || '').trim(), cp2: tri && !parts ? (d.cp2 || '').trim() : '', sellers,
     cpNote: (d.cpNote || '').trim(), cp2Note: tri && !parts ? (d.cp2Note || '').trim() : '',
     sales: d.mode === 'circle' ? d.sales.filter(x => +x.rate > 0 && +x.qty > 0).map(x => ({ rate: +x.rate, qty: +x.qty })) : null,
-    feeEx: +d.feeEx || 0, feeExType: tri ? 'pct' : st.feeExType, feeWd: tri ? 0 : +d.feeWd || 0, feeWdType: tri ? 'fixed' : st.feeWdType, ...(tri ? { feeOrders: r.orders } : {}),
+    feeEx: +d.feeEx || 0, feeExType: tri ? 'pct' : st.feeExType, feeWd: tri ? 0 : +d.feeWd || 0, feeWdType: tri ? 'fixed' : st.feeWdType,
     qty: r.qty, soldQty: r.soldQty, gross: r.gross, cost: r.cost, commEx: r.commEx, commWd: r.commWd, comm: r.comm,
     profit: r.profit, profitPct: r.profitPct, spreadPct: r.spreadPct, fav: false
   } };
@@ -2092,7 +2087,7 @@ function openTrade(id) {
         <div><span class="k">Продал${t.mode === 'circle' ? ' (средн.)' : ''}</span><span class="v">${rate(t.sell.toFixed(4))} ${s}</span></div>
         <div><span class="k">Сумма</span><span class="v">${hid(nf2.format(t.sum))} ${s}</span></div>
         <div><span class="k">USDT</span><span class="v">${hid(nf2.format(t.qty))}</span></div>
-        <div><span class="k">${t.mode === 'tri' ? 'Комиссия мейкера' : 'Комиссия биржи'}</span><span class="v fee">${feeLbl(t.feeEx, t.feeExType)}${t.mode === 'tri' && +t.feeEx ? ` × ${t.feeOrders === 1 ? 1 : 2} орд.` : ''} · ${hid(nf2.format(t.commEx))} ${s}</span></div>
+        <div><span class="k">${t.mode === 'tri' ? 'Комиссия мейкера' : 'Комиссия биржи'}</span><span class="v fee">${feeLbl(t.feeEx, t.feeExType)}${t.mode === 'tri' && +t.buy ? ` · ${hid(nf2.format(t.commEx / t.buy))} USDT ≈` : ' ·'} ${hid(nf2.format(t.commEx))} ${s}</span></div>
         <div><span class="k">Комиссия вывода</span><span class="v fee">${feeLbl(t.feeWd, t.feeWdType, 1)} · ${hid(nf2.format(t.commWd))} ${s}</span></div>
         <div><span class="k">Спред</span><span class="v">${pct(t.spreadPct, false)}</span></div>
         <div><span class="k">Выручка</span><span class="v">${hid(nf2.format(t.gross))} ${s}</span></div>
@@ -2586,7 +2581,7 @@ const INFO = {
   feetable: ['Комиссии бирж', '«P2P, %» — комиссия площадки за сделку. «Вывод, USDT» — сколько стоит вывести USDT (обычно сеть TRC20).\n\nКомиссия зависит от того, мейкер вы (ставите своё объявление) или тейкер (отвечаете на чужое), а биржи её меняют. Проверьте свои цифры в приложении биржи.']
 };
 // Пошаговые схемы-примеры: шаги появляются по очереди
-INFO.tri = ['Треугольник', 'Вы мейкер и ставите два объявления: на продажу USDT подороже и на покупку подешевле. Когда к вам зашли покупатель и продавец на одну сумму, вы даёте покупателю реквизиты продавца. Рубли идут между ними напрямую, а у вас остаётся разница в USDT.\n\nКомиссия мейкера берётся с ордеров, где объявление ваше: если оба объявления ваши — с двух ордеров, если ваше только одно — с одного. Выберите вариант в «Комиссиях». В примере ниже комиссии нет.'];
+INFO.tri = ['Треугольник', 'Вы мейкер и ставите два объявления: на продажу USDT подороже и на покупку подешевле. Когда к вам зашли покупатель и продавец на одну сумму, вы даёте покупателю реквизиты продавца. Рубли идут между ними напрямую, а у вас остаётся разница в USDT.\n\nКомиссия мейкера берётся один раз — с вашего ордера на продажу USDT. В примере ниже комиссии нет.'];
 const WORKS = [
   ['cards', 'Со своими картами', 'Покупаю и продаю USDT через свои банковские карты'],
   ['tri', 'Треугольник (мейкер)', 'Связываю покупателя и продавца, рубли идут между ними напрямую'],
@@ -3191,7 +3186,6 @@ document.addEventListener('click', e => {
   if (b.id === 'addSale') { d.sales.push({ rate: '', qty: '' }); persist(); return renderSales(); }
   if (ds.delSale !== undefined) { d.sales.splice(+ds.delSale, 1); if (!d.sales.length) d.sales.push({ rate: '', qty: '' }); persist(); renderSales(); return renderResult(); }
   if (b.id === 'saveBtn') return save();
-  if (ds.trifee) { d.triFee = +ds.trifee; S.settings.triFee = +ds.trifee; persist(); renderCalcStatic(); return renderResult(); }
   if (b.id === 'triParts') {
     d.triParts = !d.triParts;
     // Переносим текущий курс покупки в первого продавца, чтобы не вводить заново
@@ -3285,7 +3279,6 @@ document.addEventListener('click', e => {
   if (b.id === 'wipeBtn') return wipeSheet();
 });
 function repeat(t) {
-  if (t.mode === 'tri') S.draft.triFee = t.feeOrders === 1 ? 1 : 2;
   Object.assign(S.draft, { mode: t.mode || 'deal', ex: t.ex, bank: t.bank === '—' ? S.draft.bank : t.bank, buy: String(t.buy), sell: t.mode === 'circle' ? '' : String(t.sell), sum: String(t.sum), feeEx: String(+t.feeEx || 0), feeWd: String(+t.feeWd || 0), note: '',
     cp: '', cp2: '', cpNote: '', cp2Note: '', triParts: !!t.sellers,
     sellers: t.sellers ? t.sellers.map(x => ({ sum: String(x.sum), rate: String(x.rate), cp: '', note: '' })) : [{ sum: '', rate: '', cp: '', note: '' }, { sum: '', rate: '', cp: '', note: '' }],
@@ -3483,7 +3476,7 @@ const canon = o => JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Ar
 const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length.toString(36); };
 const fp = o => hash(canon(o) || '');
 // В облако идут только настройки расчёта. Тема, инкогнито и подписка — свои у каждого устройства или у сервера
-const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'goalCur', 'capital', 'capitalCur', 'bankCur', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded', 'triFee'];
+const CLOUD_SET = ['cur', 'feeExType', 'feeWdType', 'goal', 'goalCur', 'capital', 'capitalCur', 'bankCur', 'exchanges', 'banks', 'limits', 'feePresets', 'work', 'onboarded'];
 const cloudSettings = () => Object.fromEntries(CLOUD_SET.filter(k => S.settings[k] !== undefined).map(k => [k, S.settings[k]]));
 const cpKey = c => String(c.name || '').trim().toLowerCase();
 // Отпечатки старой версии считались без сортировки ключей. Пересчитываем те, что совпадают, — иначе все записи
