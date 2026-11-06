@@ -360,16 +360,17 @@ async function chMenu() {
 }
 
 /* ---------- Промокоды ---------- */
-type Promo = { code: string; days: number; pct?: number; max_uses: number | null; uses: number; expires_at: string | null; active: boolean };
+type Promo = { code: string; days: number; pct?: number; partner?: string | null; max_uses: number | null; uses: number; expires_at: string | null; active: boolean };
 // Что даёт код: дни PRO, скидку (26-promo-discount.sql) или и то и другое
-const promoWhat = (p: Promo) => [p.days ? `${p.days} дн. PRO` : '', p.pct ? `скидка ${p.pct}% на первую оплату` : ''].filter(Boolean).join(' + ');
+const promoWhat = (p: Promo) => [p.days ? `${p.days} дн. PRO` : '', p.pct ? `скидка ${p.pct}% на первую оплату` : ''].filter(Boolean).join(' + ') +
+  (p.partner ? ` · только для пришедших по ссылке партнёра ${p.partner}` : '');
 const promoLine = (p: Promo) => `${p.active ? '✅' : '⏸'} ${p.code} · ${[p.days ? p.days + ' дн' : '', p.pct ? '−' + p.pct + '%' : ''].filter(Boolean).join(' ')} · ${p.uses}${p.max_uses ? '/' + p.max_uses : ''}`;
 async function promoList() {
   const { data } = await admin.from('promo_codes').select('*').order('created_at', { ascending: false }).limit(20);
   const list = (data ?? []) as Promo[];
   const rows: Btn[][] = list.map((p) => [{ text: promoLine(p), callback_data: `pc:${p.code}` }]);
   rows.push([{ text: '‹ Меню', callback_data: 'm' }]);
-  return { text: `<b>🎟 Промокоды</b>${list.length ? '' : '\n\nПока нет ни одного.'}\n\nСоздать: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nНапример <code>/promo START30 30 100 14</code> — 30 дней PRO, 100 активаций, действует 14 дней. Лимит и срок можно не писать.\nСкидка вместо дней: <code>/promo PARTNER 15%</code> — минус 15% на первую оплату PRO. И то и другое: <code>/promo PARTNER 7+15%</code>.\n\nПользователь вводит код в приложении: Профиль → «Есть промокод?»`, markup: kb(rows) };
+  return { text: `<b>🎟 Промокоды</b>${list.length ? '' : '\n\nПока нет ни одного.'}\n\nСоздать: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nНапример <code>/promo START30 30 100 14</code> — 30 дней PRO, 100 активаций, действует 14 дней. Лимит и срок можно не писать.\nСкидка вместо дней: <code>/promo PARTNER 15%</code> — минус 15% на первую оплату PRO. И то и другое: <code>/promo PARTNER 7+15%</code>.\nТолько для тех, кто пришёл по ссылке партнёра: допишите <code>p:код_партнёра</code>, например <code>/promo CRYPSIDEX 15% p:crypsidex</code>.\n\nПользователь вводит код в приложении: Профиль → «Есть промокод?»`, markup: kb(rows) };
 }
 async function promoCard(code: string) {
   const { data: p } = await admin.from('promo_codes').select('*').eq('code', code).maybeSingle() as { data: Promo | null };
@@ -381,13 +382,20 @@ async function promoCard(code: string) {
 }
 async function promoCreate(args: string[]) {
   // ДНИ: «30» — дни PRO, «15%» — скидка на первую оплату (27-promo-once.sql), «7+15%» — и то и другое
+  // p:код — код только для тех, кто пришёл по ссылке этого партнёра (28-promo-partner.sql)
+  const pArg = args.find((x) => /^p:/i.test(x)), partner = pArg ? pArg.slice(2).toLowerCase() : null;
+  args = args.filter((x) => x !== pArg);
+  if (partner !== null) {
+    const { data: pr } = PCODE.test(partner) ? await admin.from('partners').select('code').eq('code', partner).maybeSingle() : { data: null };
+    if (!pr) return `Партнёра с кодом «${esc(partner)}» нет. Код партнёра — из его ссылки: …?start=p_<b>код</b>`;
+  }
   const [raw = '', d = '', lim = '', exp = ''] = args, code = raw.toUpperCase(), max = lim ? Number(lim) : null, ttl = exp ? Number(exp) : null;
   const dv = d.replace(/\s/g, ''), m = dv.match(/^(\d+)$/) ?? dv.match(/^()(\d+)%$/) ?? dv.match(/^(\d+)\+(\d+)%$/), days = Number(m?.[1] || 0), pct = Number(m?.[2] || 0);
   if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !m || days > 3650 || pct > 90 || (!days && !pct) || (max !== null && (!Number.isInteger(max) || max < 1)) || (ttl !== null && (!Number.isInteger(ttl) || ttl < 1)))
     return 'Напишите так: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nКОД — латиница и цифры, 3–32 знака. ДНИ — от 1 до 3650, или скидка: <code>15%</code> (до 90%), или <code>7+15%</code>. ЛИМИТ и СРОК (в днях) — по желанию.';
-  const { error } = await admin.from('promo_codes').insert({ code, days, ...(pct ? { pct } : {}), max_uses: max, expires_at: ttl ? new Date(Date.now() + ttl * DAY).toISOString() : null });
-  if (error) return error.code === '23505' ? `Код ${code} уже есть.` : /pct|days_check/.test(error.message) ? 'Скидочные промокоды заработают после запуска 26-promo-discount.sql в Supabase.' : 'Ошибка: ' + esc(error.message);
-  return `✅ Промокод <code>${code}</code> создан: ${promoWhat({ days, pct } as Promo)}${max ? `, ${max} активаций` : ''}${ttl ? `, действует до ${date(Date.now() + ttl * DAY)}` : ''}.`;
+  const { error } = await admin.from('promo_codes').insert({ code, days, ...(pct ? { pct } : {}), ...(partner ? { partner } : {}), max_uses: max, expires_at: ttl ? new Date(Date.now() + ttl * DAY).toISOString() : null });
+  if (error) return error.code === '23505' ? `Код ${code} уже есть.` : /partner/.test(error.message) ? 'Промокоды партнёров заработают после запуска 28-promo-partner.sql в Supabase.' : /pct|days_check/.test(error.message) ? 'Скидочные промокоды заработают после запуска 26-promo-discount.sql в Supabase.' : 'Ошибка: ' + esc(error.message);
+  return `✅ Промокод <code>${code}</code> создан: ${promoWhat({ days, pct, partner } as Promo)}${max ? `, ${max} активаций` : ''}${ttl ? `, действует до ${date(Date.now() + ttl * DAY)}` : ''}.`;
 }
 
 /* ---------- Оплата звёздами ---------- */
@@ -2657,7 +2665,7 @@ async function adminApi(body: Record<string, unknown>) {
     }
     if (act === 'promo_create') {
       const dd = [Number(body.days) > 0 ? String(Number(body.days)) : '', Number(body.pct) > 0 ? Number(body.pct) + '%' : ''].filter(Boolean).join('+');
-      const args = [String(body.code ?? ''), dd, body.max ? String(body.max) : '', body.ttl ? String(body.ttl) : ''];
+      const args = [String(body.code ?? ''), dd, body.max ? String(body.max) : '', body.ttl ? String(body.ttl) : '', ...(body.partner ? ['p:' + String(body.partner).trim()] : [])];
       const r = await promoCreate(args); if (!r.startsWith('✅')) throw new Error(r.replace(/<[^>]+>/g, ''));
       return aj({ ok: true });
     }
