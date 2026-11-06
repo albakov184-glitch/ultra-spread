@@ -2687,9 +2687,8 @@ let myStars = { ...STARS }, myRub = { ...RUB }, myOnce = false;   // myOnce — 
 async function loadMyStars() {
   if (!sb || !me()) return;
   try {
-    let { data, error } = await sb.from('custom_prices').select('m, y, rm, ry, once').maybeSingle();
-    if (error) ({ data, error } = await sb.from('custom_prices').select('m, y, rm, ry').maybeSingle());   // 27-promo-once.sql ещё не запущен
-    if (error) ({ data } = await sb.from('custom_prices').select('m, y').maybeSingle());   // 15-xrocket.sql ещё не запущен
+    const { data, error } = await sb.from('custom_prices').select('m, y, rm, ry, once').maybeSingle();
+    if (error) return;
     myOnce = !!data?.once;
     myStars = data ? { m: data.m, y: data.y } : { ...STARS };
     myRub = { m: data?.rm || RUB.m, y: data?.ry || RUB.y };

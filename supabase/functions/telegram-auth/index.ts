@@ -197,8 +197,7 @@ async function tooMany(uid: string) {
 }
 // Персональная цена человека. Скидка по промокоду (once, 27-promo-once.sql) — только на свою первую покупку, не на подарки
 async function myPrice(uid: string, cols: string, gift: boolean): Promise<Record<string, number> | null> {
-  let { data, error } = await admin.from('custom_prices').select(cols + ', once').eq('user_id', uid).maybeSingle();
-  if (error) ({ data, error } = await admin.from('custom_prices').select(cols).eq('user_id', uid).maybeSingle());   // 27-promo-once.sql ещё не запущен
+  const { data, error } = await admin.from('custom_prices').select(cols + ', once').eq('user_id', uid).maybeSingle();
   if (error || !data) return null;
   return gift && (data as { once?: boolean }).once ? null : data as Record<string, number>;
 }

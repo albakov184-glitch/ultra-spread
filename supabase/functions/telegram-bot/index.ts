@@ -394,7 +394,7 @@ async function promoCreate(args: string[]) {
   if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !m || days > 3650 || pct > 90 || (!days && !pct) || (max !== null && (!Number.isInteger(max) || max < 1)) || (ttl !== null && (!Number.isInteger(ttl) || ttl < 1)))
     return 'Напишите так: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nКОД — латиница и цифры, 3–32 знака. ДНИ — от 1 до 3650, или скидка: <code>15%</code> (до 90%), или <code>7+15%</code>. ЛИМИТ и СРОК (в днях) — по желанию.';
   const { error } = await admin.from('promo_codes').insert({ code, days, ...(pct ? { pct } : {}), ...(partner ? { partner } : {}), max_uses: max, expires_at: ttl ? new Date(Date.now() + ttl * DAY).toISOString() : null });
-  if (error) return error.code === '23505' ? `Код ${code} уже есть.` : /partner/.test(error.message) ? 'Промокоды партнёров заработают после запуска 28-promo-partner.sql в Supabase.' : /pct|days_check/.test(error.message) ? 'Скидочные промокоды заработают после запуска 26-promo-discount.sql в Supabase.' : 'Ошибка: ' + esc(error.message);
+  if (error) return error.code === '23505' ? `Код ${code} уже есть.` : 'Ошибка: ' + esc(error.message);
   return `✅ Промокод <code>${code}</code> создан: ${promoWhat({ days, pct, partner } as Promo)}${max ? `, ${max} активаций` : ''}${ttl ? `, действует до ${date(Date.now() + ttl * DAY)}` : ''}.`;
 }
 
