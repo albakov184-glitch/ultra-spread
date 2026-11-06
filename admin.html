@@ -307,6 +307,7 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
 @media (max-width:640px){.fnl-r{grid-template-columns:1fr auto}.fnl-b{grid-column:1/-1;order:3}}
 .srcs{display:flex;flex-direction:column;gap:10px}.src-r{border:1px solid var(--line,rgba(255,255,255,.07));border-radius:12px;padding:12px 14px}.src-n{font-weight:600;margin-bottom:8px}
 .src-s{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}.src-s span{font-size:12px;color:var(--muted);display:flex;flex-direction:column}.src-s b{font-size:16px;color:var(--fg,#E8ECF2)}
+.icon-x{border:0;background:transparent;font-size:15px;padding:6px;margin-left:6px;border-radius:8px;cursor:pointer;opacity:.6}.icon-x:hover{opacity:1;background:rgba(255,107,107,.12)}
 </style>
 </head>
 <body>
@@ -602,11 +603,20 @@ async function renderDash(force) {
     options: { responsive: true, maintainAspectRatio: false, animation: anim,
       plugins: { legend: { display: false }, tooltip: { ...tip, displayColors: false, callbacks: { label: c => ` ${c.raw} ${plural(c.raw, 'человек', 'человека', 'человек')}` } } }, scales: { x: axX, y: axY() } } });
 }
+// Удалить оплату из истории (например, тестовую покупку): пропадёт из выручки, графиков и статистики. PRO у человека не меняется
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-pdel]'); if (!b || !CUR) return;
+  e.stopPropagation();
+  if (!await confirmBox('Удалить оплату?', `Оплата пропадёт из выручки, графиков и статистики. PRO у ${esc(CUR.name)} не изменится. Отменить удаление нельзя.`, 'Удалить', true)) return;
+  b.disabled = true;
+  try { const r = await api('pay_delete', { id: CUR.id, ts: b.dataset.pdel, amount: +b.dataset.pamt }); drawUser(r.user); USERS = null; DASH = null; PAYS = null; GR = {}; toast('Оплата удалена из статистики'); if (page === 'pays') renderPays(); }
+  catch (err) { toast(err.message, true); b.disabled = false; }
+});
 function payRow(p) {
   const st = p.method === 'stars' ? `${nf0.format(Math.abs(p.amount))} ⭐` : p.kind === 'free' ? (p.days ? `${p.days} дн.` : '0 ₽') : rub(Math.abs(p.amount));
   const [ik, ic] = { sbp: ['bolt', '#F2B54B'], card: ['card', '#3CD38A'], crypto: ['gem', '#00C2FF'], stars: ['star', '#FFD84D'], gift: ['gift', '#A78BFA'], promo: ['ticket', '#FF8FB1'], trial: ['gift', '#5AA9FF'] }[p.method] || ['wallet', '#8691A2'];
   return `<div class="row" data-user="${esc(p.user)}" style="cursor:pointer"><div class="ava mi" style="--c:${ic}">${KI[ik]}</div><div class="grow"><div class="t1">${esc(p.nick ? '@' + p.nick : p.name)}</div><div class="t2">${METHOD[p.method] || esc(p.method || '—')}${p.period ? ' · ' + (p.period === 'y' ? 'год' : 'месяц') : ''} · ${dTime(p.ts)}${p.code ? ' · ' + esc(p.code) : ''}</div></div>
-    <b class="mono ${p.refund || p.amount < 0 ? 'neg' : p.kind === 'free' ? 'muted' : 'pos'}">${p.refund || p.amount < 0 ? '↩ −' : p.kind === 'free' ? '' : '+'}${st}</b></div>`;
+    <b class="mono ${p.refund || p.amount < 0 ? 'neg' : p.kind === 'free' ? 'muted' : 'pos'}">${p.refund || p.amount < 0 ? '↩ −' : p.kind === 'free' ? '' : '+'}${st}</b>${p.del ? `<button class="icon-x" data-pdel="${esc(p.ts)}" data-pamt="${+p.amount || 0}" title="Удалить из статистики" aria-label="Удалить оплату">🗑</button>` : ''}</div>`;
 }
 function fail(e) {
   if (e.code === 401 || e.code === 403) return notFound();
@@ -678,7 +688,7 @@ function drawUser(u) {
   CUR = u;
   const s = u.sub, pro = !!s?.pro, [c, t] = statusOf({ banned: u.banned, pro, method: s?.method });
   const prof = Object.entries(u.profit).map(([k, v]) => `<span class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '+' : ''}${nf2.format(v)} ${k === 'RUB' ? '₽' : '$'}</span>`).join(' · ') || '—';
-  const pays = (s?.payments || []).slice(0, 12);
+  const pays = (s?.payments || []).slice(0, 40);
   $('drawer').innerHTML = `
     <div class="dr-head">${u.avatar ? `<div class="ava"><img src="${esc(u.avatar)}" alt=""></div>` : `<div class="ava">${esc((u.name || '?')[0].toUpperCase())}</div>`}
       <div style="min-width:0"><h3>${esc(u.name)}</h3><div class="muted small">${u.nick ? `<a href="https://t.me/${esc(u.nick)}" target="_blank" rel="noopener">@${esc(u.nick)}</a>` : esc(u.email || 'без ника')}${u.tg ? ` · id ${u.tg}` : ''}</div>
@@ -702,7 +712,7 @@ function drawUser(u) {
       <div class="inl"><input class="inp n" id="pSm" type="number" placeholder="⭐ месяц"><input class="inp n" id="pSy" type="number" placeholder="⭐ год"><button class="btn" data-a="price_stars">Задать ⭐</button></div>
       <p class="hint">Год можно не писать — посчитается с той же скидкой. Если цена ниже обычной, человек получит сообщение.</p></div>
     <div class="sec"><h4>✉️ Написать в бот</h4><textarea class="inp" id="mText" placeholder="Текст сообщения. **Жирный** — двумя звёздочками"></textarea><div class="inl" style="justify-content:flex-end"><button class="btn pri" data-a="msg">Отправить</button></div></div>
-    <div class="sec"><h4>💳 Оплаты <span class="muted small">${(s?.payments || []).length}</span></h4><div class="list">${pays.length ? pays.map(p => payRow({ ...p, kind: p.method === 'stars' ? 'stars' : ['gift', 'promo', 'trial'].includes(p.method) ? 'free' : 'rub', user: '', name: METHOD[p.method] || p.method || '—', nick: null })).join('') : '<div class="empty">Оплат нет</div>'}</div></div>
+    <div class="sec"><h4>💳 Оплаты <span class="muted small">${(s?.payments || []).length}</span></h4><div class="list">${pays.length ? pays.map(p => payRow({ ...p, kind: p.method === 'stars' ? 'stars' : ['gift', 'promo', 'trial'].includes(p.method) ? 'free' : 'rub', user: '', name: METHOD[p.method] || p.method || '—', nick: null, del: true })).join('') : '<div class="empty">Оплат нет</div>'}</div></div>
     <div class="sec"><h4>🧾 Последние сделки</h4><div class="list">${u.trades.length ? u.trades.map(x => `<div class="row"><div class="grow"><div class="t1">${esc(x.ex || '—')}${x.bank && x.bank !== '—' ? ' · ' + esc(x.bank) : ''}</div><div class="t2">${dTime(x.ts)} · ${nf0.format(x.sum)} ${x.cur === 'RUB' ? '₽' : '$'}</div></div><b class="mono ${x.profit >= 0 ? 'pos' : 'neg'}">${x.profit >= 0 ? '+' : ''}${nf2.format(x.profit)}</b></div>`).join('') : '<div class="empty">Сделок нет</div>'}</div></div>
     ${u.trial ? `<div class="sec"><h4>🎁 Пробный период</h4><div class="muted small">${dLong(u.trial.started_at)} — ${dLong(u.trial.ends_at)}</div></div>` : ''}
     ${u.promos.length ? `<div class="sec"><h4>🎟 Промокоды</h4><div class="muted small">${u.promos.map(p => esc(p.code) + ' · ' + dShort(p.used_at)).join('<br>')}</div></div>` : ''}

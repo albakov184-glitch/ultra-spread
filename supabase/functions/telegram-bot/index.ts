@@ -2778,6 +2778,18 @@ async function adminApi(body: Record<string, unknown>) {
     if (act === 'ban') { const notified = await setBan(await needUser(), !!body.on); return aj({ ok: true, notified, user: await adminUser(id) }); }
     if (act === 'price') { const cur = body.cur === 'rub' ? 'rub' : 'stars'; const r = await setPrice(await needUser(), Number(body.m), body.y ? Number(body.y) : undefined, cur); return aj({ ok: true, ...r, user: await adminUser(id) }); }
     if (act === 'discount') { const d = Number(body.pct); if (!Number.isInteger(d) || d < 1 || d > 90) throw new Error('Скидка — от 1 до 90%'); const r = await setDiscount(await needUser(), d); return aj({ ok: true, ...r, user: await adminUser(id) }); }
+    // Убрать оплату из истории (тестовые покупки): исчезнет из выручки, графиков, воронки и доли партнёра. PRO не трогаем
+    if (act === 'pay_delete') {
+      await needUser();
+      const ts = String(body.ts ?? ''), amt = Number(body.amount);
+      const { data: sb, error: se } = await admin.from('subscriptions').select('payments').eq('user_id', id).maybeSingle();
+      if (se || !sb) throw new Error('Подписка не найдена');
+      const list = (sb.payments ?? []) as { ts: string; amount: number }[], i = list.findIndex((p) => p.ts === ts && +p.amount === amt);
+      if (i < 0) throw new Error('Оплата не найдена — обновите страницу');
+      const { error } = await admin.from('subscriptions').update({ payments: list.filter((_, j) => j !== i) }).eq('user_id', id);
+      if (error) throw error;
+      return aj({ ok: true, user: await adminUser(id) });
+    }
     if (act === 'price_reset') { await needUser(); const { error } = await admin.from('custom_prices').delete().eq('user_id', id); if (error) throw error; return aj({ ok: true, user: await adminUser(id) }); }
     if (act === 'msg') { const t = String(body.text ?? '').trim(); if (!t) throw new Error('Пустое сообщение'); const u = await needUser(); return aj({ ok: true, notified: await notify(u.id, fmtText(t), kb([[{ text: '💬 Поддержка', url: SUPPORT }]])) }); }
     if (act === 'promos') {
