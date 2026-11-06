@@ -2683,12 +2683,14 @@ const PAY_SOON = true;
 // Персональная цена в звёздах (задаёт владелец в админке бота). Подгружается при открытии окна оплаты
 // и в рублях (rm, ry — для оплаты на сайте; пусто — обычная цена)
 const RUB = { m: 490, y: 3990 };   // такие же — в функции telegram-auth
-let myStars = { ...STARS }, myRub = { ...RUB };
+let myStars = { ...STARS }, myRub = { ...RUB }, myOnce = false;   // myOnce — скидка по промокоду, только на свою первую покупку (не на подарки)
 async function loadMyStars() {
   if (!sb || !me()) return;
   try {
-    let { data, error } = await sb.from('custom_prices').select('m, y, rm, ry').maybeSingle();
+    let { data, error } = await sb.from('custom_prices').select('m, y, rm, ry, once').maybeSingle();
+    if (error) ({ data, error } = await sb.from('custom_prices').select('m, y, rm, ry').maybeSingle());   // 27-promo-once.sql ещё не запущен
     if (error) ({ data } = await sb.from('custom_prices').select('m, y').maybeSingle());   // 15-xrocket.sql ещё не запущен
+    myOnce = !!data?.once;
     myStars = data ? { m: data.m, y: data.y } : { ...STARS };
     myRub = { m: data?.rm || RUB.m, y: data?.ry || RUB.y };
   } catch (e) {}
@@ -2728,6 +2730,9 @@ function payRefresh() {
 let payGift = '';
 function giftSheet() {
   payGift = ''; payPeriod = 'm'; payMethod = 'sbp';
+  // Подарок — всегда по обычной цене, если скидка у человека только по промокоду
+  const giftPrices = () => { if (myOnce) { myStars = { ...STARS }; myRub = { ...RUB }; } };
+  giftPrices();
   const M = inTelegram() ? [['sbp', 'СБП'], ['card', 'Карта'], ['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['sbp', 'СБП'], ['card', 'Карта'], ['crypto', 'Крипта · USDT']];
   sheet(`<div class="pw-hero"><div class="pw-badge">🎁</div><h3>Подарить PRO</h3><span class="muted small">Друг получит PRO и сообщение от бота @P2ProAppBot</span></div>
     <label class="field"><span>Ник друга в Telegram</span><div class="inp text"><input id="gfNick" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="@username"></div></label>
@@ -2736,7 +2741,7 @@ function giftSheet() {
     <span class="label">Способ оплаты</span>
     <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
-  loadMyStars().then(payRefresh);
+  loadMyStars().then(() => { giftPrices(); payRefresh(); });
 }
 // Проверяем ник у сервера и показываем, кто получит подарок
 async function giftCheck() {
@@ -4514,7 +4519,7 @@ function showPromo() {
       subApply(r?.sub ?? r); persist(false); render(); renderProfile(); closeSheet();
       // Код со скидкой (26-promo-discount.sql): цена PRO уже пересчитана на сервере — подгружаем её для окна оплаты
       if (r?.pct > 0) loadMyStars();
-      toast(r?.pct > 0 && !r?.days ? `Промокод активирован: скидка ${r.pct}% на PRO навсегда` : r?.pct > 0 ? `Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)} и скидка ${r.pct}% навсегда` : `Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)}`);
+      toast(r?.pct > 0 && !r?.days ? `Промокод активирован: скидка ${r.pct}% на первую оплату PRO` : r?.pct > 0 ? `Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)} и скидка ${r.pct}% на первую оплату` : `Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)}`);
     } catch (e) {
       const m = String(e?.message || '');
       b.disabled = false; b.textContent = 'Активировать';

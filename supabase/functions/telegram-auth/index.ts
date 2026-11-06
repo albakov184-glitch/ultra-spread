@@ -195,6 +195,13 @@ async function tooMany(uid: string) {
     .or(`user_id.eq.${uid},gift_from.eq.${uid}`).gte('created_at', new Date(Date.now() - 10 * 60e3).toISOString());
   return (count ?? 0) >= 5;
 }
+// Персональная цена человека. Скидка по промокоду (once, 27-promo-once.sql) — только на свою первую покупку, не на подарки
+async function myPrice(uid: string, cols: string, gift: boolean): Promise<Record<string, number> | null> {
+  let { data, error } = await admin.from('custom_prices').select(cols + ', once').eq('user_id', uid).maybeSingle();
+  if (error) ({ data, error } = await admin.from('custom_prices').select(cols).eq('user_id', uid).maybeSingle());   // 27-promo-once.sql ещё не запущен
+  if (error || !data) return null;
+  return gift && (data as { once?: boolean }).once ? null : data as Record<string, number>;
+}
 type Gift = { id: string; name: string; nick: string };
 async function giftTarget(nick: unknown, buyer: string): Promise<Gift | { error: string }> {
   const n = String(nick ?? '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
@@ -225,10 +232,10 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string; gif
   if (ue || !ud?.user) return json({ error: 'auth' }, 401);
   if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
   if (await tooMany(ud.user.id)) return json({ error: 'too_many', detail: 'слишком много счетов подряд — подождите 10 минут' }, 429);
-  const { data: cp } = await admin.from('custom_prices').select('rm, ry').eq('user_id', ud.user.id).maybeSingle();
-  const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   let gift: Gift | null = null;
   if (body.gift) { const g = await giftTarget(body.gift, ud.user.id); if ('error' in g) return json(g, 404); gift = g; }
+  const cp = await myPrice(ud.user.id, 'rm, ry', !!gift);
+  const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
   const { error: ie } = await admin.from('crypto_invoices').insert({ id, user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
   if (ie) { console.error('crypto_invoices', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
@@ -312,10 +319,10 @@ async function plInvoice(body: { pl_invoice?: string; access_token?: string; gif
   if (ue || !ud?.user) return json({ error: 'auth' }, 401);
   if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
   if (await tooMany(ud.user.id)) return json({ error: 'too_many', detail: 'слишком много счетов подряд — подождите 10 минут' }, 429);
-  const { data: cp } = await admin.from('custom_prices').select('rm, ry').eq('user_id', ud.user.id).maybeSingle();
-  const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   let gift: Gift | null = null;
   if (body.gift) { const g = await giftTarget(body.gift, ud.user.id); if ('error' in g) return json(g, 404); gift = g; }
+  const cp = await myPrice(ud.user.id, 'rm, ry', !!gift);
+  const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
   const { error: ie } = await admin.from('crypto_invoices').insert({ id, provider: body.card ? 'platega_card' : 'platega', user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
   if (ie) { console.error('pl invoice db', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
@@ -403,10 +410,10 @@ Deno.serve(async (req) => {
     if (ue || !ud?.user) return json({ error: 'auth' }, 401);
     if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
     // Персональная цена (задаёт владелец в админке бота), иначе обычная
-    const { data: cp, error: ce } = await admin.from('custom_prices').select('m, y').eq('user_id', ud.user.id).maybeSingle();
-    const amount = !ce && cp ? cp[period] : STARS[period];
     let gift: Gift | null = null;   // подарок другу: PRO получит он, платит покупатель
     if (body.gift) { const g = await giftTarget(body.gift, ud.user.id); if ('error' in g) return json(g, 404); gift = g; }
+    const cp = await myPrice(ud.user.id, 'm, y', !!gift);
+    const amount = cp?.[period] || STARS[period];
     const r = await fetch(`https://api.telegram.org/bot${TOKEN}/createInvoiceLink`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title: (gift ? 'Подарок: ' : '') + (period === 'y' ? 'P2Pro PRO на год' : 'P2Pro PRO на месяц'),

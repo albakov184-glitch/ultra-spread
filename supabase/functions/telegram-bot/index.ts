@@ -362,14 +362,14 @@ async function chMenu() {
 /* ---------- Промокоды ---------- */
 type Promo = { code: string; days: number; pct?: number; max_uses: number | null; uses: number; expires_at: string | null; active: boolean };
 // Что даёт код: дни PRO, скидку (26-promo-discount.sql) или и то и другое
-const promoWhat = (p: Promo) => [p.days ? `${p.days} дн. PRO` : '', p.pct ? `скидка ${p.pct}% навсегда` : ''].filter(Boolean).join(' + ');
+const promoWhat = (p: Promo) => [p.days ? `${p.days} дн. PRO` : '', p.pct ? `скидка ${p.pct}% на первую оплату` : ''].filter(Boolean).join(' + ');
 const promoLine = (p: Promo) => `${p.active ? '✅' : '⏸'} ${p.code} · ${[p.days ? p.days + ' дн' : '', p.pct ? '−' + p.pct + '%' : ''].filter(Boolean).join(' ')} · ${p.uses}${p.max_uses ? '/' + p.max_uses : ''}`;
 async function promoList() {
   const { data } = await admin.from('promo_codes').select('*').order('created_at', { ascending: false }).limit(20);
   const list = (data ?? []) as Promo[];
   const rows: Btn[][] = list.map((p) => [{ text: promoLine(p), callback_data: `pc:${p.code}` }]);
   rows.push([{ text: '‹ Меню', callback_data: 'm' }]);
-  return { text: `<b>🎟 Промокоды</b>${list.length ? '' : '\n\nПока нет ни одного.'}\n\nСоздать: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nНапример <code>/promo START30 30 100 14</code> — 30 дней PRO, 100 активаций, действует 14 дней. Лимит и срок можно не писать.\nСкидка вместо дней: <code>/promo PARTNER 15%</code> — минус 15% на PRO навсегда. И то и другое: <code>/promo PARTNER 7+15%</code>.\n\nПользователь вводит код в приложении: Профиль → «Есть промокод?»`, markup: kb(rows) };
+  return { text: `<b>🎟 Промокоды</b>${list.length ? '' : '\n\nПока нет ни одного.'}\n\nСоздать: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nНапример <code>/promo START30 30 100 14</code> — 30 дней PRO, 100 активаций, действует 14 дней. Лимит и срок можно не писать.\nСкидка вместо дней: <code>/promo PARTNER 15%</code> — минус 15% на первую оплату PRO. И то и другое: <code>/promo PARTNER 7+15%</code>.\n\nПользователь вводит код в приложении: Профиль → «Есть промокод?»`, markup: kb(rows) };
 }
 async function promoCard(code: string) {
   const { data: p } = await admin.from('promo_codes').select('*').eq('code', code).maybeSingle() as { data: Promo | null };
@@ -399,7 +399,8 @@ async function preCheckout(q: { id: string; currency: string; total_amount: numb
     const u = p?.u ? await userById(String(p.u)) : null;
     const price = u ? await priceOf(u.id) : null;
     const g = p?.g ? await userById(String(p.g)) : null;   // подарок: кому
-    if (q.currency === 'XTR' && u && (p?.p === 'm' || p?.p === 'y') && price![p.p as 'm' | 'y'] === q.total_amount && (!p?.g || g)) { ok = !isBanned(u); if (!ok) why = 'Аккаунт заблокирован — напишите в поддержку'; }
+    // Подарок может быть по обычной цене: скидка по промокоду — только на свою покупку
+    if (q.currency === 'XTR' && u && (p?.p === 'm' || p?.p === 'y') && (price![p.p as 'm' | 'y'] === q.total_amount || (p?.g && STARS[p.p] === q.total_amount)) && (!p?.g || g)) { ok = !isBanned(u); if (!ok) why = 'Аккаунт заблокирован — напишите в поддержку'; }
   } catch (_) { /* битый payload */ }
   await tg('answerPreCheckoutQuery', ok ? { pre_checkout_query_id: q.id, ok: true } : { pre_checkout_query_id: q.id, ok: false, error_message: why });
 }
