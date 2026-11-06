@@ -1515,7 +1515,17 @@ async function adminDash() {
   const converted = (trials ?? []).filter((t: { user_id: string; started_at: string }) => (subBy.get(t.user_id)?.payments ?? [])
     .some((p) => payKind(p) !== 'free' && +p.amount > 0 && Date.parse(p.ts) > Date.parse(t.started_at))).length;
   const since = (n: number) => users.filter((u) => now - Date.parse(u.created_at) < n * DAY).length;
+  // Сегодня (МСК): новые люди, запуски бота, кто записывал сделки, пробные
+  const td = mskDay(now), t0 = Date.parse(td + 'T00:00:00+03:00');
+  const tTrades = trades.filter((t) => mskDay(Date.parse(t.ts)) === td);
+  const { count: tStarts, error: tse } = await admin.from('bot_starts').select('tg_id', { count: 'exact', head: true }).gte('at', new Date(t0).toISOString());
+  const { data: fu } = await admin.from('feature_usage').select('user_id').eq('day', td).limit(5000);
+  const todayBox = { signups: users.filter((u) => Date.parse(u.created_at) >= t0).length, starts: tse ? null : tStarts ?? 0,
+    active: new Set([...(fu ?? []).map((x: { user_id: string }) => x.user_id), ...tTrades.map((t) => t.user_id)]).size,
+    traders: new Set(tTrades.map((t) => t.user_id)).size, trades: tTrades.length,
+    trials: (await rowsAll<{ started_at: string }>('pro_trials', 'started_at', 'started_at', (q) => q.gte('started_at', new Date(t0).toISOString())).catch(() => [])).length };
   return {
+    today: todayBox,
     users: { total: users.length, tg: users.filter((u) => isTg(u.email)).length, banned: users.filter(isBanned).length, d1: since(1), d7: since(7), d30: since(30),
       seen7: users.filter((u) => u.last_sign_in_at && now - Date.parse(u.last_sign_in_at) < 7 * DAY).length },
     pro: { now: pro.length, byMethod, trialActive: pro.filter((s) => s.pay_method === 'trial').length },
@@ -1524,6 +1534,48 @@ async function adminDash() {
     money: { total, today, week, month },
     days, signups, rub, stars, active, recent: recent.slice(0, 12),
   };
+}
+
+// Воронка и источники для админки. Когорта — аккаунты, созданные за период (days = 0 — за всё время)
+async function adminGrowth(days: number) {
+  const now = Date.now(), from = days ? now - days * DAY : 0;
+  type St = { tg_id: number; src: string; at: string };
+  const [users, subs, trades, trials, tgs, refs, partners, starts] = await Promise.all([allUsers(), allSubs(), allTrades('user_id'),
+    rowsAll<{ user_id: string }>('pro_trials', 'user_id', 'user_id'), rowsAll<TgRow>('tg_users', 'tg_id, user_id', 'tg_id'),
+    rowsAll<{ tg_id: number; code: string }>('partner_refs', 'tg_id, code', 'tg_id'), rowsAll<{ code: string; name: string }>('partners', 'code, name', 'code'),
+    rowsAll<St>('bot_starts', 'tg_id, src, at', 'tg_id').catch(() => null)]);
+  const tgOf = new Map(tgs.map((t) => [t.user_id, Number(t.tg_id)])), refOf = new Map(refs.map((r) => [Number(r.tg_id), r.code]));
+  const pName = new Map(partners.map((p) => [p.code, p.name || p.code])), startOf = new Map((starts ?? []).map((x) => [Number(x.tg_id), x]));
+  const withTrade = new Set(trades.map((t) => t.user_id)), trialSet = new Set(trials.map((t) => t.user_id));
+  // Кто сколько заплатил сам (подарок засчитываем покупателю)
+  const paid = new Map<string, { rub: number; stars: number }>();
+  for (const sb of subs) for (const p of (sb.payments ?? []) as (Pay & { gift_from?: string; refund?: boolean })[]) {
+    const k = payKind(p); if (k === 'free' || p.refund || !(+p.amount > 0)) continue;
+    const who = p.gift_from || sb.user_id, o = paid.get(who) ?? { rub: 0, stars: 0 };
+    if (k === 'stars') o.stars += +p.amount; else o.rub += +p.amount; paid.set(who, o);
+  }
+  // Источник: партнёр (по его ссылке) → метка первого запуска бота → «без метки» (пришли до учёта или с сайта)
+  const SRC: Record<string, string> = { direct: 'Напрямую (без метки в ссылке)', channel: 'Канал @P2ProChannel', none: 'Неизвестно (до начала учёта или с сайта)' };
+  const srcOf = (tg?: number) => {
+    if (tg == null) return 'none';
+    const r = refOf.get(tg); if (r) return 'p_' + r;
+    return startOf.get(tg)?.src ?? 'none';
+  };
+  const label = (k: string) => k.startsWith('p_') ? '🤝 ' + (pName.get(k.slice(2)) ?? k.slice(2)) : SRC[k] ?? 'Ссылка с меткой «' + k + '»';
+  type Row = { key: string; label: string; starts: number; accounts: number; trade: number; trial: number; paid: number; rub: number; stars: number };
+  const S = new Map<string, Row>(), row = (k: string) => S.get(k) ?? S.set(k, { key: k, label: label(k), starts: 0, accounts: 0, trade: 0, trial: 0, paid: 0, rub: 0, stars: 0 }).get(k)!;
+  const f = { starts: null as number | null, accounts: 0, trade: 0, trial: 0, paid: 0, rub: 0, stars: 0 };
+  if (starts) { f.starts = 0; for (const x of starts) if (Date.parse(x.at) >= from) { f.starts++; row(refOf.get(Number(x.tg_id)) ? 'p_' + refOf.get(Number(x.tg_id)) : x.src).starts++; } }
+  for (const u of users) {
+    if (Date.parse(u.created_at) < from) continue;
+    const r = row(srcOf(tgOf.get(u.id))), pd = paid.get(u.id);
+    f.accounts++; r.accounts++;
+    if (withTrade.has(u.id)) { f.trade++; r.trade++; }
+    if (trialSet.has(u.id)) { f.trial++; r.trial++; }
+    if (pd) { f.paid++; r.paid++; f.rub += pd.rub; f.stars += pd.stars; r.rub += pd.rub; r.stars += pd.stars; }
+  }
+  const first = (starts ?? []).reduce((m, x) => Math.min(m, Date.parse(x.at)), Infinity);
+  return { funnel: f, sources: [...S.values()].sort((a, b) => b.accounts - a.accounts || b.starts - a.starts), trackedSince: Number.isFinite(first) ? new Date(first).toISOString() : null, startsOn: !!starts };
 }
 
 async function adminUsers() {
@@ -2708,6 +2760,7 @@ async function adminApi(body: Record<string, unknown>) {
       const bot = await botClicks().catch(() => null);   // кнопки бота (30-bot-clicks.sql)
       return aj({ bot, a7: a7.size, a30: a30.size, days, feats: [...F].map(([k, v]) => ({ k, u7: v.u7.size, u30: v.u30.size, c7: v.c7, c30: v.c30 })).sort((x, y) => y.u30 - x.u30 || y.c30 - x.c30) });
     }
+    if (act === 'growth') { const d = Number(body.days); return aj(await adminGrowth([7, 30, 90].includes(d) ? d : 0)); }
     if (act === 'users') return aj({ users: await adminUsers() });
     if (act === 'payments') {
       const [users, subs, nicks] = await Promise.all([allUsers(), allSubs(), nicksMap()]), byUser = new Map(users.map((u) => [u.id, u])), out = [];
@@ -2898,7 +2951,12 @@ Deno.serve(async (req) => {
       // Пришёл по ссылке партнёра — запоминаем, затем обычное приветствие
       const pm = text.trim().match(/^\/start p_([A-Za-z0-9_]{2,24})$/);
       if (pm && msg.from && SERVICE) await partnerJoin(msg.from, pm[1]).catch((e) => console.error('partner', e));
-      if (text.startsWith('/start')) await sendWelcome(msg.chat.id, msg.from?.id ?? 0, msg.from?.first_name ?? '');
+      if (text.startsWith('/start')) {
+        // Первый запуск бота и метка ссылки (31-bot-starts.sql) — для воронки и источников в админке
+        const src = (text.trim().split(/\s+/)[1] ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'direct';
+        if (msg.from?.id && msg.chat.type === 'private' && SERVICE) background(admin.from('bot_starts').upsert({ tg_id: msg.from.id, src }, { onConflict: 'tg_id', ignoreDuplicates: true }).then(() => {}, () => {}));
+        await sendWelcome(msg.chat.id, msg.from?.id ?? 0, msg.from?.first_name ?? '');
+      }
       else await send(msg.chat.id, HELP);
     } catch (_) { /* сеть Telegram недоступна — пропускаем */ }
   }

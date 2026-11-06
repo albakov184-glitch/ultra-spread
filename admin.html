@@ -301,6 +301,12 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .uf-l{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);margin-top:12px}.uf-l .inp{width:100%}.uf-l textarea.inp{min-height:76px;resize:vertical}
 .uf-pv{display:flex;flex-direction:column;gap:6px;max-width:420px}.uf-msg{background:#182533;border-radius:14px 14px 14px 4px;padding:12px 14px;font-size:14px;line-height:1.45;color:#E8ECF2;word-break:break-word}.uf-kb{background:rgba(40,56,72,.95);border-radius:10px;padding:10px;text-align:center;font-size:13px;font-weight:600;color:#E8ECF2}
+.today-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}.today-g div{background:var(--s2,rgba(255,255,255,.04));border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}.today-g b{font-size:22px;font-family:var(--mono,inherit)}.today-g span{font-size:12.5px;color:var(--muted)}
+.fnl{display:flex;flex-direction:column;gap:12px}.fnl-r{display:grid;grid-template-columns:minmax(150px,1.2fr) 2fr minmax(90px,auto);gap:12px;align-items:center}.fnl-n b{display:block;font-size:14px}.fnl-n span,.fnl-v span{font-size:12px;color:var(--muted)}
+.fnl-b{height:14px;border-radius:7px;background:var(--s3,rgba(255,255,255,.06));overflow:hidden}.fnl-b i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),#F7CC7A);border-radius:7px}.fnl-v{text-align:right}.fnl-v b{display:block;font-size:18px}
+@media (max-width:640px){.fnl-r{grid-template-columns:1fr auto}.fnl-b{grid-column:1/-1;order:3}}
+.srcs{display:flex;flex-direction:column;gap:10px}.src-r{border:1px solid var(--line,rgba(255,255,255,.07));border-radius:12px;padding:12px 14px}.src-n{font-weight:600;margin-bottom:8px}
+.src-s{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}.src-s span{font-size:12px;color:var(--muted);display:flex;flex-direction:column}.src-s b{font-size:16px;color:var(--fg,#E8ECF2)}
 </style>
 </head>
 <body>
@@ -444,6 +450,7 @@ document.addEventListener('click', async e => {
 
 /* ---------- Навигация ---------- */
 const IC = {
+  growth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg>',
   useful: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
   dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a6 6 0 0 0-4-5.6"/></svg>',
@@ -490,7 +497,7 @@ function countUps() {
     requestAnimationFrame(step);
   });
 }
-const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['useful', 'Полезное'], ['bc', 'Рассылка'], ['auto', 'Автоматика'], ['feat', 'Функции']];
+const PAGES = [['dash', 'Обзор'], ['growth', 'Воронка'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['useful', 'Полезное'], ['bc', 'Рассылка'], ['auto', 'Автоматика'], ['feat', 'Функции']];
 // На телефоне внизу только 4 главные вкладки, остальные — под кнопкой «Ещё»
 const MOB = ['dash', 'users', 'bl', 'pays'], SHORT = { users: 'Люди', bl: 'База' };
 $('nav').innerHTML = PAGES.map(([k, n]) => `<button class="nav-b" data-go="${k}">${IC[k]}${n}</button>`).join('');
@@ -512,7 +519,7 @@ function go(p, force) {
   $('moreB').classList.toggle('on', !MOB.includes(p)); $('moreM').hidden = true; $('moreM').classList.remove('on');
   moveInd();
   const v = $('view'); v.classList.remove('vin'); void v.offsetWidth; v.classList.add('vin');
-  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, useful: renderUseful, bc: renderBc, auto: renderAuto, feat: renderFeat })[p](force);
+  ({ dash: renderDash, growth: renderGrowth, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, useful: renderUseful, bc: renderBc, auto: renderAuto, feat: renderFeat })[p](force);
   scrollTo(0, 0);
 }
 const skel = () => `<div class="grid kpis">${'<div class="card"><div class="sk" style="height:14px;width:50%"></div><div class="sk" style="height:30px;width:70%;margin-top:16px"></div></div>'.repeat(4)}</div><div class="card" style="margin-top:16px"><div class="sk" style="height:240px"></div></div>`;
@@ -544,6 +551,13 @@ async function renderDash(force) {
   const pm = Object.entries(d.pro.byMethod).sort((a, b) => b[1] - a[1]);
   const oplat = n => `${n} ${plural(n, 'оплата', 'оплаты', 'оплат')}`;
   $('view').innerHTML = head('Обзор', 'Главные цифры P2Pro · обновлено ' + dTime(Date.now()), refBtn('dash')) +
+    (d.today ? `<div class="card today-c" style="margin-bottom:16px"><div class="card-t">☀️ Сегодня <span class="muted small">с 00:00 по Москве</span></div><div class="today-g">
+      <div><b>${nf0.format(d.today.signups)}</b><span>новых в приложении</span></div>
+      <div><b>${d.today.starts == null ? '—' : nf0.format(d.today.starts)}</b><span>впервые запустили бота</span></div>
+      <div><b>${nf0.format(d.today.active)}</b><span>активных людей</span></div>
+      <div><b>${nf0.format(d.today.trades)}</b><span>сделок от ${nf0.format(d.today.traders)} ${plural(d.today.traders, 'человека', 'человек', 'человек')}</span></div>
+      <div><b>${nf0.format(d.today.trials)}</b><span>взяли пробный</span></div>
+      <div><b>${nf0.format(m.today.rub)} ₽</b><span>${oplat(m.today.n)}${m.today.stars ? ' · ' + nf0.format(m.today.stars) + ' ⭐' : ''}</span></div></div></div>` : '') +
     `<div class="grid kpis">
       ${kpi(0, 'users', '#5AA9FF', 'Пользователи', cu(d.users.total), `+${d.users.d7} за неделю · +${d.users.d1} сегодня`)}
       ${kpi(1, 'star', '#F2B54B', 'PRO сейчас', cu(d.pro.now), `пробный: ${d.pro.trialActive} · подарки и промо: ${(d.pro.byMethod.gift || 0) + (d.pro.byMethod.promo || 0)}`)}
@@ -1273,6 +1287,34 @@ function drawUseful() {
   $('ufMe').onclick = () => busy($('ufMe'), async () => { read(); await api('useful_preview', { cfg: c }); toast('Отправил тебе в бот — так увидят пользователи'); });
 }
 const BOTF = { rate: ['💱 Курс USDT', 'карточка курса'], day: ['📊 Мой день', 'итоги дня'], month: ['📅 Мой месяц', 'итоги месяца'], pro: ['⭐ Мой PRO', 'статус подписки'], useful: ['📚 Полезное', 'рекомендуемые проекты'] };
+// Воронка (от запуска бота до оплаты) и источники: откуда приходят люди и кто из них платит
+let GR = {}, grDays = 30;
+async function renderGrowth(force) {
+  killCharts();
+  $('view').innerHTML = head('Воронка', 'Где люди отваливаются и откуда приходят') + skel();
+  try { if (force || !GR[grDays]) GR[grDays] = await api('growth', { days: grDays }); } catch (e) { return fail(e); }
+  if (page !== 'growth') return;
+  const d = GR[grDays], f = d.funnel, pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+  const steps = [
+    ['🤖', 'Запустили бота', f.starts, d.startsOn ? (d.trackedSince ? 'считаем с ' + dShort(d.trackedSince) : 'пока никого') : 'включится после 31-bot-starts.sql'],
+    ['📱', 'Открыли приложение', f.accounts, 'создали аккаунт'], ['📝', 'Записали сделку', f.trade, 'хотя бы одну'],
+    ['🎁', 'Взяли пробный PRO', f.trial, '7 дней бесплатно'], ['💰', 'Оплатили', f.paid, f.rub || f.stars ? `${nf0.format(f.rub)} ₽${f.stars ? ' · ' + nf0.format(f.stars) + ' ⭐' : ''}` : 'покупка PRO']];
+  const top = Math.max(1, ...steps.map(s => s[2] || 0));
+  const per = [['7', '7 дней'], ['30', '30 дней'], ['90', '90 дней'], ['0', 'Всё время']];
+  $('view').innerHTML = head('Воронка', 'Где люди отваливаются и откуда приходят', refBtn('growth')) +
+    `<div class="chips" style="margin-bottom:16px">${per.map(([k, n]) => `<button class="chip ${+k === grDays ? 'on' : ''}" data-gr="${k}">${n}</button>`).join('')}</div>
+    <div class="card"><div class="card-t">Воронка <span class="muted small">люди, создавшие аккаунт за период, — что сделали дальше</span></div>
+      <div class="fnl">${steps.map(([ic, n, v, sub], i) => `<div class="fnl-r"><div class="fnl-n"><b>${ic} ${n}</b><span>${esc(sub)}</span></div>
+        <div class="fnl-b"><i style="width:${v == null ? 0 : Math.max(2, v / top * 100).toFixed(1)}%"></i></div>
+        <div class="fnl-v"><b>${v == null ? '—' : nf0.format(v)}</b><span>${i > 1 ? pct(v, steps[i - 1][2]) + ' от прошлого шага' : i === 1 && f.starts ? pct(v, f.starts) + ' от запусков' : ''}</span></div></div>`).join('')}</div>
+      <p class="hint" style="margin-top:10px">Смотрите, где самый большой провал в процентах — это место и стоит улучшать первым.</p></div>
+    <div class="card" style="margin-top:16px"><div class="card-t">Источники <span class="muted small">откуда пришли люди за период</span></div>
+      ${d.sources.length ? `<div class="srcs">${d.sources.map(s => `<div class="src-r"><div class="src-n">${esc(s.label)}</div><div class="src-s">
+        <span><b>${nf0.format(s.starts)}</b>запусков</span><span><b>${nf0.format(s.accounts)}</b>аккаунтов</span><span><b>${nf0.format(s.trade)}</b>со сделкой</span>
+        <span><b>${nf0.format(s.trial)}</b>пробный</span><span><b>${nf0.format(s.paid)}</b>оплатили</span><span><b>${nf0.format(s.rub)} ₽</b>${s.stars ? nf0.format(s.stars) + ' ⭐' : 'выручка'}</span></div></div>`).join('')}</div>` : '<p class="hint">За этот период никто не пришёл.</p>'}
+      <p class="hint" style="margin-top:10px">Партнёров видно по их ссылкам. Остальных бот различает по метке в ссылке (после ?start=) с момента запуска 31-bot-starts.sql — например, кнопка в канале ведёт с меткой «channel».</p></div>`;
+  document.querySelectorAll('[data-gr]').forEach(b => b.onclick = () => { grDays = +b.dataset.gr; renderGrowth(); });
+}
 async function renderFeat(force) {
   killCharts();
   $('view').innerHTML = head('Функции', 'Чем пользуются в приложении') + skel();
