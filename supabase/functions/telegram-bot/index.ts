@@ -681,7 +681,11 @@ async function dailyToggle(cq: { id: string; data?: string; from: { id: number }
 // Раз в 10 минут: записываем курс (для графика в приложении) и проверяем уведомления «выше / ниже»
 async function rateTick(now: number) {
   const r = await usdtRate(); if (!r) return;
-  await admin.from('rate_history').insert({ usdt: r.rate }).then(() => {}, () => {});
+  // Курс в других валютах — для их собственного графика в приложении (29-rate-fx.sql)
+  const fxv = await Promise.all(FX_HIST.map((c) => fiatRate(c))), fx: Record<string, number> = {};
+  FX_HIST.forEach((c, i) => { if (fxv[i] > 0) fx[c] = fxv[i]; });
+  const { error: he } = await admin.from('rate_history').insert({ usdt: r.rate, fx });
+  if (he) await admin.from('rate_history').insert({ usdt: r.rate }).then(() => {}, () => {});   // 29-rate-fx.sql ещё не запущен
   await admin.from('rate_history').delete().lt('ts', new Date(now - 8 * DAY).toISOString()).then(() => {}, () => {});
   const { data: al } = await admin.from('rate_alerts').select('id, user_id, dir, price').is('fired_at', null);
   for (const a of (al ?? []) as { id: number; user_id: string; dir: string; price: number }[]) {
@@ -696,6 +700,7 @@ type RatePost = { on: boolean; times: number[]; done: Record<string, string> }; 
 const RP_DEF: RatePost = { on: false, times: [10, 20], done: {} };
 const RP_HOURS = [8, 9, 10, 12, 14, 16, 18, 20, 22];
 const RP_FIATS: [string, string, string][] = [['KZT', 'Тенге', '₸'], ['UAH', 'Гривна', '₴'], ['BYN', 'Бел. рубль', 'Br'], ['EUR', 'Евро', '€'], ['KGS', 'Сом', 'с'], ['UZS', 'Сум', 'сум']];
+const FX_HIST = ['KZT', 'UAH', 'BYN', 'EUR'];   // такие же валюты курса, как в приложении (XR_CURS без рубля)
 async function fiatRate(base: string) {
   try { const j = await fetch(`https://exchange.api.xrocket.exchange/api/v1/rates?base=${base}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()); return +j?.USDT?.rate || 0; }
   catch (_) { return 0; }

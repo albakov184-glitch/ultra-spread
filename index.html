@@ -3414,12 +3414,16 @@ async function xrChart(v = 'RUB') {
     return el.innerHTML = xrChartSvg(demo, '#3CD38A') + `<div class="lk"><span>Как менялся курс за последние 24 часа</span><button class="btn primary" data-open-plans="rate" style="padding:9px 14px;font-size:14px">Открыть в PRO</button></div>`;
   }
   let rows = [];
-  try { const { data } = await sb.from('rate_history').select('ts, usdt').gte('ts', new Date(Date.now() - 864e5).toISOString()).order('ts'); rows = data || []; } catch (e) {}
+  // Бот раз в 10 минут записывает курс в рублях (usdt) и в других валютах (fx, 29-rate-fx.sql) — у каждой валюты свой график
+  const since = new Date(Date.now() - 864e5).toISOString();
+  try {
+    let { data, error } = await sb.from('rate_history').select('ts, usdt, fx').gte('ts', since).order('ts');
+    if (error) ({ data } = await sb.from('rate_history').select('ts, usdt').gte('ts', since).order('ts'));
+    rows = (data || []).map(x => ({ ts: x.ts, v: v === 'RUB' ? +x.usdt : +(x.fx?.[v] || 0) })).filter(x => x.v > 0);
+  } catch (e) {}
   if (!$('xrCh')) return;
-  if (rows.length < 3) return el.innerHTML = '<span class="muted small">График собирается: бот записывает курс раз в 10 минут. Загляните через час</span>';
-  // Бот записывает курс к рублю. Для другой валюты пересчитываем по текущему соотношению курсов — форма графика та же
-  const k = v === 'RUB' || !xrRate || !rateOf(v) ? 1 : rateOf(v).rate / xrRate.rate;
-  const pts = rows.map(x => +x.usdt * k), up = pts[pts.length - 1] >= pts[0], col = up ? '#3CD38A' : '#FF6B6B';
+  if (rows.length < 3) return el.innerHTML = `<span class="muted small">График${v === 'RUB' ? '' : ' в этой валюте'} собирается: бот записывает курс раз в 10 минут. Загляните через час</span>`;
+  const pts = rows.map(x => x.v), up = pts[pts.length - 1] >= pts[0], col = up ? '#3CD38A' : '#FF6B6B';
   const t = x => new Date(x).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   el.innerHTML = xrChartSvg(pts, col) + `<div class="ax"><span>${t(rows[0].ts)}</span><span>мин ${nf2.format(Math.min(...pts))} · макс ${nf2.format(Math.max(...pts))}</span><span>${t(rows[rows.length - 1].ts)}</span></div>`;
 }
