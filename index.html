@@ -4497,7 +4497,7 @@ const PROMO_ERR = { promo_invalid: 'Такого промокода нет ил�
   promo_slow: 'Слишком много неверных попыток. Попробуйте через час' };
 function showPromo() {
   if (!me()) return toast('Войдите в аккаунт, чтобы активировать промокод');
-  sheet(`<h3>Промокод</h3><span class="muted">Введите код — дни PRO добавятся сразу.</span>
+  sheet(`<h3>Промокод</h3><span class="muted">Введите код — дни PRO или скидка добавятся сразу.</span>
     <div class="inp"><input id="promoIn" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="32" placeholder="Например, START30"></div>
     <div class="au-err" id="promoErr" role="alert"></div><button class="btn primary" id="promoGo">Активировать</button>`);
   $('promoIn').focus();
@@ -4512,7 +4512,9 @@ function showPromo() {
       const r = await cloudRpc('redeem_promo', { p_code: code });
       if (r?.error) throw new Error(r.error);
       subApply(r?.sub ?? r); persist(false); render(); renderProfile(); closeSheet();
-      toast(`Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)}`);
+      // Код со скидкой (26-promo-discount.sql): цена PRO уже пересчитана на сервере — подгружаем её для окна оплаты
+      if (r?.pct > 0) loadMyStars();
+      toast(r?.pct > 0 && !r?.days ? `Промокод активирован: скидка ${r.pct}% на PRO навсегда` : r?.pct > 0 ? `Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)} и скидка ${r.pct}% навсегда` : `Промокод активирован: PRO до ${fmtLong(S.settings.proUntil)}`);
     } catch (e) {
       const m = String(e?.message || '');
       b.disabled = false; b.textContent = 'Активировать';

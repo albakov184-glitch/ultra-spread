@@ -360,30 +360,34 @@ async function chMenu() {
 }
 
 /* ---------- Промокоды ---------- */
-type Promo = { code: string; days: number; max_uses: number | null; uses: number; expires_at: string | null; active: boolean };
-const promoLine = (p: Promo) => `${p.active ? '✅' : '⏸'} ${p.code} · ${p.days} дн · ${p.uses}${p.max_uses ? '/' + p.max_uses : ''}`;
+type Promo = { code: string; days: number; pct?: number; max_uses: number | null; uses: number; expires_at: string | null; active: boolean };
+// Что даёт код: дни PRO, скидку (26-promo-discount.sql) или и то и другое
+const promoWhat = (p: Promo) => [p.days ? `${p.days} дн. PRO` : '', p.pct ? `скидка ${p.pct}% навсегда` : ''].filter(Boolean).join(' + ');
+const promoLine = (p: Promo) => `${p.active ? '✅' : '⏸'} ${p.code} · ${[p.days ? p.days + ' дн' : '', p.pct ? '−' + p.pct + '%' : ''].filter(Boolean).join(' ')} · ${p.uses}${p.max_uses ? '/' + p.max_uses : ''}`;
 async function promoList() {
   const { data } = await admin.from('promo_codes').select('*').order('created_at', { ascending: false }).limit(20);
   const list = (data ?? []) as Promo[];
   const rows: Btn[][] = list.map((p) => [{ text: promoLine(p), callback_data: `pc:${p.code}` }]);
   rows.push([{ text: '‹ Меню', callback_data: 'm' }]);
-  return { text: `<b>🎟 Промокоды</b>${list.length ? '' : '\n\nПока нет ни одного.'}\n\nСоздать: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nНапример <code>/promo START30 30 100 14</code> — 30 дней PRO, 100 активаций, действует 14 дней. Лимит и срок можно не писать.\n\nПользователь вводит код в приложении: Профиль → «Есть промокод?»`, markup: kb(rows) };
+  return { text: `<b>🎟 Промокоды</b>${list.length ? '' : '\n\nПока нет ни одного.'}\n\nСоздать: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nНапример <code>/promo START30 30 100 14</code> — 30 дней PRO, 100 активаций, действует 14 дней. Лимит и срок можно не писать.\nСкидка вместо дней: <code>/promo PARTNER 15%</code> — минус 15% на PRO навсегда. И то и другое: <code>/promo PARTNER 7+15%</code>.\n\nПользователь вводит код в приложении: Профиль → «Есть промокод?»`, markup: kb(rows) };
 }
 async function promoCard(code: string) {
   const { data: p } = await admin.from('promo_codes').select('*').eq('code', code).maybeSingle() as { data: Promo | null };
   if (!p) return promoList();
-  return { text: `<b>🎟 ${p.code}</b>\n\n${p.days} дн. PRO\nАктиваций: ${p.uses}${p.max_uses ? ' из ' + p.max_uses : ' (без лимита)'}\n` +
+  return { text: `<b>🎟 ${p.code}</b>\n\n${promoWhat(p)}\nАктиваций: ${p.uses}${p.max_uses ? ' из ' + p.max_uses : ' (без лимита)'}\n` +
     `Действует: ${p.expires_at ? 'до ' + date(p.expires_at) : 'бессрочно'}\nСтатус: ${p.active ? '✅ активен' : '⏸ выключен'}`, markup: kb([
     [{ text: p.active ? '⏸ Выключить' : '▶️ Включить', callback_data: `pt:${p.code}` }, { text: '🗑 Удалить', callback_data: `pd:${p.code}` }],
     [{ text: '‹ Промокоды', callback_data: 'pl' }, { text: '‹ Меню', callback_data: 'm' }]]) };
 }
 async function promoCreate(args: string[]) {
-  const [raw = '', d = '', lim = '', exp = ''] = args, code = raw.toUpperCase(), days = Number(d), max = lim ? Number(lim) : null, ttl = exp ? Number(exp) : null;
-  if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !Number.isInteger(days) || days < 1 || days > 3650 || (max !== null && (!Number.isInteger(max) || max < 1)) || (ttl !== null && (!Number.isInteger(ttl) || ttl < 1)))
-    return 'Напишите так: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nКОД — латиница и цифры, 3–32 знака. ДНИ — от 1 до 3650. ЛИМИТ и СРОК (в днях) — по желанию.';
-  const { error } = await admin.from('promo_codes').insert({ code, days, max_uses: max, expires_at: ttl ? new Date(Date.now() + ttl * DAY).toISOString() : null });
-  if (error) return error.code === '23505' ? `Код ${code} уже есть.` : 'Ошибка: ' + esc(error.message);
-  return `✅ Промокод <code>${code}</code> создан: ${days} дн. PRO${max ? `, ${max} активаций` : ''}${ttl ? `, действует до ${date(Date.now() + ttl * DAY)}` : ''}.`;
+  // ДНИ: «30» — дни PRO, «15%» — скидка навсегда, «7+15%» — и то и другое
+  const [raw = '', d = '', lim = '', exp = ''] = args, code = raw.toUpperCase(), max = lim ? Number(lim) : null, ttl = exp ? Number(exp) : null;
+  const dv = d.replace(/\s/g, ''), m = dv.match(/^(\d+)$/) ?? dv.match(/^()(\d+)%$/) ?? dv.match(/^(\d+)\+(\d+)%$/), days = Number(m?.[1] || 0), pct = Number(m?.[2] || 0);
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !m || days > 3650 || pct > 90 || (!days && !pct) || (max !== null && (!Number.isInteger(max) || max < 1)) || (ttl !== null && (!Number.isInteger(ttl) || ttl < 1)))
+    return 'Напишите так: <code>/promo КОД ДНИ ЛИМИТ СРОК</code>\nКОД — латиница и цифры, 3–32 знака. ДНИ — от 1 до 3650, или скидка: <code>15%</code> (до 90%), или <code>7+15%</code>. ЛИМИТ и СРОК (в днях) — по желанию.';
+  const { error } = await admin.from('promo_codes').insert({ code, days, ...(pct ? { pct } : {}), max_uses: max, expires_at: ttl ? new Date(Date.now() + ttl * DAY).toISOString() : null });
+  if (error) return error.code === '23505' ? `Код ${code} уже есть.` : /pct|days_check/.test(error.message) ? 'Скидочные промокоды заработают после запуска 26-promo-discount.sql в Supabase.' : 'Ошибка: ' + esc(error.message);
+  return `✅ Промокод <code>${code}</code> создан: ${promoWhat({ days, pct } as Promo)}${max ? `, ${max} активаций` : ''}${ttl ? `, действует до ${date(Date.now() + ttl * DAY)}` : ''}.`;
 }
 
 /* ---------- Оплата звёздами ---------- */
@@ -1177,6 +1181,11 @@ const wbtn = (cfg: WCfg, key: string, rest: Omit<Btn, 'text'>): Btn => {
   const b = cfg.btn?.[key];
   return { text: b?.t || WB_DEF[key][0], ...rest, ...(b?.e ? { icon_custom_emoji_id: b.e } : {}) };
 };
+// Раздел «📚 Полезное»: проекты, которые мы рекомендуем. Проект без ссылки не показывается; пустой список — кнопки нет
+const USEFUL: { name: string; about: string; btn: string; url: string }[] = [
+  { name: '🎓 CRYPSIDEX', about: 'Обучение P2P и криптовалюте: разборы, схемы, закрытый клуб.', btn: '🎓 Перейти в CRYPSIDEX', url: '' },
+];
+const usefulList = () => USEFUL.filter((x) => /^https:\/\/t\.me\/\w/.test(x.url));
 async function startKb(tgId: number, cfg?: WCfg) {
   cfg ??= await stGet<WCfg>('welcome', {});
   let pro = wbtn(cfg, 'trial', { web_app: { url: APP + '?trial=1' } });
@@ -1185,7 +1194,8 @@ async function startKb(tgId: number, cfg?: WCfg) {
     if (!(await trialFree(uid, tgId))) pro = wbtn(cfg, 'pro', { callback_data: 'my:pro' });
   } catch (e) { console.error('start kb', e); }
   return kb([[wbtn(cfg, 'open', { web_app: { url: APP } })], [wbtn(cfg, 'rate', { callback_data: 'my:rate' }), wbtn(cfg, 'day', { callback_data: 'my:day' })],
-    [wbtn(cfg, 'month', { callback_data: 'my:month' }), pro], [wbtn(cfg, 'channel', { url: 'https://t.me/' + CHANNEL.slice(1) }), wbtn(cfg, 'support', { url: SUPPORT })]]);
+    [wbtn(cfg, 'month', { callback_data: 'my:month' }), pro], [wbtn(cfg, 'channel', { url: 'https://t.me/' + CHANNEL.slice(1) }), wbtn(cfg, 'support', { url: SUPPORT })],
+    ...(usefulList().length ? [[{ text: '📚 Полезное', callback_data: 'my:useful' }]] : [])]);
 }
 // Длина строки в единицах Telegram (UTF-16)
 const u16 = (x: string) => x.length;
@@ -1347,6 +1357,12 @@ async function myCallback(cq: { id: string; data?: string; from?: { id: number }
     const ok = await ratePost(chat, appBtn());
     if (!ok) await tg('sendMessage', { chat_id: chat, text: 'Не получилось получить курс с биржи — попробуйте через минуту.' });
     return;
+  }
+  if (a === 'useful') {
+    const list = usefulList();
+    return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', disable_web_page_preview: true,
+      text: '📚 <b>Полезное от P2Pro</b>\n\nПроекты, которые мы рекомендуем трейдерам:\n\n' + list.map((x) => `<b>${x.name}</b>\n${x.about}`).join('\n\n'),
+      reply_markup: kb(list.map((x) => [{ text: x.btn, url: x.url }])) });
   }
   const uid = await userOfTg(tgId);
   if (!uid) return tg('sendMessage', { chat_id: chat, text: 'Сначала откройте P2Pro через Telegram — кнопка ниже. Это бесплатно.', reply_markup: kb([[appBtn()]]) });
@@ -2639,7 +2655,8 @@ async function adminApi(body: Record<string, unknown>) {
       return aj({ promos: list ?? [], uses: (uses ?? []).map((x: { code: string; user_id: string; used_at: string }) => ({ ...x, nick: nicks.get(x.user_id)?.username ?? null })) });
     }
     if (act === 'promo_create') {
-      const args = [String(body.code ?? ''), String(body.days ?? ''), body.max ? String(body.max) : '', body.ttl ? String(body.ttl) : ''];
+      const dd = [Number(body.days) > 0 ? String(Number(body.days)) : '', Number(body.pct) > 0 ? Number(body.pct) + '%' : ''].filter(Boolean).join('+');
+      const args = [String(body.code ?? ''), dd, body.max ? String(body.max) : '', body.ttl ? String(body.ttl) : ''];
       const r = await promoCreate(args); if (!r.startsWith('✅')) throw new Error(r.replace(/<[^>]+>/g, ''));
       return aj({ ok: true });
     }
