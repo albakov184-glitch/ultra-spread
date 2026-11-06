@@ -1198,7 +1198,7 @@ const wbtn = (cfg: WCfg, key: string, rest: Omit<Btn, 'text'>): Btn => {
 // Раздел «📚 Полезное»: проекты, которые мы рекомендуем. Проект без ссылки не показывается; пустой список — кнопки нет
 const USEFUL_ON = false;   // кнопка пока выключена — включим по команде владельца
 const USEFUL: { name: string; about: string; btn: string; url: string }[] = [
-  { name: '🛟 Ving Helper', about: 'Помощь с блокировками, апелляциями и спорными ситуациями на криптобиржах: AML, документы мейкера и мерчанта, разблокировка Telegram Wallet, Rocket, EMCD.', btn: '🛟 Перейти в Ving Helper', url: 'https://t.me/ving_helper' },
+  { name: '🛟 Ving Helper', about: 'Решение апелляций, снятие AML, получение мерчанта/мейкера и помощь в остальных вопросах, связанных с P2P и биржами.', btn: '🛟 Перейти в Ving Helper', url: 'https://t.me/ving_helper' },
   { name: '🎓 CRYPSIDEX', about: 'Обучение P2P и криптовалюте: разборы, схемы, закрытый клуб.', btn: '🎓 Перейти в CRYPSIDEX', url: '' },
 ];
 const usefulList = () => !USEFUL_ON ? [] : USEFUL.filter((x) => /^https:\/\/t\.me\/\w/.test(x.url));
