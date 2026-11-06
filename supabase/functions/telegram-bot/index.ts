@@ -615,6 +615,21 @@ const dayButtons = (off: boolean, back = false) => kb([[{ text: '🚀 Откры
   [off ? { text: '🔔 Присылать итоги каждый день', callback_data: 'don' } : { text: '🔕 Не присылать итоги', callback_data: 'doff' }], ...(back ? [[BACK]] : [])]);
 // «‹ Назад» в меню /start: экран, открытый кнопкой меню, превращается обратно в приветствие
 const BACK: Btn = { text: '‹ Назад', callback_data: 'my:back' };
+const BOT_BTNS = ['rate', 'day', 'month', 'pro', 'useful'];   // кнопки меню /start, которые считаем в статистике
+// Статистика кнопок бота за последние n дней: люди и нажатия по каждой кнопке (+ всё время для одной кнопки)
+type BC = { day: string; action: string; tg_id: number; cnt: number };
+async function botClicks(only?: string) {
+  const since = mskDay(Date.now() - 29 * DAY), d7 = mskDay(Date.now() - 6 * DAY);
+  const rows = await rowsAll<BC>('bot_clicks', 'day, action, tg_id, cnt', 'day', (q) => only ? q.eq('action', only).order('tg_id') : q.gte('day', since).order('action').order('tg_id'));
+  const F = new Map<string, { u7: Set<number>; u30: Set<number>; all: Set<number>; c7: number; c30: number; call: number }>();
+  for (const r of rows) {
+    const f = F.get(r.action) ?? { u7: new Set(), u30: new Set(), all: new Set(), c7: 0, c30: 0, call: 0 }; F.set(r.action, f);
+    f.all.add(r.tg_id); f.call += r.cnt;
+    if (r.day >= since) { f.u30.add(r.tg_id); f.c30 += r.cnt; }
+    if (r.day >= d7) { f.u7.add(r.tg_id); f.c7 += r.cnt; }
+  }
+  return BOT_BTNS.map((k) => { const f = F.get(k); return { k, u7: f?.u7.size ?? 0, u30: f?.u30.size ?? 0, uall: f?.all.size ?? 0, c7: f?.c7 ?? 0, c30: f?.c30 ?? 0, call: f?.call ?? 0 }; });
+}
 
 // Итоги дня одному человеку. manual — по команде /itogi: присылаем, даже если итоги отключены, и отвечаем, когда сделок нет
 async function dailySend(userId: string, day: string, manual = false, back = false) {
@@ -1097,6 +1112,7 @@ async function tick() {
   // Старые запросы входа на сайт больше не нужны
   await admin.from('login_requests').delete().lt('created_at', new Date(now - DAY).toISOString()).then(() => {}, () => {});
   await admin.from('feature_usage').delete().lt('day', mskDay(now - 120 * DAY)).then(() => {}, () => {});   // статистику функций храним 4 месяца
+  await admin.from('bot_clicks').delete().lt('day', mskDay(now - 400 * DAY)).then(() => {}, () => {});   // кнопки бота — чуть больше года
 
   const hourMsk = new Date(now + 3 * 3600e3).getUTCHours();
   // 2. Раз в день после 12:00 МСК — напоминания «PRO закончится через 3 дня»
@@ -1411,6 +1427,8 @@ async function myCallback(cq: { id: string; data?: string; from?: { id: number; 
   const show = (text: string, rows: Btn[][] = []) => menuScreen(chat, mid, text, rows);
   // Картинка (итоги дня, курс) не может заменить текст — присылаем её, а меню убираем, чтобы не было двух экранов
   const drop = () => mid ? tg('deleteMessage', { chat_id: chat, message_id: mid }) : null;
+  // Статистика кнопок меню (30-bot-clicks.sql): сколько раз и сколько разных людей нажали
+  if (BOT_BTNS.includes(a) && tgId) background(admin.rpc('bot_click', { p_action: a, p_tg: tgId }).then(() => {}, () => {}));
   if (a === 'back') { await tg('answerCallbackQuery', { callback_query_id: cq.id }); return backToMenu(chat, mid, cq.message?.text !== undefined, tgId, cq.from?.first_name ?? ''); }
   // Карточку курса рисуем не чаще раза в 20 секунд на человека
   const busy = a === 'rate' && Date.now() - (rateAsked.get(tgId) ?? 0) < 20e3;
@@ -1423,9 +1441,6 @@ async function myCallback(cq: { id: string; data?: string; from?: { id: number; 
     await drop(); return;
   }
   if (a === 'useful') {
-    // Счётчик открытий раздела — для админки (по дням МСК, хранится 60 дней)
-    background(stGet<Record<string, number>>('useful_opens', {}).then((o) => { const d = mskDay(Date.now()); o[d] = (o[d] ?? 0) + 1;
-      for (const k of Object.keys(o)) if (k < mskDay(Date.now() - 60 * DAY)) delete o[k]; return stSet('useful_opens', o); }).catch(() => {}));
     const m = usefulMsg(await usefulCfg()); return show(m.text, m.rows);
   }
   const uid = await userOfTg(tgId);
@@ -2690,7 +2705,8 @@ async function adminApi(body: Record<string, unknown>) {
         (D.get(r.day) ?? D.set(r.day, new Set()).get(r.day)!).add(r.user_id);
       }
       const days = Array.from({ length: 30 }, (_, i) => mskDay(Date.now() - (29 - i) * DAY)).map((d) => ({ d, n: D.get(d)?.size ?? 0 }));
-      return aj({ a7: a7.size, a30: a30.size, days, feats: [...F].map(([k, v]) => ({ k, u7: v.u7.size, u30: v.u30.size, c7: v.c7, c30: v.c30 })).sort((x, y) => y.u30 - x.u30 || y.c30 - x.c30) });
+      const bot = await botClicks().catch(() => null);   // кнопки бота (30-bot-clicks.sql)
+      return aj({ bot, a7: a7.size, a30: a30.size, days, feats: [...F].map(([k, v]) => ({ k, u7: v.u7.size, u30: v.u30.size, c7: v.c7, c30: v.c30 })).sort((x, y) => y.u30 - x.u30 || y.c30 - x.c30) });
     }
     if (act === 'users') return aj({ users: await adminUsers() });
     if (act === 'payments') {
@@ -2762,9 +2778,8 @@ async function adminApi(body: Record<string, unknown>) {
     }
     // Раздел «📚 Полезное»: настройки, сохранение, превью себе в бот
     if (act === 'useful') {
-      const [cfg, opens] = await Promise.all([usefulCfg(), stGet<Record<string, number>>('useful_opens', {})]);
-      const since = (n: number) => Object.entries(opens).filter(([d]) => d >= mskDay(Date.now() - (n - 1) * DAY)).reduce((t, [, v]) => t + v, 0);
-      return aj({ cfg, opens: { d7: since(7), d30: since(30) }, shown: usefulShown(cfg).length });
+      const cfg = await usefulCfg(), st = await botClicks('useful').then((x) => x.find((y) => y.k === 'useful')).catch(() => null);
+      return aj({ cfg, stats: st, shown: usefulShown(cfg).length });
     }
     if (act === 'useful_save') { const cfg = usefulClean(body.cfg); await stSet('useful', cfg); return aj({ ok: true, cfg, shown: usefulShown(cfg).length }); }
     if (act === 'useful_preview') { const r = await usefulSend(ADMIN_ID, body.cfg ? usefulClean(body.cfg) : undefined); if (!r?.ok) throw new Error('Telegram не принял сообщение — проверьте ссылки'); return aj({ ok: true }); }

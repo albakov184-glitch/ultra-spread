@@ -1224,8 +1224,10 @@ function drawUseful() {
       <div class="inl" style="margin-top:10px;flex-wrap:wrap"><button class="btn small" data-uf-up="${i}" ${i ? '' : 'disabled'}>↑ Выше</button><button class="btn small" data-uf-dn="${i}" ${i < c.items.length - 1 ? '' : 'disabled'}>↓ Ниже</button><button class="btn danger small" data-uf-del="${i}">Удалить</button></div></div>`;
   $('view').innerHTML = head('Полезное', 'Раздел бота с рекомендуемыми проектами', refBtn('useful')) +
     `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:16px">
-      ${kpi(0, 'users', '#5AA9FF', 'Открыли за 7 дней', cu(UF.opens.d7), 'нажатий на кнопку')}${kpi(1, 'users', '#A78BFA', 'За 30 дней', cu(UF.opens.d30), 'нажатий на кнопку')}
-      ${kpi(2, 'link', '#F2B54B', 'Видно в боте', cu(UF.shown), UF.shown ? 'проектов в разделе' : 'раздел скрыт')}</div>
+      ${UF.stats ? kpi(0, 'users', '#5AA9FF', 'Людей за 7 дней', cu(UF.stats.u7), `открыли раздел · нажатий ${nf0.format(UF.stats.c7)}`) + kpi(1, 'users', '#A78BFA', 'Людей за 30 дней', cu(UF.stats.u30), `нажатий ${nf0.format(UF.stats.c30)}`) +
+        kpi(2, 'users', '#3CD38A', 'Людей всего', cu(UF.stats.uall), `нажатий всего ${nf0.format(UF.stats.call)}`)
+        : '<div class="card"><b>Статистика ещё не включена</b><p class="hint" style="margin-top:6px">Запустите в Supabase файл 30-bot-clicks.sql — бот начнёт считать людей и нажатия</p></div>'}
+      ${kpi(3, 'link', '#F2B54B', 'Видно в боте', cu(UF.shown), UF.shown ? 'проектов в разделе' : 'раздел скрыт')}</div>
     <div class="au-grid"><div class="card"><div class="card-t">⚙️ Раздел</div>
       <div class="au-row"><div><b>Показывать в боте</b><p class="hint">Кнопка появится под приветствием /start</p></div>${swB('ufAll', c.on)}</div>
       <label class="uf-l">Текст кнопки в /start<input class="inp" id="ufBtn" maxlength="40" value="${esc(c.btn)}"></label>
@@ -1270,6 +1272,7 @@ function drawUseful() {
   });
   $('ufMe').onclick = () => busy($('ufMe'), async () => { read(); await api('useful_preview', { cfg: c }); toast('Отправил тебе в бот — так увидят пользователи'); });
 }
+const BOTF = { rate: ['💱 Курс USDT', 'карточка курса'], day: ['📊 Мой день', 'итоги дня'], month: ['📅 Мой месяц', 'итоги месяца'], pro: ['⭐ Мой PRO', 'статус подписки'], useful: ['📚 Полезное', 'рекомендуемые проекты'] };
 async function renderFeat(force) {
   killCharts();
   $('view').innerHTML = head('Функции', 'Чем пользуются в приложении') + skel();
@@ -1286,7 +1289,11 @@ async function renderFeat(force) {
     <div class="card" style="margin-top:16px"><div class="card-t">Функции <span class="muted small">люди за 30 дней · за 7 дней · раз за 30 дней</span></div>
     <div class="ftab">${all.map(x => `<div class="frow${x.u30 ? '' : ' zero'}"><div class="fn"><b>${esc((FEAT[x.k] || [x.k])[0])}</b><span>${esc((FEAT[x.k] || ['', 'другое'])[1])}</span></div>
       <div class="fb"><i style="width:${(x.u30 / mx * 100).toFixed(1)}%"></i></div><div class="fv"><b>${nf0.format(x.u30)}</b><span>${nf0.format(x.u7)} · ${nf0.format(x.c30)}×</span></div></div>`).join('')}</div>
-    <p class="hint" style="margin-top:12px">Серые строки — функцией никто не пользовался за 30 дней. Кандидаты на улучшение или удаление.</p></div>`;
+    <p class="hint" style="margin-top:12px">Серые строки — функцией никто не пользовался за 30 дней. Кандидаты на улучшение или удаление.</p></div>
+    <div class="card" style="margin-top:16px"><div class="card-t">Кнопки бота <span class="muted small">люди за 30 дней · за 7 дней · нажатий за 30 дней</span></div>
+    ${d.bot ? (() => { const bm = Math.max(1, ...d.bot.map(x => x.u30)); return `<div class="ftab">${d.bot.map(x => `<div class="frow${x.u30 ? '' : ' zero'}"><div class="fn"><b>${esc((BOTF[x.k] || [x.k])[0])}</b><span>${esc((BOTF[x.k] || ['', ''])[1])} · всего людей ${nf0.format(x.uall)}</span></div>
+      <div class="fb"><i style="width:${(x.u30 / bm * 100).toFixed(1)}%"></i></div><div class="fv"><b>${nf0.format(x.u30)}</b><span>${nf0.format(x.u7)} · ${nf0.format(x.c30)}×</span></div></div>`).join('')}</div>`; })()
+      : '<p class="hint">Статистика кнопок бота включится после запуска в Supabase файла 30-bot-clicks.sql.</p>'}</div>`;
   countUps();
   chart('chFeat', { type: 'bar', data: { labels: d.days.map(x => { const [, m, dd] = x.d.split('-'); return `${+dd}.${m}`; }), datasets: [{ data: d.days.map(x => x.n), backgroundColor: '#5AA9FF', borderRadius: 4, maxBarThickness: 16 }] },
     options: { responsive: true, maintainAspectRatio: false, animation: anim, plugins: { legend: { display: false }, tooltip: { ...tip, callbacks: { label: c => ` ${c.raw} ${plural(c.raw, 'человек', 'человека', 'человек')}` } } }, scales: { x: axX, y: axY() } } });
