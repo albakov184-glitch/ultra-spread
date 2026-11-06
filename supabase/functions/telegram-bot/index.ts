@@ -380,7 +380,7 @@ async function promoCard(code: string) {
     [{ text: '‹ Промокоды', callback_data: 'pl' }, { text: '‹ Меню', callback_data: 'm' }]]) };
 }
 async function promoCreate(args: string[]) {
-  // ДНИ: «30» — дни PRO, «15%» — скидка навсегда, «7+15%» — и то и другое
+  // ДНИ: «30» — дни PRO, «15%» — скидка на первую оплату (27-promo-once.sql), «7+15%» — и то и другое
   const [raw = '', d = '', lim = '', exp = ''] = args, code = raw.toUpperCase(), max = lim ? Number(lim) : null, ttl = exp ? Number(exp) : null;
   const dv = d.replace(/\s/g, ''), m = dv.match(/^(\d+)$/) ?? dv.match(/^()(\d+)%$/) ?? dv.match(/^(\d+)\+(\d+)%$/), days = Number(m?.[1] || 0), pct = Number(m?.[2] || 0);
   if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !m || days > 3650 || pct > 90 || (!days && !pct) || (max !== null && (!Number.isInteger(max) || max < 1)) || (ttl !== null && (!Number.isInteger(ttl) || ttl < 1)))
