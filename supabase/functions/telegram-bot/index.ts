@@ -611,17 +611,19 @@ function dayCardSvg(d: { kicker?: string; bestLabel?: string; pairLabel?: string
   <g transform="translate(${W / 2} ${H / 2}) rotate(-26)">${wm}</g></svg>`;
 }
 
-const dayButtons = (off: boolean) => kb([[{ text: '🚀 Открыть P2Pro', web_app: { url: APP } }],
-  [off ? { text: '🔔 Присылать итоги каждый день', callback_data: 'don' } : { text: '🔕 Не присылать итоги', callback_data: 'doff' }]]);
+const dayButtons = (off: boolean, back = false) => kb([[{ text: '🚀 Открыть P2Pro', web_app: { url: APP } }],
+  [off ? { text: '🔔 Присылать итоги каждый день', callback_data: 'don' } : { text: '🔕 Не присылать итоги', callback_data: 'doff' }], ...(back ? [[BACK]] : [])]);
+// «‹ Назад» в меню /start: экран, открытый кнопкой меню, превращается обратно в приветствие
+const BACK: Btn = { text: '‹ Назад', callback_data: 'my:back' };
 
 // Итоги дня одному человеку. manual — по команде /itogi: присылаем, даже если итоги отключены, и отвечаем, когда сделок нет
-async function dailySend(userId: string, day: string, manual = false) {
+async function dailySend(userId: string, day: string, manual = false, back = false) {
   const { data: t } = await admin.from('tg_users').select('tg_id, daily_off').eq('user_id', userId).maybeSingle();
   if (!t?.tg_id || (t.daily_off && !manual)) return;
   const d = await daySummary(userId, day);
   const dateLong = new Date(Date.parse(day + 'T12:00:00+03:00')).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
   if (!d) {
-    if (manual) await tg('sendMessage', { chat_id: t.tg_id, text: `📊 Сегодня (${dateLong}) сделок пока нет.\n\nЗапишите сделку в P2Pro — итоги дня придут в 23:59.`, reply_markup: dayButtons(!!t.daily_off) });
+    if (manual) await tg('sendMessage', { chat_id: t.tg_id, text: `📊 Сегодня (${dateLong}) сделок пока нет.\n\nЗапишите сделку в P2Pro — итоги дня придут в 23:59.`, reply_markup: dayButtons(!!t.daily_off, back) });
     return;
   }
   const pro = isPro(await subOf(userId)), avg = d.profit / d.n, xr = d.rateOff ? null : await usdtRate();
@@ -648,12 +650,12 @@ async function dailySend(userId: string, day: string, manual = false) {
   if (png) {
     const fd = new FormData();
     fd.append('chat_id', String(t.tg_id)); fd.append('caption', text); fd.append('parse_mode', 'HTML');
-    fd.append('reply_markup', JSON.stringify(dayButtons(!!t.daily_off)));
+    fd.append('reply_markup', JSON.stringify(dayButtons(!!t.daily_off, back)));
     fd.append('photo', new Blob([png], { type: 'image/png' }), `P2Pro-${day}.png`);
     const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
     if (r?.ok) return;
   }
-  await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: dayButtons(!!t.daily_off) });   // картинка не вышла — хотя бы текст
+  await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: dayButtons(!!t.daily_off, back) });   // картинка не вышла — хотя бы текст
 }
 
 async function dailyFanout() {
@@ -673,7 +675,7 @@ async function dailyFanout() {
 async function dailyToggle(cq: { id: string; data?: string; from: { id: number }; message?: { chat: { id: number }; message_id: number } }) {
   const off = cq.data === 'doff';
   await admin.from('tg_users').update({ daily_off: off }).eq('tg_id', cq.from.id);
-  if (cq.message) await tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: dayButtons(off) });
+  if (cq.message) await tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: dayButtons(off, JSON.stringify((cq.message as { reply_markup?: unknown }).reply_markup ?? '').includes('my:back')) });
   await tg('answerCallbackQuery', { callback_query_id: cq.id, text: off ? 'Итоги дня больше не придут. Получить вручную: /itogi' : 'Итоги будут приходить каждый день в 23:59' });
 }
 
@@ -740,7 +742,7 @@ function rateCardSvg(d: { when: string; rate: string; ch: number; hist: number[]
   <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
 // Карточка курса: в канал (chat = CHANNEL) или владельцу для предпросмотра. Рисуется в отдельном запуске функции
-async function ratePost(chat: number | string, btn?: Btn) {
+async function ratePost(chat: number | string, btn?: Btn, back = false) {
   const main = await usdtRate(); if (!main) return false;
   const vals = await Promise.all(RP_FIATS.map(([c]) => fiatRate(c)));
   const { data: hist } = await admin.from('rate_history').select('usdt').gte('ts', new Date(Date.now() - DAY).toISOString()).order('ts');
@@ -750,7 +752,7 @@ async function ratePost(chat: number | string, btn?: Btn) {
   const caption = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${main.ch >= 0 ? '+' : '−'}${rub2(Math.abs(main.ch))}% за сутки)\n` +
     RP_FIATS.map(([, name], i) => vals[i] ? `${name}: ${fiats[i].v}` : '').filter(Boolean).join(' · ') +
     `\n\nБиржа xRocket. Считайте P2P-сделки в P2Pro — бесплатно.`;
-  const markup = kb([[btn ?? { text: '🚀 Открыть P2Pro', url: BOT_LINK }]]);
+  const markup = kb([[btn ?? { text: '🚀 Открыть P2Pro', url: BOT_LINK }], ...(back ? [[BACK]] : [])]);
   try {
     const r = await renderer();
     const svg = rateCardSvg({ when, rate: `${rub2(main.rate)} ₽`, ch: main.ch, hist: ((hist ?? []) as { usdt: number }[]).map((h) => +h.usdt), fiats });
@@ -1216,13 +1218,15 @@ function usefulClean(raw: unknown): UCfg {
   }
   return { on: r.on !== false, btn: str(r.btn, 40) || USEFUL_DEF.btn, title: str(r.title, 100) || USEFUL_DEF.title, intro: str(r.intro, 500), items };
 }
-async function usefulSend(chat: number | string, c?: UCfg) {
-  c ??= await usefulCfg();
+function usefulMsg(c: UCfg) {
   const list = c.items.filter((x) => x.on && x.name.trim() && urlOk(x.url));
-  if (!list.length) return tg('sendMessage', { chat_id: chat, text: 'Раздел пока пуст.' });
-  return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', disable_web_page_preview: true,
-    text: `<b>${esc(c.title)}</b>${c.intro ? '\n\n' + esc(c.intro) : ''}\n\n` + list.map((x) => `<b>${esc(x.name)}</b>${x.about ? '\n' + esc(x.about) : ''}`).join('\n\n'),
-    reply_markup: kb(list.map((x) => [{ text: x.btn, url: x.url }])) });
+  if (!list.length) return { text: 'Раздел пока пуст.', rows: [] as Btn[][] };
+  return { text: `<b>${esc(c.title)}</b>${c.intro ? '\n\n' + esc(c.intro) : ''}\n\n` + list.map((x) => `<b>${esc(x.name)}</b>${x.about ? '\n' + esc(x.about) : ''}`).join('\n\n'),
+    rows: list.map((x) => [{ text: x.btn, url: x.url }]) as Btn[][] };
+}
+async function usefulSend(chat: number | string, c?: UCfg) {
+  const m = usefulMsg(c ?? await usefulCfg());
+  return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', disable_web_page_preview: true, text: m.text, reply_markup: kb(m.rows) });
 }
 async function startKb(tgId: number, cfg?: WCfg) {
   cfg ??= await stGet<WCfg>('welcome', {});
@@ -1239,33 +1243,49 @@ async function startKb(tgId: number, cfg?: WCfg) {
 // Длина строки в единицах Telegram (UTF-16)
 const u16 = (x: string) => x.length;
 // Отправить приветствие. Если Telegram не принял премиум-эмодзи (в тексте или кнопках) — повторяем без них, а потом стандартное
-async function sendWelcome(chat: number, tgId: number, rawName: string): Promise<{ ok: boolean; plain?: boolean }> {
+// Варианты приветствия по убыванию красоты: с премиум-эмодзи → без иконок на кнопках → без премиум-эмодзи → стандартное
+async function welcomeTries(tgId: number, rawName: string): Promise<Record<string, unknown>[]> {
   const cfg = await stGet<WCfg>('welcome', {}), markup = await startKb(tgId, cfg);
   const noIcons = { inline_keyboard: markup.inline_keyboard.map((r) => r.map(({ icon_custom_emoji_id: _x, ...b }) => b)) };
-  if (cfg.text) {
-    // Подставляем имя вместо {имя} и сдвигаем разметку после него
-    let text = cfg.text, ents = (cfg.ents ?? []).map((e) => ({ ...e }));
-    const name = rawName.trim().slice(0, 40) || 'друг', tag = '{имя}';
-    for (let i = text.indexOf(tag); i >= 0; i = text.indexOf(tag, i + name.length)) {
-      const d = u16(name) - u16(tag);
-      text = text.slice(0, i) + name + text.slice(i + tag.length);
-      ents = ents.map((e) => e.offset >= i + tag.length ? { ...e, offset: e.offset + d } : e.offset + e.length > i ? { ...e, length: Math.max(1, e.length + d) } : e);
-    }
-    const tries = [{ ents, kb: markup }, { ents, kb: noIcons }, { ents: ents.filter((e) => e.type !== 'custom_emoji'), kb: noIcons }];
-    for (const [i, t] of tries.entries()) {
-      const r = await tg('sendMessage', { chat_id: chat, text, entities: t.ents, link_preview_options: { is_disabled: true }, reply_markup: t.kb });
-      if (r?.ok) return { ok: true, plain: i > 0 };
-      if (/blocked|not found|deactivated/i.test(String(r?.description))) return { ok: false };   // человек закрыл бота — повторять незачем
-      console.error('welcome', r?.description);
-    }
-  } else {
-    for (const [i, m] of [markup, noIcons].entries()) {
-      const r = await tg('sendMessage', { chat_id: chat, text: WELCOME(esc(rawName.slice(0, 40))), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: m });
-      if (r?.ok) return { ok: true, plain: i > 0 };
-    }
+  const std = (m: unknown) => ({ text: WELCOME(esc(rawName.slice(0, 40))), parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: m });
+  if (!cfg.text) return [std(markup), std(noIcons)];
+  let text = cfg.text, ents = (cfg.ents ?? []).map((e) => ({ ...e }));
+  const name = rawName.trim().slice(0, 40) || 'друг', tag = '{имя}';
+  for (let i = text.indexOf(tag); i >= 0; i = text.indexOf(tag, i + name.length)) {
+    const d = u16(name) - u16(tag);
+    text = text.slice(0, i) + name + text.slice(i + tag.length);
+    ents = ents.map((e) => e.offset >= i + tag.length ? { ...e, offset: e.offset + d } : e.offset + e.length > i ? { ...e, length: Math.max(1, e.length + d) } : e);
   }
-  const r = await tg('sendMessage', { chat_id: chat, text: WELCOME(esc(rawName.slice(0, 40))), parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: noIcons });
-  return { ok: !!r?.ok, plain: true };
+  const own = (e: Ent[], m: unknown) => ({ text, entities: e, link_preview_options: { is_disabled: true }, reply_markup: m });
+  return [own(ents, markup), own(ents, noIcons), own(ents.filter((e) => e.type !== 'custom_emoji'), noIcons), std(noIcons)];
+}
+// Кнопка «‹ Назад»: текстовый экран меняем обратно на приветствие, картинку (итоги дня, курс) удаляем и присылаем приветствие
+async function backToMenu(chat: number, mid: number | undefined, isText: boolean, tgId: number, rawName: string) {
+  if (mid && isText) for (const t of await welcomeTries(tgId, rawName)) {
+    const r = await tg('editMessageText', { chat_id: chat, message_id: mid, ...t });
+    if (r?.ok || /not modified/i.test(String(r?.description))) return;
+  }
+  if (mid) await tg('deleteMessage', { chat_id: chat, message_id: mid });
+  await sendWelcome(chat, tgId, rawName);
+}
+// Экран меню: меняем текущее сообщение на новый текст с кнопкой «‹ Назад». Не вышло (например, это картинка) — новое сообщение
+async function menuScreen(chat: number, mid: number | undefined, text: string, rows: Btn[][]) {
+  const body = { text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: kb([...rows, [BACK]]) };
+  if (mid) {
+    const r = await tg('editMessageText', { chat_id: chat, message_id: mid, ...body });
+    if (r?.ok || /not modified/i.test(String(r?.description))) return r;
+    await tg('deleteMessage', { chat_id: chat, message_id: mid });
+  }
+  return tg('sendMessage', { chat_id: chat, ...body });
+}
+async function sendWelcome(chat: number, tgId: number, rawName: string): Promise<{ ok: boolean; plain?: boolean }> {
+  for (const [i, t] of (await welcomeTries(tgId, rawName)).entries()) {
+    const r = await tg('sendMessage', { chat_id: chat, ...t });
+    if (r?.ok) return { ok: true, plain: i > 0 };
+    if (/blocked|not found|deactivated/i.test(String(r?.description))) return { ok: false };   // человек закрыл бота — повторять незачем
+    console.error('welcome', r?.description);
+  }
+  return { ok: false };
 }
 // Редактор для владельца
 async function wlPanel(chatId: number, msgId: number | null) {
@@ -1385,41 +1405,45 @@ function flood(id: number) {
 // Итоги дня рисуют картинку — по запросу не чаще раза в 15 секунд
 const dayAsked = new Map<number, number>();
 const dayBusy = (id: number) => { const busy = Date.now() - (dayAsked.get(id) ?? 0) < 15e3; if (!busy) dayAsked.set(id, Date.now()); return busy; };
-async function myCallback(cq: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }) {
-  const tgId = cq.from?.id ?? 0, chat = cq.message?.chat.id ?? tgId, a = (cq.data ?? '').slice(3);
+async function myCallback(cq: { id: string; data?: string; from?: { id: number; first_name?: string }; message?: { chat: { id: number }; message_id?: number; text?: string } }) {
+  const tgId = cq.from?.id ?? 0, chat = cq.message?.chat.id ?? tgId, a = (cq.data ?? '').slice(3), mid = cq.message?.message_id;
+  // Кнопки меню /start открывают экран в том же сообщении; «‹ Назад» возвращает приветствие
+  const show = (text: string, rows: Btn[][] = []) => menuScreen(chat, mid, text, rows);
+  // Картинка (итоги дня, курс) не может заменить текст — присылаем её, а меню убираем, чтобы не было двух экранов
+  const drop = () => mid ? tg('deleteMessage', { chat_id: chat, message_id: mid }) : null;
+  if (a === 'back') { await tg('answerCallbackQuery', { callback_query_id: cq.id }); return backToMenu(chat, mid, cq.message?.text !== undefined, tgId, cq.from?.first_name ?? ''); }
   // Карточку курса рисуем не чаще раза в 20 секунд на человека
   const busy = a === 'rate' && Date.now() - (rateAsked.get(tgId) ?? 0) < 20e3;
   await tg('answerCallbackQuery', { callback_query_id: cq.id, text: busy ? 'Карточка уже отправлена — курс обновится через минуту' : a === 'rate' ? 'Рисуем карточку курса…' : undefined });
   if (a === 'rate') {
     if (busy) return;
     rateAsked.set(tgId, Date.now());
-    const ok = await ratePost(chat, appBtn());
-    if (!ok) await tg('sendMessage', { chat_id: chat, text: 'Не получилось получить курс с биржи — попробуйте через минуту.' });
-    return;
+    const ok = await ratePost(chat, appBtn(), true);
+    if (!ok) return show('Не получилось получить курс с биржи — попробуйте через минуту.');
+    await drop(); return;
   }
   if (a === 'useful') {
     // Счётчик открытий раздела — для админки (по дням МСК, хранится 60 дней)
     background(stGet<Record<string, number>>('useful_opens', {}).then((o) => { const d = mskDay(Date.now()); o[d] = (o[d] ?? 0) + 1;
       for (const k of Object.keys(o)) if (k < mskDay(Date.now() - 60 * DAY)) delete o[k]; return stSet('useful_opens', o); }).catch(() => {}));
-    return usefulSend(chat);
+    const m = usefulMsg(await usefulCfg()); return show(m.text, m.rows);
   }
   const uid = await userOfTg(tgId);
-  if (!uid) return tg('sendMessage', { chat_id: chat, text: 'Сначала откройте P2Pro через Telegram — кнопка ниже. Это бесплатно.', reply_markup: kb([[appBtn()]]) });
-  if (a === 'day') return dayBusy(tgId) ? undefined : dailySend(uid, mskDay(Date.now()), true);
+  if (!uid) return show('Сначала откройте P2Pro через Telegram — кнопка ниже. Это бесплатно.', [[appBtn()]]);
+  if (a === 'day') { if (dayBusy(tgId)) return; await dailySend(uid, mskDay(Date.now()), true, true); await drop(); return; }
   const s = await subOf(uid);
   if (a === 'month') {
     if (!isPro(s)) {
       const free = await trialFree(uid, tgId);
-      return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: '📅 <b>Итоги месяца — в PRO</b>\n\nПрибыль за месяц, средняя за день, лучший день и рост к прошлому месяцу. В бесплатной версии — итоги дня по кнопке «📊 Мой день».',
-        reply_markup: kb([[appBtn(free ? '🎁 7 дней PRO бесплатно' : '⭐ Оформить PRO', free ? '?trial=1' : '?plans=1')]]) });
+      return show('📅 <b>Итоги месяца — в PRO</b>\n\nПрибыль за месяц, средняя за день, лучший день и рост к прошлому месяцу. В бесплатной версии — итоги дня по кнопке «📊 Мой день».', [[appBtn(free ? '🎁 7 дней PRO бесплатно' : '⭐ Оформить PRO', free ? '?trial=1' : '?plans=1')]]);
     }
-    return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: await monthText(uid), reply_markup: kb([[appBtn('📊 Открыть аналитику')]]) });
+    return show(await monthText(uid), [[appBtn('📊 Открыть аналитику')]]);
   }
   if (a === 'pro') {
-    if (!isPro(s)) return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: '⭐ <b>Сейчас тариф Free</b>\n\nИстория и аналитика — за последние 7 дней. В PRO: вся история, календарь прибыли, связки, контрагенты, график курса и Excel.', reply_markup: kb([[appBtn('⭐ Оформить PRO', '?plans=1')]]) });
+    if (!isPro(s)) return show('⭐ <b>Сейчас тариф Free</b>\n\nИстория и аналитика — за последние 7 дней. В PRO: вся история, календарь прибыли, связки, контрагенты, график курса и Excel.', [[appBtn('⭐ Оформить PRO', '?plans=1')]]);
     const left = Math.max(1, Math.ceil((Date.parse(s!.pro_until!) - Date.now()) / DAY));
     const how = s!.pay_method === 'trial' ? 'пробный период' : s!.pay_method === 'gift' ? 'подарок' : s!.pay_method === 'promo' ? 'промокод' : s!.auto_renew ? 'с автопродлением' : 'без автопродления';
-    return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', text: `⭐ <b>PRO активен</b> · ${how}\n\nДействует до <b>${date(s!.pro_until)}</b> — осталось ${left} ${plural(left, 'день', 'дня', 'дней')}.`, reply_markup: kb([[appBtn(s!.pay_method === 'trial' ? '⭐ Оставить PRO' : '⭐ Продлить PRO', '?plans=1')]]) });
+    return show(`⭐ <b>PRO активен</b> · ${how}\n\nДействует до <b>${date(s!.pro_until)}</b> — осталось ${left} ${plural(left, 'день', 'дня', 'дней')}.`, [[appBtn(s!.pay_method === 'trial' ? '⭐ Оставить PRO' : '⭐ Продлить PRO', '?plans=1')]]);
   }
 }
 
