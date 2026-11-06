@@ -3419,7 +3419,12 @@ async function xrChart(v = 'RUB') {
   try {
     let { data, error } = await sb.from('rate_history').select('ts, usdt, fx').gte('ts', since).order('ts');
     if (error) ({ data } = await sb.from('rate_history').select('ts, usdt').gte('ts', since).order('ts'));
-    rows = (data || []).map(x => ({ ts: x.ts, v: v === 'RUB' ? +x.usdt : +(x.fx?.[v] || 0) })).filter(x => x.v > 0);
+    // Для валюты, у которой ещё нет своих точек: пересчитываем из рублёвого курса. Соотношение валют берём не текущее, а плавно
+    // меняющееся от «сутки назад» к «сейчас» (по суточному изменению на бирже) — так график сходится с «▲/▼ за сутки»
+    const c = rateOf(v), r = xrRate, t0 = Date.now() - 864e5;
+    const kNow = c && r ? c.rate / r.rate : 0, kAgo = c && r ? (c.rate / (1 + c.ch / 100)) / (r.rate / (1 + r.ch / 100)) : 0;
+    const est = x => kNow ? +x.usdt * (kAgo + (kNow - kAgo) * Math.min(1, Math.max(0, (Date.parse(x.ts) - t0) / 864e5))) : 0;
+    rows = (data || []).map(x => ({ ts: x.ts, v: v === 'RUB' ? +x.usdt : +(x.fx?.[v] || 0) || est(x) })).filter(x => x.v > 0);
   } catch (e) {}
   if (!$('xrCh')) return;
   if (rows.length < 3) return el.innerHTML = `<span class="muted small">График${v === 'RUB' ? '' : ' в этой валюте'} собирается: бот записывает курс раз в 10 минут. Загляните через час</span>`;
