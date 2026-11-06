@@ -299,6 +299,8 @@ textarea.inp { width: 100%; min-height: 110px; resize: vertical; line-height: 1.
   .more-menu button.on { background: var(--acc-s); color: var(--acc); } .more-menu button.on svg { color: var(--acc); }   /* на телефоне «Обновить» — в верхней строке */
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.uf-l{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);margin-top:12px}.uf-l .inp{width:100%}.uf-l textarea.inp{min-height:76px;resize:vertical}
+.uf-pv{display:flex;flex-direction:column;gap:6px;max-width:420px}.uf-msg{background:#182533;border-radius:14px 14px 14px 4px;padding:12px 14px;font-size:14px;line-height:1.45;color:#E8ECF2;word-break:break-word}.uf-kb{background:rgba(40,56,72,.95);border-radius:10px;padding:10px;text-align:center;font-size:13px;font-weight:600;color:#E8ECF2}
 </style>
 </head>
 <body>
@@ -442,6 +444,7 @@ document.addEventListener('click', async e => {
 
 /* ---------- Навигация ---------- */
 const IC = {
+  useful: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
   dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a6 6 0 0 0-4-5.6"/></svg>',
   pays: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg>',
@@ -487,7 +490,7 @@ function countUps() {
     requestAnimationFrame(step);
   });
 }
-const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['bc', 'Рассылка'], ['auto', 'Автоматика'], ['feat', 'Функции']];
+const PAGES = [['dash', 'Обзор'], ['users', 'Пользователи'], ['bl', 'Чёрный список'], ['pays', 'Оплаты'], ['ref', 'Партнёры'], ['promo', 'Промокоды'], ['useful', 'Полезное'], ['bc', 'Рассылка'], ['auto', 'Автоматика'], ['feat', 'Функции']];
 // На телефоне внизу только 4 главные вкладки, остальные — под кнопкой «Ещё»
 const MOB = ['dash', 'users', 'bl', 'pays'], SHORT = { users: 'Люди', bl: 'База' };
 $('nav').innerHTML = PAGES.map(([k, n]) => `<button class="nav-b" data-go="${k}">${IC[k]}${n}</button>`).join('');
@@ -509,7 +512,7 @@ function go(p, force) {
   $('moreB').classList.toggle('on', !MOB.includes(p)); $('moreM').hidden = true; $('moreM').classList.remove('on');
   moveInd();
   const v = $('view'); v.classList.remove('vin'); void v.offsetWidth; v.classList.add('vin');
-  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, bc: renderBc, auto: renderAuto, feat: renderFeat })[p](force);
+  ({ dash: renderDash, users: renderUsers, bl: renderBl, pays: renderPays, ref: renderRef, promo: renderPromo, useful: renderUseful, bc: renderBc, auto: renderAuto, feat: renderFeat })[p](force);
   scrollTo(0, 0);
 }
 const skel = () => `<div class="grid kpis">${'<div class="card"><div class="sk" style="height:14px;width:50%"></div><div class="sk" style="height:30px;width:70%;margin-top:16px"></div></div>'.repeat(4)}</div><div class="card" style="margin-top:16px"><div class="sk" style="height:240px"></div></div>`;
@@ -1202,6 +1205,71 @@ const FEAT = { tab_calc: ['Расчёт', 'вкладка'], tab_hist: ['Ист�
   rate_sheet: ['Курс USDT (окно)', 'курс'], rate_alert: ['Уведомление о курсе', 'курс'], incognito: ['Режим инкогнито', 'шапка'],
   plans_open: ['Окно тарифов PRO', 'оплата'], trial_start: ['Запуск пробного PRO', 'оплата'], gift: ['Подарок PRO', 'оплата'], guide: ['Видео-гайд', 'справка'], tour: ['Обзор-тур', 'справка'] };
 let FT = null;
+// Раздел «📚 Полезное» в боте: кнопка в /start и список рекомендуемых проектов. Всё редактируется здесь
+let UF = null;
+async function renderUseful(force) {
+  killCharts();
+  $('view').innerHTML = head('Полезное', 'Раздел бота с рекомендуемыми проектами') + '<div class="card"><div class="sk" style="height:220px"></div></div>';
+  try { if (force || !UF) UF = await api('useful'); } catch (e) { return fail(e); }
+  if (page !== 'useful') return;
+  drawUseful();
+}
+function drawUseful() {
+  const c = UF.cfg, it = (x, i) => `<div class="card uf-it" data-i="${i}" style="margin-top:12px">
+      <div class="au-row"><div><b>${esc(x.name) || 'Новый проект'}</b><p class="hint">Проект ${i + 1} из ${c.items.length}${x.on ? '' : ' · скрыт'}</p></div>${swB('ufOn' + i, x.on)}</div>
+      <label class="uf-l">Название<input class="inp" data-f="name" maxlength="60" value="${esc(x.name)}" placeholder="🛟 Ving Helper"></label>
+      <label class="uf-l">Описание<textarea class="inp" data-f="about" maxlength="500" placeholder="Чем полезен проект">${esc(x.about)}</textarea></label>
+      <label class="uf-l">Текст кнопки<input class="inp" data-f="btn" maxlength="40" value="${esc(x.btn)}" placeholder="Перейти в …"></label>
+      <label class="uf-l">Ссылка<input class="inp" data-f="url" maxlength="256" value="${esc(x.url)}" placeholder="https://t.me/ник" inputmode="url" autocapitalize="off" spellcheck="false"></label>
+      <div class="inl" style="margin-top:10px;flex-wrap:wrap"><button class="btn small" data-uf-up="${i}" ${i ? '' : 'disabled'}>↑ Выше</button><button class="btn small" data-uf-dn="${i}" ${i < c.items.length - 1 ? '' : 'disabled'}>↓ Ниже</button><button class="btn danger small" data-uf-del="${i}">Удалить</button></div></div>`;
+  $('view').innerHTML = head('Полезное', 'Раздел бота с рекомендуемыми проектами', refBtn('useful')) +
+    `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:16px">
+      ${kpi(0, 'users', '#5AA9FF', 'Открыли за 7 дней', cu(UF.opens.d7), 'нажатий на кнопку')}${kpi(1, 'users', '#A78BFA', 'За 30 дней', cu(UF.opens.d30), 'нажатий на кнопку')}
+      ${kpi(2, 'link', '#F2B54B', 'Видно в боте', cu(UF.shown), UF.shown ? 'проектов в разделе' : 'раздел скрыт')}</div>
+    <div class="au-grid"><div class="card"><div class="card-t">⚙️ Раздел</div>
+      <div class="au-row"><div><b>Показывать в боте</b><p class="hint">Кнопка появится под приветствием /start</p></div>${swB('ufAll', c.on)}</div>
+      <label class="uf-l">Текст кнопки в /start<input class="inp" id="ufBtn" maxlength="40" value="${esc(c.btn)}"></label>
+      <label class="uf-l">Заголовок сообщения<input class="inp" id="ufTitle" maxlength="100" value="${esc(c.title)}"></label>
+      <label class="uf-l">Текст под заголовком<textarea class="inp" id="ufIntro" maxlength="500">${esc(c.intro)}</textarea></label></div>
+    <div class="card"><div class="card-t">📱 Как увидят в боте</div><div class="uf-pv" id="ufPv"></div></div></div>
+    <div id="ufItems">${c.items.map(it).join('')}</div>
+    <div class="inl" style="margin-top:14px;flex-wrap:wrap"><button class="btn" id="ufAdd" ${c.items.length >= 10 ? 'disabled' : ''}>+ Добавить проект</button><span style="flex:1"></span>
+      <button class="btn" id="ufMe">Прислать мне в бот</button><button class="btn pri" id="ufSave">Сохранить</button></div>
+    <p class="hint" style="margin-top:8px">Проект без ссылки или выключенный в разделе не показывается. В боте всё меняется сразу после «Сохранить».</p>`;
+  // Собираем то, что сейчас в полях
+  const read = () => {
+    c.btn = $('ufBtn').value; c.title = $('ufTitle').value; c.intro = $('ufIntro').value;
+    document.querySelectorAll('.uf-it').forEach(el => { const x = c.items[+el.dataset.i]; el.querySelectorAll('[data-f]').forEach(f => x[f.dataset.f] = f.value); });
+  };
+  // Предпросмотр сообщения бота
+  const br = t => esc(t).replace(/\n/g, '<br>');
+  const pv = () => {
+    read();
+    const list = c.items.filter(x => x.on && x.name.trim() && /^https:\/\/[^/\s]+\.[^/\s]+\/\S+/.test(x.url));
+    $('ufPv').innerHTML = !c.on || !list.length ? '<p class="hint">Раздел скрыт: включите его и добавьте хотя бы один проект со ссылкой.</p>' :
+      `<div class="uf-kb">${esc(c.btn)}</div><div class="uf-msg"><b>${esc(c.title)}</b>${c.intro ? '<br><br>' + br(c.intro) : ''}${list.map(x => `<br><br><b>${esc(x.name)}</b>${x.about ? '<br>' + br(x.about) : ''}`).join('')}</div>${list.map(x => `<div class="uf-kb">${esc(x.btn || 'Перейти в ' + x.name.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ''))}</div>`).join('')}`;
+  };
+  pv();
+  $('view').oninput = e => { if (e.target.closest('.uf-it,#ufBtn,#ufTitle,#ufIntro')) pv(); };
+  $('ufAll').onclick = () => { c.on = !c.on; $('ufAll').classList.toggle('on', c.on); $('ufAll').setAttribute('aria-checked', c.on); pv(); };
+  c.items.forEach((x, i) => $('ufOn' + i).onclick = () => { read(); x.on = !x.on; drawUseful(); });
+  $('ufAdd').onclick = () => { read(); c.items.push({ name: '', about: '', btn: '', url: 'https://t.me/', on: true }); drawUseful(); document.querySelector('.uf-it:last-child input')?.focus(); };
+  document.querySelectorAll('[data-uf-up],[data-uf-dn]').forEach(b => b.onclick = () => {
+    read(); const up = b.dataset.ufUp !== undefined, i = +(up ? b.dataset.ufUp : b.dataset.ufDn), j = up ? i - 1 : i + 1;
+    [c.items[i], c.items[j]] = [c.items[j], c.items[i]]; drawUseful();
+  });
+  document.querySelectorAll('[data-uf-del]').forEach(b => b.onclick = async () => {
+    read(); const i = +b.dataset.ufDel, x = c.items[i];
+    if (!await confirmBox('Удалить проект?', `«${x.name || 'Новый проект'}» пропадёт из раздела после «Сохранить».`, 'Удалить', true)) return;
+    c.items.splice(i, 1); drawUseful();
+  });
+  const busy = async (b, fn) => { if (b.disabled) return; b.disabled = true; try { await fn(); } catch (e) { toast(e.message, true); } b.disabled = false; };
+  $('ufSave').onclick = () => busy($('ufSave'), async () => {
+    read(); const r = await api('useful_save', { cfg: c });
+    UF.cfg = r.cfg; UF.shown = r.shown; toast(r.shown ? 'Сохранено — раздел в боте обновлён' : 'Сохранено. Раздел в боте скрыт'); drawUseful();
+  });
+  $('ufMe').onclick = () => busy($('ufMe'), async () => { read(); await api('useful_preview', { cfg: c }); toast('Отправил тебе в бот — так увидят пользователи'); });
+}
 async function renderFeat(force) {
   killCharts();
   $('view').innerHTML = head('Функции', 'Чем пользуются в приложении') + skel();

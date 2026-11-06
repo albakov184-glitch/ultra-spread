@@ -1195,23 +1195,46 @@ const wbtn = (cfg: WCfg, key: string, rest: Omit<Btn, 'text'>): Btn => {
   const b = cfg.btn?.[key];
   return { text: b?.t || WB_DEF[key][0], ...rest, ...(b?.e ? { icon_custom_emoji_id: b.e } : {}) };
 };
-// Раздел «📚 Полезное»: проекты, которые мы рекомендуем. Проект без ссылки не показывается; пустой список — кнопки нет
-const USEFUL_ON = false;   // кнопка пока выключена — включим по команде владельца
-const USEFUL: { name: string; about: string; btn: string; url: string }[] = [
-  { name: '🛟 Ving Helper', about: 'Решение апелляций, снятие AML, получение мерчанта/мейкера и помощь в остальных вопросах, связанных с P2P и биржами.', btn: '🛟 Перейти в Ving Helper', url: 'https://t.me/ving_helper' },
-  { name: '🎓 CRYPSIDEX', about: 'Обучение P2P и криптовалюте: разборы, схемы, закрытый клуб.', btn: '🎓 Перейти в CRYPSIDEX', url: '' },
-];
-const usefulList = () => !USEFUL_ON ? [] : USEFUL.filter((x) => /^https:\/\/t\.me\/\w/.test(x.url));
+// Раздел «📚 Полезное»: проекты, которые мы рекомендуем. Настройки — в bot_state 'useful', меняются в веб-админке (вкладка «Полезное»)
+type UItem = { name: string; about: string; btn: string; url: string; on: boolean };
+type UCfg = { on: boolean; btn: string; title: string; intro: string; items: UItem[] };
+const USEFUL_DEF: UCfg = { on: true, btn: '📚 Полезное', title: '📚 Полезное от P2Pro', intro: 'Проекты, которые мы рекомендуем трейдерам:', items: [
+  { name: '🛟 Ving Helper', about: 'Решение апелляций, снятие AML, получение мерчанта/мейкера и помощь в остальных вопросах, связанных с P2P и биржами.', btn: '🛟 Написать Ving Helper', url: 'https://t.me/ving_helper', on: true },
+] };
+const usefulCfg = () => stGet<UCfg | null>('useful', null).then((c) => c ?? USEFUL_DEF).catch(() => USEFUL_DEF);
+// Ссылка — только https (Telegram примет и покажет кнопку); пустые и выключенные проекты не показываем
+const urlOk = (u: string) => { try { const x = new URL(u); return x.protocol === 'https:' && x.hostname.includes('.') && x.pathname.length > 1 && u.length <= 256; } catch (_) { return false; } };
+const usefulShown = (c: UCfg) => c.on ? c.items.filter((x) => x.on && x.name.trim() && urlOk(x.url)) : [];
+// Проверяем и обрезаем то, что пришло из админки
+function usefulClean(raw: unknown): UCfg {
+  const r = (raw ?? {}) as Partial<UCfg>, str = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u0009\u000B-\u001F]/g, '').trim().slice(0, n);
+  const items = (Array.isArray(r.items) ? r.items : []).slice(0, 10).map((x) => ({ name: str(x?.name, 60), about: str(x?.about, 500), btn: str(x?.btn, 40), url: str(x?.url, 256), on: x?.on !== false }));
+  for (const x of items) {
+    if (!x.name) throw new Error('У каждого проекта должно быть название');
+    if (!urlOk(x.url)) throw new Error(`Ссылка у «${x.name}» должна начинаться с https://, например https://t.me/ник`);
+    if (!x.btn) x.btn = 'Перейти в ' + x.name.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, '');
+  }
+  return { on: r.on !== false, btn: str(r.btn, 40) || USEFUL_DEF.btn, title: str(r.title, 100) || USEFUL_DEF.title, intro: str(r.intro, 500), items };
+}
+async function usefulSend(chat: number | string, c?: UCfg) {
+  c ??= await usefulCfg();
+  const list = c.items.filter((x) => x.on && x.name.trim() && urlOk(x.url));
+  if (!list.length) return tg('sendMessage', { chat_id: chat, text: 'Раздел пока пуст.' });
+  return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', disable_web_page_preview: true,
+    text: `<b>${esc(c.title)}</b>${c.intro ? '\n\n' + esc(c.intro) : ''}\n\n` + list.map((x) => `<b>${esc(x.name)}</b>${x.about ? '\n' + esc(x.about) : ''}`).join('\n\n'),
+    reply_markup: kb(list.map((x) => [{ text: x.btn, url: x.url }])) });
+}
 async function startKb(tgId: number, cfg?: WCfg) {
   cfg ??= await stGet<WCfg>('welcome', {});
   let pro = wbtn(cfg, 'trial', { web_app: { url: APP + '?trial=1' } });
+  const uc = await usefulCfg();
   if (SERVICE) try {
     const uid = await userOfTg(tgId);
     if (!(await trialFree(uid, tgId))) pro = wbtn(cfg, 'pro', { callback_data: 'my:pro' });
   } catch (e) { console.error('start kb', e); }
   return kb([[wbtn(cfg, 'open', { web_app: { url: APP } })], [wbtn(cfg, 'rate', { callback_data: 'my:rate' }), wbtn(cfg, 'day', { callback_data: 'my:day' })],
     [wbtn(cfg, 'month', { callback_data: 'my:month' }), pro], [wbtn(cfg, 'channel', { url: 'https://t.me/' + CHANNEL.slice(1) }), wbtn(cfg, 'support', { url: SUPPORT })],
-    ...(usefulList().length ? [[{ text: '📚 Полезное', callback_data: 'my:useful' }]] : [])]);
+    ...(usefulShown(uc).length ? [[{ text: uc.btn, callback_data: 'my:useful' }]] : [])]);
 }
 // Длина строки в единицах Telegram (UTF-16)
 const u16 = (x: string) => x.length;
@@ -1375,10 +1398,10 @@ async function myCallback(cq: { id: string; data?: string; from?: { id: number }
     return;
   }
   if (a === 'useful') {
-    const list = usefulList();
-    return tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', disable_web_page_preview: true,
-      text: '📚 <b>Полезное от P2Pro</b>\n\nПроекты, которые мы рекомендуем трейдерам:\n\n' + list.map((x) => `<b>${x.name}</b>\n${x.about}`).join('\n\n'),
-      reply_markup: kb(list.map((x) => [{ text: x.btn, url: x.url }])) });
+    // Счётчик открытий раздела — для админки (по дням МСК, хранится 60 дней)
+    background(stGet<Record<string, number>>('useful_opens', {}).then((o) => { const d = mskDay(Date.now()); o[d] = (o[d] ?? 0) + 1;
+      for (const k of Object.keys(o)) if (k < mskDay(Date.now() - 60 * DAY)) delete o[k]; return stSet('useful_opens', o); }).catch(() => {}));
+    return usefulSend(chat);
   }
   const uid = await userOfTg(tgId);
   if (!uid) return tg('sendMessage', { chat_id: chat, text: 'Сначала откройте P2Pro через Telegram — кнопка ниже. Это бесплатно.', reply_markup: kb([[appBtn()]]) });
@@ -2713,6 +2736,14 @@ async function adminApi(body: Record<string, unknown>) {
         sched: sched.map((x) => ({ id: x.id, kind: x.kind, aud: x.aud ?? null, at: x.at })).sort((x, y) => x.at - y.at),
         watch: Object.entries(WATCH_NAMES).map(([k, n]) => ({ k, n, bad: (watch[k]?.n ?? 0) >= 2, detail: watch[k]?.detail ?? '', since: watch[k]?.since ?? 0 })) });
     }
+    // Раздел «📚 Полезное»: настройки, сохранение, превью себе в бот
+    if (act === 'useful') {
+      const [cfg, opens] = await Promise.all([usefulCfg(), stGet<Record<string, number>>('useful_opens', {})]);
+      const since = (n: number) => Object.entries(opens).filter(([d]) => d >= mskDay(Date.now() - (n - 1) * DAY)).reduce((t, [, v]) => t + v, 0);
+      return aj({ cfg, opens: { d7: since(7), d30: since(30) }, shown: usefulShown(cfg).length });
+    }
+    if (act === 'useful_save') { const cfg = usefulClean(body.cfg); await stSet('useful', cfg); return aj({ ok: true, cfg, shown: usefulShown(cfg).length }); }
+    if (act === 'useful_preview') { const r = await usefulSend(ADMIN_ID, body.cfg ? usefulClean(body.cfg) : undefined); if (!r?.ok) throw new Error('Telegram не принял сообщение — проверьте ссылки'); return aj({ ok: true }); }
     if (act === 'health_now') { const bad = await watchChecks(); return aj({ checks: Object.entries(WATCH_NAMES).map(([k, n]) => ({ k, n, bad: !!bad[k], detail: bad[k] ?? '' })) }); }
     if (act === 'ap_toggle') { const ap = await stGet('autopost', { on: false, idx: 0, last: 0 }); await stSet('autopost', { ...ap, on: !ap.on }); return aj({ ok: true, on: !ap.on }); }
     if (act === 'tip_now') return aj({ ok: await postTip(true) });
