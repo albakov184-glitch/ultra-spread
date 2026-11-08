@@ -2594,8 +2594,13 @@ async function wbCallback(cq: { id: string; data?: string; message?: { chat: { i
     return;
   }
   if (d === 'wb:me') {   // пример себе: то же сообщение, что получит первый человек из списка
+    const busy = await stGet<number>('wb_me_busy', 0);
+    if (Date.now() - busy < 60e3) return tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Уже готовлю пример — подождите несколько секунд' });
+    await stSet('wb_me_busy', Date.now());
+    await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Готовлю пример…' });
     const c = (await wbCandidates()).find((x) => !x.skip);
-    await tg('answerCallbackQuery', { callback_query_id: cq.id, text: c ? 'Отправил пример' : 'В списке никого нет' });
+    await stSet('wb_me_busy', 0);
+    if (!c) await tg('sendMessage', { chat_id: ADMIN_ID, text: 'В списке ушедших сейчас никого нет — пример показать не на ком.' });
     if (c) await wbDeliver(ADMIN_ID, c, await usdtRate(), `<i>Пример — так увидит ${esc(c.label)}:</i>\n\n`);
     return;
   }
@@ -2993,7 +2998,9 @@ Deno.serve(async (req) => {
   const who = cq?.from?.id ?? update?.message?.from?.id;
   if (who && !isAdmin(who) && flood(who)) { if (cq) await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Слишком часто — подождите немного' }); return new Response('ok'); }
   if (cq && /^l[gn]:/.test(cq.data ?? '') && SERVICE) { await loginAnswer(cq).catch((e) => console.error('login', e)); return new Response('ok'); }
-  if (cq && /^my:/.test(cq.data ?? '') && SERVICE) { await myCallback(cq).catch((e) => console.error('my', e)); return new Response('ok'); }
+  // Кнопки меню и админки отвечаем Telegram сразу, а работу (картинки, подсчёты по всем сделкам) доделываем после.
+  // Иначе Telegram ждёт, считает бота зависшим, шлёт нажатие повторно и держит остальные сообщения в очереди
+  if (cq && /^my:/.test(cq.data ?? '') && SERVICE) { background(myCallback(cq).catch((e) => console.error('my', e))); return new Response('ok'); }
   if (cq && /^sv:/.test(cq.data ?? '') && SERVICE) { await saveChatDeal(cq).catch((e) => console.error('save deal', e)); return new Response('ok'); }
   if (cq && cq.data === 'pc:n' && SERVICE) {
     const { data: me } = await admin.from('partners').select('code').eq('tg_id', cq.from.id).maybeSingle();
@@ -3007,9 +3014,9 @@ Deno.serve(async (req) => {
   }
   if (cq && cq.data === 'pc:r' && SERVICE) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Обновляю…' }); await partnerCabinet(cq.from.id, cq.message?.message_id ?? null).catch((e) => console.error('pc', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
-  if (cq && /^wb:/.test(cq.data ?? '') && isAdmin(cq.from?.id)) { await wbCallback(cq).catch((e) => console.error('wb', e)); return new Response('ok'); }
+  if (cq && /^wb:/.test(cq.data ?? '') && isAdmin(cq.from?.id)) { background(wbCallback(cq).catch((e) => console.error('wb', e))); return new Response('ok'); }
   if (cq) {
-    if (isAdmin(cq.from?.id)) await adminCallback(cq).catch(() => {});
+    if (isAdmin(cq.from?.id)) background(adminCallback(cq).catch((e) => console.error('admin cb', e)));
     else await tg('answerCallbackQuery', { callback_query_id: cq.id });
     return new Response('ok');
   }
