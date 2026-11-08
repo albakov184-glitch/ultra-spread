@@ -2492,22 +2492,28 @@ async function wbShow(chat: number, msgId: number | null, edit = false, fresh?: 
   }
   await show(chat, msgId, text, kb(rows));
 }
-// Цифры человека для напоминания: лучший месяц, всего сделок и прибыль (в рублях)
+// Цифры человека для напоминания: всего сделок, прибыль и лучший месяц — в его основной валюте (где больше всего сделок).
+// Все сделки постранично: база отдаёт не больше 1000 строк за раз
 async function wbStats(userId: string) {
-  const { data } = await admin.from('trades').select('ts, data').eq('user_id', userId).eq('deleted', false).limit(5000);
-  const by: Record<string, number> = {}; let total = 0, count = 0;
-  for (const x of (data ?? []) as { ts: string; data: ATrade['data'] }[]) {
-    count++; if ((x.data?.cur ?? 'RUB') !== 'RUB') continue;
-    const p = +(x.data?.profit ?? 0) || 0, k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + p; total += p;
+  const rows = await rowsAll<{ ts: string; data: ATrade['data'] }>('trades', 'ts, data', 'ts', (q) => q.eq('user_id', userId).eq('deleted', false));
+  const n: Record<string, number> = {};
+  for (const x of rows) { const c = x.data?.cur || 'RUB'; n[c] = (n[c] ?? 0) + 1; }
+  const cur = Object.entries(n).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'RUB';
+  const by: Record<string, number> = {}; let total = 0;
+  for (const x of rows) {
+    if ((x.data?.cur || 'RUB') !== cur) continue;
+    const p = +(x.data?.profit ?? 0); if (!isFinite(p)) continue;
+    const k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + p; total += p;
   }
-  const best = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
-  return { count, total, best: best && best[1] > 0 ? { month: MONTHS_RU[+best[0].slice(5) - 1], sum: best[1] } : null };
+  const best = Object.entries(by).sort((a, b) => b[1] - a[1])[0], thisYear = mskDay(Date.now()).slice(0, 4);
+  const label = (k: string) => MONTHS_RU[+k.slice(5) - 1].replace(/^./, (ch) => ch.toUpperCase()) + (k.slice(0, 4) === thisYear ? '' : ' ' + k.slice(0, 4));
+  return { count: rows.length, cur, sym: CUR[cur] ?? cur, total, best: best && best[1] > 0 ? { month: label(best[0]), sum: best[1] } : null };
 }
 type WbStats = Awaited<ReturnType<typeof wbStats>>;
 // Текст под картинкой (или вместо неё, если картинка не нарисовалась)
 function wbText(st: WbStats, rate: { rate: number } | null) {
-  return `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ₽</b> (xRocket).\n` : '') +
-    (st.best ? `Ваш лучший месяц — ${st.best.month}: <b>+${Math.round(st.best.sum).toLocaleString('ru-RU')} ₽</b>. ` : '') +
+  return `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ${st.sym}</b> (xRocket).\n` : '') +
+    (st.best ? `Ваш лучший месяц — ${st.best.month}: <b>+${Math.round(st.best.sum).toLocaleString('ru-RU')} ${st.sym}</b>. ` : '') +
     `Записывайте сделки, чтобы статистика оставалась полной.`;
 }
 // Карточка напоминания: имя и @ник человека, сколько его не было и его цифры. Стиль — как у «Итогов дня»
@@ -2517,7 +2523,7 @@ function wbCardSvg(c: WbCand, st: WbStats, rate: { rate: number } | null) {
   const clean = (v: string) => v.replace(/[^\p{Script=Latin}\p{Script=Cyrillic}\p{N} ._'-]/gu, '').replace(/\s+/g, ' ').trim();
   const full = clean(c.name), name = (full.length > 16 ? full.split(' ')[0] : full).slice(0, 16) || 'Трейдер', nick = c.username ? '@' + clean(c.username).slice(0, 26) : '';
   const nameSize = Math.min(104, Math.floor(880 / (name.length * 0.72 + 1)));
-  const money = (v: number) => (v >= 0 ? '+' : '−') + Math.round(Math.abs(v)).toLocaleString('ru-RU') + ' ₽';
+  const money = (v: number) => (v >= 0 ? '+' : '−') + Math.round(Math.abs(v)).toLocaleString('ru-RU') + ' ' + st.sym;
   const box = (bx: number, by: number, w: number, label: string, value: string, col = '#E8ECF2') => `<rect x="${bx}" y="${by}" width="${w}" height="150" rx="26" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".08"/>
     <text x="${bx + 34}" y="${by + 54}" font-family="Onest" font-size="28" fill="#8691A2">${x(label)}</text>
     <text x="${bx + 34}" y="${by + 112}" font-family="JetBrains Mono" font-weight="600" font-size="40" fill="${col}">${x(value)}</text>`;
@@ -2540,14 +2546,17 @@ function wbCardSvg(c: WbCand, st: WbStats, rate: { rate: number } | null) {
   <text x="100" y="${350 + (nick ? 150 : 100) + nameSize}" font-family="Onest" font-size="36" fill="#B9BEC8">${x(`Вас не было ${days}. Сделки ждут!`)}</text>
   ${box(100, 700, W - 200, 'Ваш лучший месяц', st.best ? `${st.best.month} · ${money(st.best.sum)}` : '—', st.best ? '#3CD38A' : '#E8ECF2')}
   ${box(100, 870, bw, 'Всего сделок', st.count.toLocaleString('ru-RU'))}${box(120 + bw, 870, bw, 'Прибыль', st.total ? money(st.total) : '—', st.total >= 0 ? '#3CD38A' : '#FF6B6B')}
-  ${rate ? box(100, 1040, W - 200, 'Курс USDT сейчас · xRocket', rub2(rate.rate) + ' ₽') : ''}
+  ${rate ? box(100, 1040, W - 200, 'Курс USDT сейчас · xRocket', rub2(rate.rate) + ' ' + st.sym) : ''}
   <line x1="100" y1="${H - 110}" x2="${W - 100}" y2="${H - 110}" stroke="#fff" stroke-opacity=".1"/>
   <text x="100" y="${H - 56}" font-family="Onest" font-size="30" fill="#8691A2">Запишите сделки — статистика ждёт</text>
   <text x="${W - 100}" y="${H - 56}" text-anchor="end" font-family="Onest" font-weight="600" font-size="30" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
 // Отправить напоминание: картинка + текст с кнопкой. Картинка не нарисовалась — только текст
 async function wbDeliver(chat: number, c: WbCand, rate: { rate: number } | null, prefix = '') {
-  const st = await wbStats(c.user_id), caption = prefix + wbText(st, rate);
+  const st = await wbStats(c.user_id);
+  // Курс — в валюте человека: торгует в тенге — показываем USDT в тенге (нет курса — без строки курса)
+  if (st.cur !== 'RUB') { const v = FX_HIST.includes(st.cur) ? await fiatRate(st.cur) : 0; rate = v > 0 ? { rate: v } : null; }
+  const caption = prefix + wbText(st, rate);
   try {
     const jpg = await svgJpeg(wbCardSvg(c, st, rate)), fd = new FormData();
     fd.append('chat_id', String(chat)); fd.append('caption', caption); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(openBtn()));
