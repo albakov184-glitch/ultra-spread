@@ -106,7 +106,7 @@ const MENU = () => kb([
   [{ text: '⏰ Запланировано', callback_data: 'sl' }, { text: '🌅 Утренний отчёт', callback_data: 'rp' }],
   [{ text: '🔍 Поиск', callback_data: 'fs' }, { text: '🛡 Чёрный список', callback_data: 'bl:m' }],
   [{ text: '🩺 Сторож', callback_data: 'hw' }, { text: '🖥 Веб-админка', callback_data: 'wa' }],
-  [{ text: '✏️ Приветствие и кнопки', callback_data: 'wl' }],
+  [{ text: '👋 Напомнить ушедшим', callback_data: 'wb:op' }, { text: '✏️ Приветствие и кнопки', callback_data: 'wl' }],
 ]);
 const toMenu = (extra: Btn[] = []) => kb([[...extra, { text: '‹ Меню', callback_data: 'm' }]]);
 const ADMIN_HELP = `<b>🛠 Админ-панель P2Pro</b>\n\nВыберите раздел. Чтобы найти пользователя, просто пришлите мне @ник, почту или Telegram id.\n\n` +
@@ -2475,7 +2475,7 @@ async function wbShow(chat: number, msgId: number | null, edit = false, fresh?: 
   const c = fresh ?? await wbCandidates();
   await stSet('wb_pending', { ids: c.map((x) => x.user_id), at: Date.now() });
   const on = c.filter((x) => !x.skip);
-  if (!c.length) return show(chat, msgId, '👋 <b>Напоминание ушедшим</b>\n\nСейчас некому напоминать: все, кто давно не заходил, уже получили напоминание.', kb([[{ text: '‹ Меню', callback_data: 'm' }]]));
+  if (!c.length) return show(chat, msgId, '👋 <b>Напоминание ушедшим</b>\n\nСейчас некому напоминать.\n\nВ список попадают те, кто 10–45 дней не записывал сделки и ещё не получал напоминание за этот перерыв. Список сам приходит каждый день в 12:00, если есть кому написать.', kb([[{ text: '‹ Меню', callback_data: 'm' }]]));
   const line = (x: WbCand, i: number) => `${i + 1}. ${x.skip ? '<s>' : ''}${esc(x.label)} — ${x.days} ${plural(x.days, 'день', 'дня', 'дней')}${x.skip ? '</s> · убран' : ''}`;
   const off = c.length - on.length;
   const text = `👋 <b>Напоминание ушедшим</b>\n\nНе записывали сделки 10+ дней: <b>${c.length} ${plural(c.length, 'человек', 'человека', 'человек')}</b>` +
@@ -2488,7 +2488,7 @@ async function wbShow(chat: number, msgId: number | null, edit = false, fresh?: 
     rows.push([{ text: '‹ Готово', callback_data: 'wb:bk' }]);
   } else {
     if (on.length) rows.push([{ text: `✅ Напомнить (${on.length})`, callback_data: 'wb:go' }], [{ text: '👀 Пример себе', callback_data: 'wb:me' }]);
-    rows.push([{ text: '✏️ Убрать / вернуть', callback_data: 'wb:ed' }, { text: '✖ Отмена', callback_data: 'wb:no' }]);
+    rows.push([{ text: '✏️ Убрать / вернуть', callback_data: 'wb:ed' }, { text: '✖ Отмена', callback_data: 'wb:no' }], [{ text: '‹ Меню', callback_data: 'm' }]);
   }
   await show(chat, msgId, text, kb(rows));
 }
