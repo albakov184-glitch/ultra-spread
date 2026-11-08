@@ -2487,30 +2487,41 @@ async function wbShow(chat: number, msgId: number | null, edit = false, fresh?: 
     for (let i = 0; i < b.length; i += 2) rows.push(b.slice(i, i + 2));
     rows.push([{ text: '‹ Готово', callback_data: 'wb:bk' }]);
   } else {
-    if (on.length) rows.push([{ text: `✅ Напомнить (${on.length})`, callback_data: 'wb:go' }]);
+    if (on.length) rows.push([{ text: `✅ Напомнить (${on.length})`, callback_data: 'wb:go' }], [{ text: '👀 Пример себе', callback_data: 'wb:me' }]);
     rows.push([{ text: '✏️ Убрать / вернуть', callback_data: 'wb:ed' }, { text: '✖ Отмена', callback_data: 'wb:no' }]);
   }
   await show(chat, msgId, text, kb(rows));
 }
+// Текст напоминания: курс сейчас и лучший месяц человека
+async function wbText(userId: string, rate: { rate: number } | null) {
+  const { data } = await admin.from('trades').select('ts, data').eq('user_id', userId).eq('deleted', false).limit(5000);
+  const by: Record<string, number> = {};
+  for (const x of (data ?? []) as { ts: string; data: ATrade['data'] }[]) { if ((x.data?.cur ?? 'RUB') !== 'RUB') continue; const k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + (+(x.data?.profit ?? 0) || 0); }
+  const best = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
+  return `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ₽</b> (xRocket).\n` : '') +
+    (best && best[1] > 0 ? `Ваш лучший месяц — ${MONTHS_RU[+best[0].slice(5) - 1]}: <b>+${Math.round(best[1]).toLocaleString('ru-RU')} ₽</b>. ` : '') +
+    `Записывайте сделки, чтобы статистика оставалась полной.`;
+}
+// Почему Telegram не доставил: понятными словами для владельца
+const wbWhy = (d?: string) => /blocked/i.test(d ?? '') ? 'заблокировал бота' : /initiate|chat not found|PEER_ID/i.test(d ?? '') ? 'не нажимал /start в боте — Telegram не даёт написать первым'
+  : /deactivated/i.test(d ?? '') ? 'аккаунт удалён' : 'ошибка Telegram: ' + String(d ?? 'нет ответа').slice(0, 80);
 async function wbSend(ids: string[]) {
   const c = (await wbCandidates()).filter((x) => !x.skip && ids.includes(x.user_id)), rate = await usdtRate(), now = Date.now();
-  let n = 0;
+  const ok: string[] = [], bad: string[] = [];
   for (const t of c) {
-    const { data } = await admin.from('trades').select('ts, data').eq('user_id', t.user_id).eq('deleted', false).limit(5000);
-    const by: Record<string, number> = {};
-    for (const x of (data ?? []) as { ts: string; data: ATrade['data'] }[]) { if ((x.data?.cur ?? 'RUB') !== 'RUB') continue; const k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + (+(x.data?.profit ?? 0) || 0); }
-    const best = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
-    const text = `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ₽</b> (xRocket).\n` : '') +
-      (best && best[1] > 0 ? `Ваш лучший месяц — ${MONTHS_RU[+best[0].slice(5) - 1]}: <b>+${Math.round(best[1]).toLocaleString('ru-RU')} ₽</b>. ` : '') +
-      `Записывайте сделки, чтобы статистика оставалась полной.`;
+    const text = await wbText(t.user_id, rate);
     let r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() });
     if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() }); }
-    await stSet('wb:' + t.user_id, { last: t.last, at: now });
-    if (r?.ok) n++;
+    // «Уже напомнили» — только если дошло или писать человеку бессмысленно (403). При сбое сети он останется в списке
+    if (r?.ok || r?.error_code === 403) await stSet('wb:' + t.user_id, { last: t.last, at: now });
+    if (r?.ok) ok.push(t.label); else bad.push(`${t.label} — ${wbWhy(r?.description)}`);
     await sleep(50);
   }
-  await tg('sendMessage', { chat_id: ADMIN_ID, text: `👋 Напоминание отправлено: ${n} из ${c.length}${c.length - n ? ` (остальные закрыли бота)` : ''}.` });
-  return n;
+  await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `👋 <b>Напоминание ушедшим</b>: доставлено ${ok.length} из ${c.length}.` +
+    (c.length ? '' : '\nНекому отправлять: список устарел — откройте его заново.') +
+    (ok.length ? `\n\n✅ ${ok.slice(0, 30).map(esc).join(', ')}${ok.length > 30 ? ` и ещё ${ok.length - 30}` : ''}` : '') +
+    (bad.length ? `\n\n❌ Не доставлено:\n${bad.slice(0, 20).map((x) => '• ' + esc(x)).join('\n')}${bad.length > 20 ? `\n…и ещё ${bad.length - 20}` : ''}` : '') });
+  return ok.length;
 }
 // Кнопки под списком в боте (только владелец)
 async function wbCallback(cq: { id: string; data?: string; message?: { chat: { id: number }; message_id: number } }) {
@@ -2523,7 +2534,14 @@ async function wbCallback(cq: { id: string; data?: string; message?: { chat: { i
     await stSet('wb_pending', { ids: [] });
     await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Отправляю…' });
     await show(chat, mid, '👋 Напоминание ушедшим — <b>отправляю</b>… Итог придёт отдельным сообщением.', null);
-    background(wbSend(pend.ids).catch((e) => console.error('wb send', e)));
+    background(wbSend(pend.ids).catch(async (e) => { console.error('wb send', e);
+      await tg('sendMessage', { chat_id: ADMIN_ID, text: '⚠️ Напоминание ушедшим не отправилось из-за ошибки: ' + String((e as Error)?.message ?? e).slice(0, 200) + '\nПопробуйте ещё раз.' }); }));
+    return;
+  }
+  if (d === 'wb:me') {   // пример себе: то же сообщение, что получит первый человек из списка
+    const c = (await wbCandidates()).find((x) => !x.skip);
+    await tg('answerCallbackQuery', { callback_query_id: cq.id, text: c ? 'Отправил пример' : 'В списке никого нет' });
+    if (c) await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `<i>Пример — так увидит ${esc(c.label)}:</i>\n\n` + await wbText(c.user_id, await usdtRate()), reply_markup: openBtn() });
     return;
   }
   if (d.startsWith('wb:t:')) {
