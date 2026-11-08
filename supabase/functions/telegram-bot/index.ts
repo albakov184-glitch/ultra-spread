@@ -2457,7 +2457,7 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
 // Кто 10–45 дней не записывал сделки — одно сообщение с курсом и его лучшим месяцем. Один раз за перерыв.
 // Кто выключил итоги дня кнопкой в боте, тому не пишем. Сами не отправляем: в 12:00 владелец получает список
 // с кнопками «Напомнить» / «Отмена» и может убрать человека из списка (он не получит напоминаний, пока его не вернут)
-type WbCand = { user_id: string; tg_id: number; label: string; days: number; last: number; skip: boolean };
+type WbCand = { user_id: string; tg_id: number; label: string; name: string; username: string | null; days: number; last: number; skip: boolean };
 async function wbCandidates(): Promise<WbCand[]> {
   const [tgs, users, trades, skip] = await Promise.all([rowsAll<{ user_id: string; tg_id: number; daily_off: boolean | null; username: string | null }>('tg_users', 'user_id, tg_id, daily_off, username', 'tg_id'),
     allUsers(), allTrades('user_id, ts'), stGet<string[]>('wb_skip', [])]);
@@ -2467,7 +2467,7 @@ async function wbCandidates(): Promise<WbCand[]> {
   return tgs.filter((t) => { const l = last.get(t.user_id), u = byId.get(t.user_id);
     return !!l && !!u && !t.daily_off && !isBanned(u) && Number(t.tg_id) !== ADMIN_ID && now - l >= 10 * DAY && now - l < 45 * DAY && done.get('wb:' + t.user_id) !== l; })
     .map((t) => { const l = last.get(t.user_id)!, u = byId.get(t.user_id)!;
-      return { user_id: t.user_id, tg_id: Number(t.tg_id), label: t.username ? '@' + t.username : nameOf(u), days: Math.floor((now - l) / DAY), last: l, skip: skipSet.has(t.user_id) }; })
+      return { user_id: t.user_id, tg_id: Number(t.tg_id), label: t.username ? '@' + t.username : nameOf(u), name: nameOf(u), username: t.username, days: Math.floor((now - l) / DAY), last: l, skip: skipSet.has(t.user_id) }; })
     .sort((a, b) => a.days - b.days).slice(0, 300);
 }
 // Список владельцу в бот. edit — правка «кого убрать»: кнопка на каждого
@@ -2492,15 +2492,71 @@ async function wbShow(chat: number, msgId: number | null, edit = false, fresh?: 
   }
   await show(chat, msgId, text, kb(rows));
 }
-// Текст напоминания: курс сейчас и лучший месяц человека
-async function wbText(userId: string, rate: { rate: number } | null) {
+// Цифры человека для напоминания: лучший месяц, всего сделок и прибыль (в рублях)
+async function wbStats(userId: string) {
   const { data } = await admin.from('trades').select('ts, data').eq('user_id', userId).eq('deleted', false).limit(5000);
-  const by: Record<string, number> = {};
-  for (const x of (data ?? []) as { ts: string; data: ATrade['data'] }[]) { if ((x.data?.cur ?? 'RUB') !== 'RUB') continue; const k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + (+(x.data?.profit ?? 0) || 0); }
+  const by: Record<string, number> = {}; let total = 0, count = 0;
+  for (const x of (data ?? []) as { ts: string; data: ATrade['data'] }[]) {
+    count++; if ((x.data?.cur ?? 'RUB') !== 'RUB') continue;
+    const p = +(x.data?.profit ?? 0) || 0, k = mskDay(Date.parse(x.ts)).slice(0, 7); by[k] = (by[k] ?? 0) + p; total += p;
+  }
   const best = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
+  return { count, total, best: best && best[1] > 0 ? { month: MONTHS_RU[+best[0].slice(5) - 1], sum: best[1] } : null };
+}
+type WbStats = Awaited<ReturnType<typeof wbStats>>;
+// Текст под картинкой (или вместо неё, если картинка не нарисовалась)
+function wbText(st: WbStats, rate: { rate: number } | null) {
   return `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ₽</b> (xRocket).\n` : '') +
-    (best && best[1] > 0 ? `Ваш лучший месяц — ${MONTHS_RU[+best[0].slice(5) - 1]}: <b>+${Math.round(best[1]).toLocaleString('ru-RU')} ₽</b>. ` : '') +
+    (st.best ? `Ваш лучший месяц — ${st.best.month}: <b>+${Math.round(st.best.sum).toLocaleString('ru-RU')} ₽</b>. ` : '') +
     `Записывайте сделки, чтобы статистика оставалась полной.`;
+}
+// Карточка напоминания: имя и @ник человека, сколько его не было и его цифры. Стиль — как у «Итогов дня»
+function wbCardSvg(c: WbCand, st: WbStats, rate: { rate: number } | null) {
+  const W = 1080, H = 1350, x = (v: string) => v.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!));
+  // В шрифтах нет эмодзи и экзотических букв — оставляем латиницу, кириллицу, цифры и знаки
+  const clean = (v: string) => v.replace(/[^\p{Script=Latin}\p{Script=Cyrillic}\p{N} ._'-]/gu, '').replace(/\s+/g, ' ').trim();
+  const full = clean(c.name), name = (full.length > 16 ? full.split(' ')[0] : full).slice(0, 16) || 'Трейдер', nick = c.username ? '@' + clean(c.username).slice(0, 26) : '';
+  const nameSize = Math.min(104, Math.floor(880 / (name.length * 0.72 + 1)));
+  const money = (v: number) => (v >= 0 ? '+' : '−') + Math.round(Math.abs(v)).toLocaleString('ru-RU') + ' ₽';
+  const box = (bx: number, by: number, w: number, label: string, value: string, col = '#E8ECF2') => `<rect x="${bx}" y="${by}" width="${w}" height="150" rx="26" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".08"/>
+    <text x="${bx + 34}" y="${by + 54}" font-family="Onest" font-size="28" fill="#8691A2">${x(label)}</text>
+    <text x="${bx + 34}" y="${by + 112}" font-family="JetBrains Mono" font-weight="600" font-size="40" fill="${col}">${x(value)}</text>`;
+  let grid = '';
+  for (let i = 1; i < 12; i++) grid += `<line x1="${i * 90}" y1="0" x2="${i * 90}" y2="${H}" stroke="#fff" stroke-opacity=".025"/>`;
+  for (let i = 1; i < 15; i++) grid += `<line x1="0" y1="${i * 90}" x2="${W}" y2="${i * 90}" stroke="#fff" stroke-opacity=".025"/>`;
+  const bw = (W - 220) / 2, days = `${c.days} ${plural(c.days, 'день', 'дня', 'дней')}`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs><radialGradient id="g1" cx="22%" cy="16%" r="60%"><stop offset="0" stop-color="#F2B54B" stop-opacity=".24"/><stop offset="1" stop-color="#F2B54B" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="90%" cy="85%" r="55%"><stop offset="0" stop-color="#3CD38A" stop-opacity=".12"/><stop offset="1" stop-color="#3CD38A" stop-opacity="0"/></radialGradient></defs>
+  <rect width="${W}" height="${H}" fill="#0C0F14"/><rect width="${W}" height="${H}" fill="url(#g1)"/><rect width="${W}" height="${H}" fill="url(#g2)"/>${grid}
+  <rect x="100" y="100" width="120" height="120" rx="32" fill="#F2B54B"/>
+  <text x="160" y="172" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="46" fill="#1B1405">P2</text>
+  <text x="160" y="200" text-anchor="middle" font-family="Unbounded" font-weight="800" font-size="15" letter-spacing="5" fill="#1B1405">PRO</text>
+  <text x="250" y="160" font-family="Unbounded" font-weight="800" font-size="48" fill="#E8ECF2">P2Pro</text>
+  <text x="250" y="202" font-family="Onest" font-size="28" fill="#8691A2">Учёт P2P-сделок</text>
+  <text x="100" y="350" font-family="Onest" font-weight="600" font-size="30" letter-spacing="9" fill="#F2B54B">ДАВНО НЕ ВИДЕЛИСЬ</text>
+  <text x="96" y="${350 + 30 + nameSize}" font-family="Unbounded" font-weight="800" font-size="${nameSize}" fill="#E8ECF2">${x(name)},</text>
+  ${nick ? `<text x="100" y="${350 + 90 + nameSize}" font-family="JetBrains Mono" font-weight="600" font-size="34" fill="#F2B54B">${x(nick)}</text>` : ''}
+  <text x="100" y="${350 + (nick ? 150 : 100) + nameSize}" font-family="Onest" font-size="36" fill="#B9BEC8">${x(`Вас не было ${days}. Сделки ждут!`)}</text>
+  ${box(100, 700, W - 200, 'Ваш лучший месяц', st.best ? `${st.best.month} · ${money(st.best.sum)}` : '—', st.best ? '#3CD38A' : '#E8ECF2')}
+  ${box(100, 870, bw, 'Всего сделок', st.count.toLocaleString('ru-RU'))}${box(120 + bw, 870, bw, 'Прибыль', st.total ? money(st.total) : '—', st.total >= 0 ? '#3CD38A' : '#FF6B6B')}
+  ${rate ? box(100, 1040, W - 200, 'Курс USDT сейчас · xRocket', rub2(rate.rate) + ' ₽') : ''}
+  <line x1="100" y1="${H - 110}" x2="${W - 100}" y2="${H - 110}" stroke="#fff" stroke-opacity=".1"/>
+  <text x="100" y="${H - 56}" font-family="Onest" font-size="30" fill="#8691A2">Запишите сделки — статистика ждёт</text>
+  <text x="${W - 100}" y="${H - 56}" text-anchor="end" font-family="Onest" font-weight="600" font-size="30" fill="#F2B54B">@P2ProAppBot</text></svg>`;
+}
+// Отправить напоминание: картинка + текст с кнопкой. Картинка не нарисовалась — только текст
+async function wbDeliver(chat: number, c: WbCand, rate: { rate: number } | null, prefix = '') {
+  const st = await wbStats(c.user_id), caption = prefix + wbText(st, rate);
+  try {
+    const jpg = await svgJpeg(wbCardSvg(c, st, rate)), fd = new FormData();
+    fd.append('chat_id', String(chat)); fd.append('caption', caption); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(openBtn()));
+    fd.append('photo', new Blob([jpg], { type: 'image/jpeg' }), 'P2Pro.jpg');
+    const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((y) => y.json()).catch(() => null);
+    if (r?.ok || r?.error_code === 403 || r?.error_code === 429) return r;   // доставлено или писать нельзя — текстом не повторяем
+    console.error('wb card', r?.description);
+  } catch (e) { console.error('wb card', e); }
+  return tg('sendMessage', { chat_id: chat, text: caption, parse_mode: 'HTML', reply_markup: openBtn() });
 }
 // Почему Telegram не доставил: понятными словами для владельца
 const wbWhy = (d?: string) => /blocked/i.test(d ?? '') ? 'заблокировал бота' : /initiate|chat not found|PEER_ID/i.test(d ?? '') ? 'не нажимал /start в боте — Telegram не даёт написать первым'
@@ -2509,9 +2565,8 @@ async function wbSend(ids: string[]) {
   const c = (await wbCandidates()).filter((x) => !x.skip && ids.includes(x.user_id)), rate = await usdtRate(), now = Date.now();
   const ok: string[] = [], bad: string[] = [];
   for (const t of c) {
-    const text = await wbText(t.user_id, rate);
-    let r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() });
-    if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); r = await tg('sendMessage', { chat_id: t.tg_id, text, parse_mode: 'HTML', reply_markup: openBtn() }); }
+    let r = await wbDeliver(t.tg_id, t, rate);
+    if (r?.error_code === 429) { await sleep((r.parameters?.retry_after ?? 3) * 1000); r = await wbDeliver(t.tg_id, t, rate); }
     // «Уже напомнили» — только если дошло или писать человеку бессмысленно (403). При сбое сети он останется в списке
     if (r?.ok || r?.error_code === 403) await stSet('wb:' + t.user_id, { last: t.last, at: now });
     if (r?.ok) ok.push(t.label); else bad.push(`${t.label} — ${wbWhy(r?.description)}`);
@@ -2541,7 +2596,7 @@ async function wbCallback(cq: { id: string; data?: string; message?: { chat: { i
   if (d === 'wb:me') {   // пример себе: то же сообщение, что получит первый человек из списка
     const c = (await wbCandidates()).find((x) => !x.skip);
     await tg('answerCallbackQuery', { callback_query_id: cq.id, text: c ? 'Отправил пример' : 'В списке никого нет' });
-    if (c) await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML', text: `<i>Пример — так увидит ${esc(c.label)}:</i>\n\n` + await wbText(c.user_id, await usdtRate()), reply_markup: openBtn() });
+    if (c) await wbDeliver(ADMIN_ID, c, await usdtRate(), `<i>Пример — так увидит ${esc(c.label)}:</i>\n\n`);
     return;
   }
   if (d.startsWith('wb:t:')) {
