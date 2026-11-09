@@ -1464,7 +1464,7 @@ img { max-width: 100%; }
     </div>
     <div class="card">
       <span class="card-t">Отображение</span>
-      <div class="sw-row"><span>Биржевой курс USDT в калькуляторе<br><span class="muted small">Источник: xRocket, обновляется раз в минуту</span></span>
+      <div class="sw-row"><span>Биржевой курс USDT в калькуляторе<br><span class="muted small">Источник: биржа xRocket (запасной — CoinGecko), обновляется раз в минуту</span></span>
         <button class="toggle" role="switch" id="rateToggle" aria-checked="true" aria-label="Биржевой курс в калькуляторе"></button></div>
     </div>
     <div class="card">
@@ -3337,10 +3337,30 @@ async function xrFxGet(c, maxAge = 55e3) {
   } catch (e) {}
   return rateOf(c);
 }
+// Сначала биржа xRocket; не ответила за 6 секунд — запасной источник CoinGecko (src — откуда курс, его показываем)
 async function xrFetch(base) {
-  const j = await (await fetch(XR_URL + base, { cache: 'no-store' })).json();
-  if (!(+j?.USDT?.rate > 0)) throw new Error('no rate');
-  return { rate: +j.USDT.rate, ch: +j.USDT.rateChangePercent24h || 0, at: Date.now() };
+  try {
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+    const j = await (await fetch(XR_URL + base, { cache: 'no-store', signal: ac.signal })).json(); clearTimeout(tm);
+    if (!(+j?.USDT?.rate > 0)) throw new Error('no rate');
+    return { rate: +j.USDT.rate, ch: +j.USDT.rateChangePercent24h || 0, at: Date.now(), src: 'xRocket' };
+  } catch (e) { return cgFetch(base); }
+}
+// CoinGecko: USDT в рублях, тенге, гривне и евро. Белорусского рубля там нет — считаем через официальный курс рубля
+let cgC = null;
+async function cgFetch(base) {
+  if (!cgC || Date.now() - cgC.at > 55e3) {
+    const j = await (await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub,kzt,uah,eur&include_24hr_change=true', { cache: 'no-store' })).json();
+    if (!(+j?.tether?.rub > 0)) throw new Error('no rate');
+    cgC = { at: Date.now(), t: j.tether };
+  }
+  const t = cgC.t, b = base.toLowerCase(), now = Date.now();
+  if (+t[b] > 0) return { rate: +t[b], ch: +t[b + '_24h_change'] || 0, at: now, src: 'CoinGecko' };
+  if (base === 'BYN') {
+    const k = +(await (await fetch('https://open.er-api.com/v6/latest/RUB')).json())?.rates?.BYN;
+    if (k > 0) return { rate: +t.rub * k, ch: +t.rub_24h_change || 0, at: now, src: 'CoinGecko' };
+  }
+  throw new Error('no rate');
 }
 async function xrRefresh(force) {
   if (xrBusy || (!force && xrRate && Date.now() - xrRate.at < 55e3)) return;
@@ -3364,7 +3384,7 @@ function renderRate() {
   const age = Date.now() - R.at, up = R.ch >= 0, own2 = rc !== S.settings.cur;
   if (el.dataset.c && el.dataset.c !== rc && !reduceMotion) { el.classList.remove('fx'); void el.offsetWidth; el.classList.add('fx'); }
   el.dataset.c = rc;
-  el.innerHTML = `<span class="dot ${age < 5 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(R.rate)} ${SYM[rc]}</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(R.ch))}%</span>· ${own2 ? CUR_FLAG[rc] + ' ' : ''}xRocket${age < 5 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
+  el.innerHTML = `<span class="dot ${age < 5 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(R.rate)} ${SYM[rc]}</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(R.ch))}%</span>· ${own2 ? CUR_FLAG[rc] + ' ' : ''}${R.src || 'xRocket'}${age < 5 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
 }
 // Окно с подробностями: источник, сравнение сделки с биржей, другие валюты, подстановка курса
 function rateSheet() {
@@ -3377,7 +3397,7 @@ function rateSheet() {
   sheet(`<h3>Биржевой курс USDT${v === 'RUB' ? '' : ` · ${CUR_FLAG[v]} ${CUR_NAME[v].toLowerCase()}`}</h3>
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="font-family:var(--f-display);font-size:34px">${nf2.format(r)} ${sym}</b>
       <span style="color:${R.ch >= 0 ? '#3CD38A' : '#FF6B6B'};font-weight:600;white-space:nowrap">${R.ch >= 0 ? '▲' : '▼'} ${nf2.format(Math.abs(R.ch))}% за сутки</span></div>
-    <span class="muted small">Источник: биржа <b style="color:var(--fg)">xRocket</b> (@xRocket в Telegram). Обновлено ${xrAgo(Date.now() - R.at)}.<br>Это средний курс USDT на бирже — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
+    <span class="muted small">Источник: ${R.src === 'CoinGecko' ? '<b style="color:var(--fg)">CoinGecko</b> (запасной: биржа xRocket сейчас не отвечает)' : 'биржа <b style="color:var(--fg)">xRocket</b> (@xRocket в Telegram)'}. Обновлено ${xrAgo(Date.now() - R.at)}.<br>Это средний курс USDT на бирже — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
     <div class="kpi"><span class="label">График за сутки${S.settings.pro ? '' : ' · PRO'}</span><div class="xr-ch" id="xrCh"><span class="muted small">Загружаем…</span></div></div>
     <div class="kpi" id="xrAl"><span class="label">🔔 Уведомить в Telegram${S.settings.pro ? '' : ' · PRO'}</span>
       ${v === 'RUB' ? `<span class="muted small">Бот напишет, когда курс USDT станет выше или ниже вашей цены (проверка раз в 10 минут)</span>

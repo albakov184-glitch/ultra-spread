@@ -555,13 +555,39 @@ async function daySummary(userId: string, day: string) {
   const goal = cur === (prof?.settings?.goalCur || 'RUB') ? +(prof?.settings?.goal ?? 0) || 0 : 0;   // цель — в своей валюте из Профиля
   return { n: list.length, cur, profit, turnover, best, exes, pair, others, goal, rateOff: !!prof?.settings?.rateOff };
 }
-// Биржевой курс USDT в рублях на конец дня — с биржи xRocket (тот же, что в калькуляторе). Не ответила — без курса
-async function usdtRate(): Promise<{ rate: number; ch: number } | null> {
+// Биржевой курс USDT — с биржи xRocket (тот же, что в калькуляторе). Биржа не ответила — запасной источник CoinGecko.
+// rateSrc — откуда взят последний курс: его название показываем в карточках и сообщениях
+let rateSrc = 'xRocket';
+const RS = () => rateSrc === 'xRocket' ? 'биржа xRocket' : 'CoinGecko';
+async function xrRate(base: string): Promise<{ rate: number; ch: number } | null> {
   try {
-    const j = await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB', { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
+    const j = await fetch(`https://exchange.api.xrocket.exchange/api/v1/rates?base=${base}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
     const rate = +j?.USDT?.rate;
     return rate > 0 ? { rate, ch: +j.USDT.rateChangePercent24h || 0 } : null;
   } catch (_) { return null; }
+}
+// CoinGecko: USDT в рублях, тенге, гривне, евро. Белорусского рубля там нет — считаем через официальный курс рубля
+let cgCache: { at: number; t: Record<string, number> } | null = null;
+async function cgRate(base: string): Promise<{ rate: number; ch: number } | null> {
+  try {
+    if (!cgCache || Date.now() - cgCache.at > 60e3) {
+      const j = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub,kzt,uah,eur&include_24hr_change=true', { signal: AbortSignal.timeout(6000) }).then((r) => r.json());
+      if (!(+j?.tether?.rub > 0)) return null;
+      cgCache = { at: Date.now(), t: j.tether };
+    }
+    const t = cgCache.t, b = base.toLowerCase();
+    if (+t[b] > 0) return { rate: +t[b], ch: +t[b + '_24h_change'] || 0 };
+    if (base === 'BYN') {
+      const fx = await fetch('https://open.er-api.com/v6/latest/RUB', { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null), k = +fx?.rates?.BYN;
+      if (k > 0) return { rate: +t.rub * k, ch: +t.rub_24h_change || 0 };
+    }
+  } catch (_) { /* нет связи */ }
+  return null;
+}
+async function usdtRate(): Promise<{ rate: number; ch: number } | null> {
+  const x = await xrRate('RUB'); if (x) { rateSrc = 'xRocket'; return x; }
+  const c = await cgRate('RUB'); if (c) rateSrc = 'CoinGecko';
+  return c;
 }
 const rub2 = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -650,12 +676,12 @@ async function dailySend(userId: string, day: string, manual = false, back = fal
     `🏆 Лучшая сделка: ${money(d.best, d.cur)}\n` +
     (d.goal ? `🎯 Цель ${d.goal.toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}: ${goalPct >= 100 ? `выполнена на ${goalPct}% ✅` : `${goalPct}%`}\n` : '') +
     (d.pair ? `🔥 Чаще всего: ${esc(d.pair[0])} (${d.pair[1]})\n` : '') +
-    (xr ? `💱 Курс USDT на конец дня: ${rub2(xr.rate)} ₽ (${xr.ch >= 0 ? '+' : '−'}${rub2(Math.abs(xr.ch))}% за сутки) · биржа xRocket\n` : '') +
+    (xr ? `💱 Курс USDT на конец дня: ${rub2(xr.rate)} ₽ (${xr.ch >= 0 ? '+' : '−'}${rub2(Math.abs(xr.ch))}% за сутки) · ${RS()}\n` : '') +
     (pro ? '' : `\n<i>Карточка без водяного знака — в PRO.</i>`);
   let png: Uint8Array | null = null;
   try {
     const r = await renderer();
-    const svg = dayCardSvg({ pro, date: dateLong, rate: xr ? `USDT ${rub2(xr.rate)} ₽ · xRocket` : '', title, big: money(d.profit, d.cur), pos: d.profit >= 0,
+    const svg = dayCardSvg({ pro, date: dateLong, rate: xr ? `USDT ${rub2(xr.rate)} ₽ · ${rateSrc}` : '', title, big: money(d.profit, d.cur), pos: d.profit >= 0,
       sub: `${pct >= 0 ? '+' : ''}${pct.toFixed(2).replace('.', ',')}% к обороту · средняя ${money(avg, d.cur)}`,
       count: String(d.n), turnover: `${Math.round(d.turnover).toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}`, best: money(d.best, d.cur, 0),
       goalLabel: d.goal ? `Цель ${d.goal.toLocaleString('ru-RU')} ${CUR[d.cur] ?? d.cur}` : 'Средняя сделка', goal: d.goal ? `${goalPct}%${goalPct >= 100 ? ' ✓' : ''}` : money(avg, d.cur, 0),
@@ -710,7 +736,7 @@ async function rateTick(now: number) {
     if (!isPro(await subOf(a.user_id))) continue;   // уведомления — в PRO; закончится PRO — подождут продления
     const { data: upd } = await admin.from('rate_alerts').update({ fired_at: new Date(now).toISOString() }).eq('id', a.id).is('fired_at', null).select('id');
     if (!upd?.length) continue;   // уже сработало в параллельном запуске
-    await notify(a.user_id, `🔔 <b>Курс USDT ${a.dir === 'above' ? 'выше' : 'ниже'} ${rub2(+a.price)} ₽</b>\n\nСейчас на бирже xRocket: <b>${rub2(r.rate)} ₽</b> (${r.ch >= 0 ? '+' : '−'}${rub2(Math.abs(r.ch))}% за сутки).\n\nНовое уведомление можно поставить в P2Pro: калькулятор → строка курса.`, openBtn('💱 Открыть P2Pro'));
+    await notify(a.user_id, `🔔 <b>Курс USDT ${a.dir === 'above' ? 'выше' : 'ниже'} ${rub2(+a.price)} ₽</b>\n\nСейчас (${RS()}): <b>${rub2(r.rate)} ₽</b> (${r.ch >= 0 ? '+' : '−'}${rub2(Math.abs(r.ch))}% за сутки).\n\nНовое уведомление можно поставить в P2Pro: калькулятор → строка курса.`, openBtn('💱 Открыть P2Pro'));
   }
 }
 type RatePost = { on: boolean; times: number[]; done: Record<string, string> };   // times — часы по МСК; done — в какой день час уже опубликован
@@ -719,8 +745,7 @@ const RP_HOURS = [8, 9, 10, 12, 14, 16, 18, 20, 22];
 const RP_FIATS: [string, string, string][] = [['KZT', 'Тенге', '₸'], ['UAH', 'Гривна', '₴'], ['BYN', 'Бел. рубль', 'Br'], ['EUR', 'Евро', '€'], ['KGS', 'Сом', 'с'], ['UZS', 'Сум', 'сум']];
 const FX_HIST = ['KZT', 'UAH', 'BYN', 'EUR'];   // такие же валюты курса, как в приложении (XR_CURS без рубля)
 async function fiatRate(base: string) {
-  try { const j = await fetch(`https://exchange.api.xrocket.exchange/api/v1/rates?base=${base}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()); return +j?.USDT?.rate || 0; }
-  catch (_) { return 0; }
+  return (rateSrc === 'xRocket' ? await xrRate(base) : null)?.rate || (await cgRate(base))?.rate || 0;
 }
 function rateCardSvg(d: { when: string; rate: string; ch: number; hist: number[]; fiats: { name: string; v: string }[] }) {
   const W = 1080, H = 1080, x = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -753,7 +778,7 @@ function rateCardSvg(d: { when: string; rate: string; ch: number; hist: number[]
   <text x="${W - 215}" y="388" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="30" fill="${col}">${up ? '▲' : '▼'} ${x(rub2(Math.abs(d.ch)))}%</text>
   ${chart}
   ${d.fiats.map((f, i) => cell(i, f)).join('')}
-  <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">Биржа xRocket · за 1 USDT</text>
+  <text x="100" y="${H - 50}" font-family="Onest" font-size="26" fill="#8691A2">${rateSrc === 'xRocket' ? 'Биржа xRocket' : 'Источник: CoinGecko'} · за 1 USDT</text>
   <text x="${W - 100}" y="${H - 50}" text-anchor="end" font-family="Onest" font-weight="600" font-size="26" fill="#F2B54B">@P2ProAppBot</text></svg>`;
 }
 // Карточка курса: в канал (chat = CHANNEL) или владельцу для предпросмотра. Рисуется в отдельном запуске функции
@@ -766,7 +791,7 @@ async function ratePost(chat: number | string, btn?: Btn, back = false) {
   const fiats = RP_FIATS.map(([, name, sym], i) => ({ name, v: vals[i] ? `${vals[i] >= 1000 ? Math.round(vals[i]).toLocaleString('ru-RU') : rub2(vals[i])} ${sym}` : '—' }));
   const caption = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${main.ch >= 0 ? '+' : '−'}${rub2(Math.abs(main.ch))}% за сутки)\n` +
     RP_FIATS.map(([, name], i) => vals[i] ? `${name}: ${fiats[i].v}` : '').filter(Boolean).join(' · ') +
-    `\n\nБиржа xRocket. Считайте P2P-сделки в P2Pro — бесплатно.`;
+    `\n\n${rateSrc === 'xRocket' ? 'Биржа xRocket' : 'Источник: CoinGecko'}. Считайте P2P-сделки в P2Pro — бесплатно.`;
   const markup = kb([[btn ?? { text: '🚀 Открыть P2Pro', url: BOT_LINK }], ...(back ? [[BACK]] : [])]);
   try {
     const r = await renderer();
@@ -2436,8 +2461,8 @@ async function inlineAnswer(q: { id: string; query?: string; from?: { id: number
     const now = new Date(), when = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }) + ', ' + now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
     const ch = `${main.ch >= 0 ? '+' : '−'}${rub2(Math.abs(main.ch))}%`;
     const fiats = RP_FIATS.map(([, name, sym], i) => ({ name, v: vals[i] ? `${vals[i] >= 1000 ? Math.round(vals[i]).toLocaleString('ru-RU') : rub2(vals[i])} ${sym}` : '—' }));
-    const title = `Курс USDT: ${rub2(main.rate)} ₽`, desc = `${ch} за сутки · биржа xRocket`;
-    const text = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${ch} за сутки)\n${fiats.filter((f) => f.v !== '—').map((f) => `${f.name}: ${f.v}`).join(' · ')}\n\nБиржа xRocket · курс через @P2ProAppBot`;
+    const title = `Курс USDT: ${rub2(main.rate)} ₽`, desc = `${ch} за сутки · ${RS()}`;
+    const text = `💱 <b>Курс USDT · ${esc(when)}</b>\n\n🇷🇺 <b>${rub2(main.rate)} ₽</b> (${ch} за сутки)\n${fiats.filter((f) => f.v !== '—').map((f) => `${f.name}: ${f.v}`).join(' · ')}\n\n${rateSrc === 'xRocket' ? 'Биржа xRocket' : 'Источник: CoinGecko'} · курс через @P2ProAppBot`;
     try {
       // Карточка курса обновляется раз в 10 минут: все, кто шлёт курс в эти 10 минут, получают одну и ту же картинку
       const url = await cardFileId(`rate-${Math.floor(Date.now() / 600e3)}`, async () => {
@@ -2512,7 +2537,7 @@ async function wbStats(userId: string) {
 type WbStats = Awaited<ReturnType<typeof wbStats>>;
 // Текст под картинкой (или вместо неё, если картинка не нарисовалась)
 function wbText(st: WbStats, rate: { rate: number } | null) {
-  return `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ${st.sym}</b> (xRocket).\n` : '') +
+  return `👋 <b>Давно не виделись!</b>\n` + (rate ? `Курс USDT сейчас: <b>${rub2(rate.rate)} ${st.sym}</b> (${rateSrc}).\n` : '') +
     (st.best ? `Ваш лучший месяц — ${st.best.month}: <b>+${Math.round(st.best.sum).toLocaleString('ru-RU')} ${st.sym}</b>. ` : '') +
     `Записывайте сделки, чтобы статистика оставалась полной.`;
 }
@@ -2546,7 +2571,7 @@ function wbCardSvg(c: WbCand, st: WbStats, rate: { rate: number } | null) {
   <text x="100" y="${350 + (nick ? 150 : 100) + nameSize}" font-family="Onest" font-size="36" fill="#B9BEC8">${x(`Вас не было ${days}. Сделки ждут!`)}</text>
   ${box(100, 700, W - 200, 'Ваш лучший месяц', st.best ? `${st.best.month} · ${money(st.best.sum)}` : '—', st.best ? '#3CD38A' : '#E8ECF2')}
   ${box(100, 870, bw, 'Всего сделок', st.count.toLocaleString('ru-RU'))}${box(120 + bw, 870, bw, 'Прибыль', st.total ? money(st.total) : '—', st.total >= 0 ? '#3CD38A' : '#FF6B6B')}
-  ${rate ? box(100, 1040, W - 200, 'Курс USDT сейчас · xRocket', rub2(rate.rate) + ' ' + st.sym) : ''}
+  ${rate ? box(100, 1040, W - 200, 'Курс USDT сейчас · ' + rateSrc, rub2(rate.rate) + ' ' + st.sym) : ''}
   <line x1="100" y1="${H - 110}" x2="${W - 100}" y2="${H - 110}" stroke="#fff" stroke-opacity=".1"/>
   <text x="100" y="${H - 56}" font-family="Onest" font-size="30" fill="#8691A2">Запишите сделки — статистика ждёт</text>
   <text x="${W - 100}" y="${H - 56}" text-anchor="end" font-family="Onest" font-weight="600" font-size="30" fill="#F2B54B">@P2ProAppBot</text></svg>`;
@@ -2755,7 +2780,7 @@ async function partnerCabinet(tgId: number, msgId: number | null, hello = false)
 
 /* ---------- Сторож: каждые 10 минут проверяем, что всё работает. Сломалось дважды подряд — пишем владельцу, починилось — тоже ---------- */
 type WatchState = Record<string, { n: number; since: number; alerted: boolean; detail: string }>;
-const WATCH_NAMES: Record<string, string> = { bot: 'Бот не получает сообщения', auth: 'Вход и оплата (функция telegram-auth)', rate: 'Курс USDT (биржа xRocket)', platega: 'Платёжка Platega (СБП и карта)', db: 'База данных' };
+const WATCH_NAMES: Record<string, string> = { bot: 'Бот не получает сообщения', auth: 'Вход и оплата (функция telegram-auth)', rate: 'Курс USDT (xRocket или запасной CoinGecko)', xr: 'Биржа xRocket (курс и оплата криптой)', platega: 'Платёжка Platega (СБП и карта)', db: 'База данных' };
 async function watchChecks(): Promise<Record<string, string>> {
   const bad: Record<string, string> = {};
   const t = (ms: number) => AbortSignal.timeout(ms);
@@ -2767,7 +2792,8 @@ async function watchChecks(): Promise<Record<string, string>> {
     (async () => { const r = await fetch(`${SB_URL}/functions/v1/telegram-auth`, { method: 'POST', headers: { 'content-type': 'application/json', apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '' }, body: '{}', signal: t(15000) }).catch((e) => e);
       if (!(r instanceof Response)) bad.auth = 'не отвечает: ' + String((r as Error)?.message ?? r).slice(0, 100);
       else if (r.status >= 500 || r.status === 404) bad.auth = `ошибка ${r.status}`; })(),
-    (async () => { if (!await usdtRate()) bad.rate = 'курс не получить — не работают итоги дня с курсом и оплата криптой'; })(),
+    (async () => { if (!await usdtRate()) bad.rate = 'курс не получить ни с xRocket, ни с CoinGecko — итоги дня и карточки без курса'; })(),
+    (async () => { if (!await xrRate('RUB')) bad.xr = 'xRocket не отвечает — оплата криптой не работает, курс берём с CoinGecko'; })(),
     (async () => { if (!Deno.env.get('PLATEGA_MERCHANT_ID')) return;
       const r = await fetch('https://app.platega.io', { method: 'HEAD', signal: t(15000) }).catch((e) => e);
       if (!(r instanceof Response)) bad.platega = 'сайт Platega не отвечает'; else if (r.status >= 500) bad.platega = `Platega отвечает ошибкой ${r.status}`; })(),

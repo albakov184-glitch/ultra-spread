@@ -241,8 +241,11 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string; gif
   const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
   // xRocket пока не умеет счёт в рублях с оплатой в крипте (валюта цены = валюта оплаты).
   // Поэтому цену в рублях переводим в USDT по курсу самой биржи xRocket и выставляем счёт в USDT
+  // Курс биржи не ответил — берём запасной с CoinGecko (рубли за 1 USDT)
   const rate = await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB', { signal: AbortSignal.timeout(8000) })
-    .then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0);
+    .then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0) ||
+    await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub', { signal: AbortSignal.timeout(8000) })
+      .then((x) => x.json()).then((j) => +j?.tether?.rub).catch(() => 0);
   if (!(rate > 0)) return json({ error: 'rate', detail: 'не удалось получить курс USDT' }, 502);
   const usdt = (Math.ceil(price / rate * 100) / 100).toFixed(2);
   if (+usdt < 0.1) return json({ error: 'min', detail: `${price} ₽ = ${usdt} USDT — слишком маленькая сумма для оплаты криптой` }, 400);
