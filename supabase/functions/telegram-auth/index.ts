@@ -261,7 +261,9 @@ async function xrInvoice(body: { xr_invoice?: string; access_token?: string; gif
     console.error('xr invoice', r.status, r.data);
     // Причину отказа xRocket показываем в приложении — по ней понятно, что поправить (секретов в ней нет)
     const why = [r.status, r.data?.title, r.data?.detail ?? r.data?.message].filter(Boolean).join(' · ').slice(0, 200);
-    return json({ error: 'xr', detail: why || 'нет ответа' }, 502);
+    // xRocket недоступен (техработы, сбой): приложение покажет понятное сообщение и предложит другой способ оплаты
+    const down = !r.status || r.status === 404 || r.status >= 500;
+    return json({ error: down ? 'xr_down' : 'xr', detail: why || 'нет ответа' }, 502);
   }
   await admin.from('crypto_invoices').update({ xr_id: String(inv.id ?? '') }).eq('id', id);
   return json({ id, usdt, link: inv.links.webLink || inv.links.telegramMiniAppLink || inv.links.telegramBotLink, tg: inv.links.telegramBotLink });

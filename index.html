@@ -2833,6 +2833,10 @@ async function cryptoPay(kind = 'crypto') {
   if ($('payBtn') === btn) { btn.disabled = false; btn.textContent = payLabel(); }
   if (res.error === 'blocked') return blockedScreen();
   // Причина от сервера — в окне, а не во всплывашке: её можно спокойно прочитать и прислать в поддержку
+  // xRocket на техработах или не отвечает — не пугаем кодом ошибки, предлагаем другой способ
+  if (res.error === 'xr_down') return sheet(`<div class="pw-hero"><div class="pw-badge">🛠</div><h3>Оплата криптой временно недоступна</h3>
+    <p class="muted">У сервиса xRocket сейчас технические работы. Оплатите PRO через ${inTelegram() ? 'СБП, банковскую карту или звёздами' : 'СБП или банковскую карту'} — это займёт минуту. Или попробуйте криптой позже.</p></div>
+    <button class="btn primary pw-go" data-open-plans="crypto">Выбрать другой способ</button><button class="btn" data-close>Понятно</button>`);
   if (!res.link && res.error) return sheet(`<div class="pw-hero"><h3>Не получилось выставить счёт</h3>
     <p>Попробуйте ещё раз чуть позже. Если не получится — пришлите этот экран в поддержку @MVSR_P2P.</p>
     <p class="muted small" style="word-break:break-word">Код: ${esc(res.error)}${res.detail ? ' · ' + esc(res.detail) : ''}</p></div><button class="btn primary" data-close>Понятно</button>`);
