@@ -2722,7 +2722,7 @@ const payLabel = () => {
 const payHint = () => payStars() ? `${payIcon('stars', 16)}Оплата звёздами Telegram. Не хватает звёзд — Telegram предложит купить`
   : payMethod === 'sbp' ? `${payIcon('sbp', 16)}Оплата через СБП: QR-код или приложение вашего банка`
   : payMethod === 'card' ? `${payIcon('card', 16)}Оплата банковской картой: Visa, Mastercard, МИР`
-  : `${payIcon('crypto', 16)}Оплата криптовалютой (USDT и др.) через Platega: сумма в рублях пересчитывается по курсу`;
+  : `${payIcon('crypto', 16)}Оплата криптовалютой: USDT и другие монеты, сумма пересчитывается по курсу`;
 // Перерисовать цены и кнопку после смены способа оплаты или загрузки персональной цены
 function payRefresh() {
   if ($('payPlans')) $('payPlans').innerHTML = payStars() ? starsPlans() : rubPlans();
@@ -2850,7 +2850,7 @@ async function cryptoPay(kind = 'crypto') {
       <div class="pp-icon">${payIcon(kind, 44)}</div></div><h3>Счёт готов</h3><span class="muted small">${price}${res.usdt ? ' = ' + esc(res.usdt) + ' USDT' : ''}</span>
       <p class="muted small" style="text-align:center;margin:0">${card ? 'Откроется страница оплаты: введите данные карты Visa, Mastercard или МИР и подтвердите платёж кодом из банка. Счёт действует 15 минут.'
         : sbp ? 'Откроется страница оплаты СБП: отсканируйте QR-код камерой телефона или выберите свой банк. Счёт действует 15 минут.'
-        : 'Откроется страница оплаты Platega: выберите криптовалюту и сеть, переведите сумму с любого кошелька или биржи. Сумма в рублях пересчитана по курсу. Счёт действует ограниченное время — оплатите сразу.'}</p></div>
+        : 'Откроется страница оплаты: выберите криптовалюту и сеть, переведите сумму с любого кошелька или биржи. Сумма в рублях пересчитана по курсу. Счёт действует ограниченное время — оплатите сразу.'}</p></div>
     ${inTelegram() ? `<button class="btn primary" id="xrGo" data-link="${esc(res.tg || '')}" data-web="${esc(res.link)}">Перейти к оплате</button>`
       : `<a class="btn primary" href="${esc(res.link)}" target="_blank" rel="noopener">Перейти к оплате</a>`}
     <span class="muted small" style="text-align:center">${payGift ? `После оплаты @${esc(payGift)} получит PRO и сообщение от бота, а вам бот пришлёт подтверждение.` : 'После оплаты вернитесь сюда — PRO включится сам, а бот пришлёт сообщение. Ждём оплату…'}</span>
