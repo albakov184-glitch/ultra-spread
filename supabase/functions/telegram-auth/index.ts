@@ -17,7 +17,7 @@ const RUB = { m: 490, y: 3990 };     // цены PRO в рублях (сайт).
 const XR_TOKEN = Deno.env.get('XROCKET_API_TOKEN') ?? '';
 const XR_SECRET = Deno.env.get('XROCKET_WEBHOOK_SECRET') ?? '';
 const XR_API = 'https://pay.api.xrocket.exchange';
-// Platega — оплата через СБП и картой. ID мерчанта и API-ключ — в Secrets (PLATEGA_MERCHANT_ID, PLATEGA_SECRET)
+// Platega — оплата через СБП, картой и криптовалютой (с ноября 2026 крипта тоже через Platega, вместо xRocket). ID мерчанта и API-ключ — в Secrets (PLATEGA_MERCHANT_ID, PLATEGA_SECRET)
 const PL_ID = Deno.env.get('PLATEGA_MERCHANT_ID') ?? '';
 const PL_SECRET = Deno.env.get('PLATEGA_SECRET') ?? '';
 const PL_API = 'https://app.platega.io';
@@ -223,55 +223,8 @@ async function giftFind(body: { gift_find?: string; access_token?: string }) {
   return json({ ok: true, name: masked, nick: g.nick });
 }
 
-// Счёт на PRO в xRocket. Цена в рублях (персональная из админки или обычная), платят в USDT по курсу
-async function xrInvoice(body: { xr_invoice?: string; access_token?: string; gift?: string }) {
-  if (!XR_TOKEN) return json({ error: 'xr_off' }, 503);
-  const period = body.xr_invoice === 'y' ? 'y' : 'm';
-  const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
-  if (ue || !ud?.user) return json({ error: 'auth' }, 401);
-  if (ud.user.banned_until && Date.parse(ud.user.banned_until) > Date.now()) return json({ error: 'blocked' }, 403);
-  if (await tooMany(ud.user.id)) return json({ error: 'too_many', detail: 'слишком много счетов подряд — подождите 10 минут' }, 429);
-  let gift: Gift | null = null;
-  if (body.gift) { const g = await giftTarget(body.gift, ud.user.id); if ('error' in g) return json(g, 404); gift = g; }
-  const cp = await myPrice(ud.user.id, 'rm, ry', !!gift);
-  const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
-  const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
-  const { error: ie } = await admin.from('crypto_invoices').insert({ id, user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
-  if (ie) { console.error('crypto_invoices', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
-  const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', ud.user.id).maybeSingle();
-  // xRocket пока не умеет счёт в рублях с оплатой в крипте (валюта цены = валюта оплаты).
-  // Поэтому цену в рублях переводим в USDT по курсу самой биржи xRocket и выставляем счёт в USDT
-  // Курс биржи не ответил — берём запасной с CoinGecko (рубли за 1 USDT)
-  // Новый адрес курса xRocket отдаёт список [{currency, rate}], старый — объект {USDT: {rate}}
-  const rate = await fetch('https://pay.api.xrocket.exchange/api/v1/rates?base=RUB', { signal: AbortSignal.timeout(8000) })
-    .then((x) => x.json()).then((j) => +(Array.isArray(j) ? j.find((x: { currency?: string }) => x?.currency === 'USDT')?.rate : j?.USDT?.rate)).catch(() => 0) ||
-    await fetch('https://exchange.api.xrocket.exchange/api/v1/rates?base=RUB', { signal: AbortSignal.timeout(8000) })
-    .then((x) => x.json()).then((j) => +j?.USDT?.rate).catch(() => 0) ||
-    await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub', { signal: AbortSignal.timeout(8000) })
-      .then((x) => x.json()).then((j) => +j?.tether?.rub).catch(() => 0);
-  if (!(rate > 0)) return json({ error: 'rate', detail: 'не удалось получить курс USDT' }, 502);
-  const usdt = (Math.ceil(price / rate * 100) / 100).toFixed(2);
-  if (+usdt < 0.1) return json({ error: 'min', detail: `${price} ₽ = ${usdt} USDT — слишком маленькая сумма для оплаты криптой` }, 400);
-  const req = {
-    priceAmount: usdt, priceCurrency: 'USDT', payCurrencies: ['USDT'], numPayments: 1, clientInvoiceId: id,
-    description: `${gift ? `Подарок для @${gift.nick}: ` : ''}P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'} · ${price} ₽`, expiresIn: 60 * 60e3,
-    callback: { callbackUrl: `${SB_URL}/functions/v1/telegram-auth` }, url: { successUrl: SITE + '?paid=crypto', cancelUrl: SITE },
-    customer: { id: ud.user.id, ...(t?.tg_id ? { telegramId: String(t.tg_id) } : {}) }, data: { u: ud.user.id, p: period, rub: price },
-  };
-  const r = await xr('/api/v1/invoices', { method: 'POST', body: JSON.stringify(req) });
-  const inv = r.data?.data ?? r.data;
-  if (!r.ok || !inv?.links) {
-    console.error('xr invoice', r.status, r.data);
-    // Причину отказа xRocket показываем в приложении — по ней понятно, что поправить (секретов в ней нет)
-    const why = [r.status, r.data?.title, r.data?.detail ?? r.data?.message].filter(Boolean).join(' · ').slice(0, 200);
-    // xRocket недоступен (техработы, сбой): приложение покажет понятное сообщение и предложит другой способ оплаты
-    const down = !r.status || r.status === 404 || r.status >= 500;
-    return json({ error: down ? 'xr_down' : 'xr', detail: why || 'нет ответа' }, 502);
-  }
-  await admin.from('crypto_invoices').update({ xr_id: String(inv.id ?? '') }).eq('id', id);
-  return json({ id, usdt, link: inv.links.webLink || inv.links.telegramMiniAppLink || inv.links.telegramBotLink, tg: inv.links.telegramBotLink });
-}
-
+// Оплата криптой через xRocket отключена (ноябрь 2026): счета выставляем в Platega (plInvoice, crypto: true).
+// Приём уведомлений xRocket ниже оставлен — чтобы уже выставленные раньше счета, если их оплатят, всё равно включили PRO
 // Уведомление от xRocket об оплате. Подпись: HMAC-SHA256(секрет вебхука, "{Signature-Timestamp}.{тело}") в hex
 async function xrWebhook(req: Request, raw: string) {
   const ts = req.headers.get('signature-timestamp') ?? '', sig = (req.headers.get('signature') ?? '').toLowerCase();
@@ -319,7 +272,7 @@ const pl = (path: string, init: RequestInit = {}): Promise<{ ok: boolean; status
   .catch((e) => ({ ok: false, status: 0, data: { message: e?.name === 'TimeoutError' ? 'Platega не ответила за 20 секунд' : 'нет связи с Platega' } }));
 
 // Счёт на PRO через СБП (или картой, если card: true). Цена в рублях — персональная из админки или обычная. Подарок другу — как у крипты
-async function plInvoice(body: { pl_invoice?: string; access_token?: string; gift?: string; tg?: boolean; card?: boolean }) {
+async function plInvoice(body: { pl_invoice?: string; access_token?: string; gift?: string; tg?: boolean; card?: boolean; crypto?: boolean }) {
   if (!PL_ID || !PL_SECRET) return json({ error: 'pl_off' }, 503);
   const period = body.pl_invoice === 'y' ? 'y' : 'm';
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
@@ -331,18 +284,20 @@ async function plInvoice(body: { pl_invoice?: string; access_token?: string; gif
   const cp = await myPrice(ud.user.id, 'rm, ry', !!gift);
   const price = (period === 'y' ? cp?.ry : cp?.rm) || RUB[period];
   const id = 'p2p_' + crypto.randomUUID().replace(/-/g, '');
-  const { error: ie } = await admin.from('crypto_invoices').insert({ id, provider: body.card ? 'platega_card' : 'platega', user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
+  const { error: ie } = await admin.from('crypto_invoices').insert({ id, provider: body.crypto ? 'platega_crypto' : body.card ? 'platega_card' : 'platega', user_id: gift?.id ?? ud.user.id, period, price_rub: price, ...(gift ? { gift_from: ud.user.id } : {}) });
   if (ie) { console.error('pl invoice db', ie); return json({ error: 'db', detail: String(ie.message ?? '').slice(0, 200) }, 500); }
   const r = await pl('/transaction/process', { method: 'POST', body: JSON.stringify({
-    paymentMethod: body.card ? 11 : 2, paymentDetails: { amount: price, currency: 'RUB' },
+    // Способы Platega: 2 — СБП (QR), 11 — карта, 13 — криптовалюта (человек платит в крипте, сумма счёта — в рублях)
+    paymentMethod: body.crypto ? 13 : body.card ? 11 : 2, paymentDetails: { amount: price, currency: 'RUB' },
     description: `${gift ? `Подарок для @${gift.nick}: ` : ''}P2Pro PRO ${period === 'y' ? 'на год' : 'на месяц'}`,
     // Из Telegram после оплаты возвращаем в бота (он покажет, что PRO включён), с сайта — на сайт
-    return: body.tg ? 'https://t.me/P2ProAppBot?start=paid' : SITE + (body.card ? '?paid=card' : '?paid=sbp'), failedUrl: body.tg ? 'https://t.me/P2ProAppBot' : SITE, payload: id }) });
+    return: body.tg ? 'https://t.me/P2ProAppBot?start=paid' : SITE + (body.crypto ? '?paid=crypto' : body.card ? '?paid=card' : '?paid=sbp'), failedUrl: body.tg ? 'https://t.me/P2ProAppBot' : SITE, payload: id }) });
   const link = r.data?.redirect ?? r.data?.url, tx = r.data?.transactionId;
   if (!r.ok || !link || !tx) {
     console.error('pl invoice', r.status, r.data);
     const why = [r.status, r.data?.message ?? r.data?.title ?? r.data?.error].filter(Boolean).join(' · ').slice(0, 200);
-    return json({ error: 'pl', detail: why || 'нет ответа' }, 502);
+    // Крипта не включена в кабинете Platega или Platega не отвечает — приложение покажет понятное сообщение
+    return json({ error: body.crypto ? 'crypto_off' : 'pl', detail: why || 'нет ответа' }, 502);
   }
   await admin.from('crypto_invoices').update({ pl_id: String(tx) }).eq('id', id);
   return json({ id, link });
@@ -396,8 +351,9 @@ Deno.serve(async (req) => {
   if (typeof body?.pl_invoice === 'string') {
     return plInvoice(body).catch((e) => { console.error('pl invoice crash', e); return json({ error: 'crash', detail: String(e?.message ?? e).slice(0, 200) }, 500); });
   }
+  // Оплата криптой теперь через Platega. Старые версии приложения ещё просят xr_invoice — отправляем их туда же
   if (typeof body?.xr_invoice === 'string') {
-    return xrInvoice(body).catch((e) => { console.error('xr invoice crash', e); return json({ error: 'crash', detail: String(e?.message ?? e).slice(0, 200) }, 500); });
+    return plInvoice({ ...body, pl_invoice: body.xr_invoice, crypto: true, card: false }).catch((e) => { console.error('crypto invoice crash', e); return json({ error: 'crash', detail: String(e?.message ?? e).slice(0, 200) }, 500); });
   }
   if (typeof body?.web_login === 'string') return webLogin(body.web_login);
   const initData = typeof body?.initData === 'string' ? body.initData.slice(0, 8192) : '';

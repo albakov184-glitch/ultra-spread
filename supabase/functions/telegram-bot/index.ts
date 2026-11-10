@@ -2797,7 +2797,7 @@ async function partnerCabinet(tgId: number, msgId: number | null, hello = false)
 
 /* ---------- Сторож: каждые 10 минут проверяем, что всё работает. Сломалось дважды подряд — пишем владельцу, починилось — тоже ---------- */
 type WatchState = Record<string, { n: number; since: number; alerted: boolean; detail: string }>;
-const WATCH_NAMES: Record<string, string> = { bot: 'Бот не получает сообщения', auth: 'Вход и оплата (функция telegram-auth)', rate: 'Курс USDT (xRocket или запасной CoinGecko)', xr: 'Биржа xRocket (курс и оплата криптой)', platega: 'Платёжка Platega (СБП и карта)', db: 'База данных' };
+const WATCH_NAMES: Record<string, string> = { bot: 'Бот не получает сообщения', auth: 'Вход и оплата (функция telegram-auth)', rate: 'Курс USDT (xRocket или запасной CoinGecko)', xr: 'Биржа xRocket (только курс USDT)', platega: 'Платёжка Platega (СБП и карта)', db: 'База данных' };
 async function watchChecks(): Promise<Record<string, string>> {
   const bad: Record<string, string> = {};
   const t = (ms: number) => AbortSignal.timeout(ms);
@@ -2810,7 +2810,7 @@ async function watchChecks(): Promise<Record<string, string>> {
       if (!(r instanceof Response)) bad.auth = 'не отвечает: ' + String((r as Error)?.message ?? r).slice(0, 100);
       else if (r.status >= 500 || r.status === 404) bad.auth = `ошибка ${r.status}`; })(),
     (async () => { if (!await usdtRate()) bad.rate = 'курс не получить ни с xRocket, ни с CoinGecko — итоги дня и карточки без курса'; })(),
-    (async () => { if (!await xrRate('RUB')) bad.xr = 'xRocket не отвечает — оплата криптой не работает, курс берём с CoinGecko'; })(),
+    (async () => { if (!await xrRate('RUB')) bad.xr = 'xRocket не отвечает — курс берём с запасного CoinGecko, на оплату это не влияет'; })(),
     (async () => { if (!Deno.env.get('PLATEGA_MERCHANT_ID')) return;
       const r = await fetch('https://app.platega.io', { method: 'HEAD', signal: t(15000) }).catch((e) => e);
       if (!(r instanceof Response)) bad.platega = 'сайт Platega не отвечает'; else if (r.status >= 500) bad.platega = `Platega отвечает ошибкой ${r.status}`; })(),
