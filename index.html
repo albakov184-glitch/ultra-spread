@@ -3326,7 +3326,19 @@ const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localSt
 /* ================= БИРЖЕВОЙ КУРС USDT (xRocket) ================= */
 // Ориентир для P2P: средний курс USDT на бирже xRocket. Открытый API, ключ не нужен. Обновляется раз в минуту,
 // пока открыт калькулятор; последний курс хранится на устройстве. Выключается в Профиле → «Отображение»
-const XR_URL = 'https://exchange.api.xrocket.exchange/api/v1/rates?base=';
+// Новый адрес (с ноября 2026, отдаёт список [{currency, rate}] без изменения за сутки) и старый ({USDT: {rate, rateChangePercent24h}})
+const XR_URLS = ['https://pay.api.xrocket.exchange/api/v1/rates?base=', 'https://exchange.api.xrocket.exchange/api/v1/rates?base='];
+// Курс сутки назад из нашей истории (её каждые 10 минут пишет бот) — чтобы самим посчитать «изменение за сутки»
+let xrDay = null;
+async function xrDayAgo(base) {
+  if (!sb) return 0;
+  if (!xrDay || Date.now() - xrDay.at > 10 * 60e3) {
+    const { data } = await sb.from('rate_history').select('usdt, fx').gte('ts', new Date(Date.now() - 864e5).toISOString()).order('ts').limit(1);
+    xrDay = { at: Date.now(), row: data?.[0] || null };
+  }
+  const r = xrDay.row;
+  return r ? (base === 'RUB' ? +r.usdt : +(r.fx?.[base] || 0)) || 0 : 0;
+}
 const XR_CURS = ['RUB', 'KZT', 'UAH', 'BYN', 'EUR'];   // в этих валютах показываем курс USDT
 let xrRate = lsGet(KEY + '.xr'), xrBusy = false;   // курс к рублю — основной (его пишет бот для графика и уведомлений)
 let xrFx = (() => { const v = lsGet(KEY + '.xrfx'); return v && typeof v === 'object' ? v : {}; })();   // курсы к другим валютам
@@ -3343,12 +3355,16 @@ async function xrFxGet(c, maxAge = 55e3) {
 }
 // Сначала биржа xRocket; не ответила за 6 секунд — запасной источник CoinGecko (src — откуда курс, его показываем)
 async function xrFetch(base) {
-  try {
+  for (const u of XR_URLS) try {
     const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
-    const j = await (await fetch(XR_URL + base, { cache: 'no-store', signal: ac.signal })).json(); clearTimeout(tm);
-    if (!(+j?.USDT?.rate > 0)) throw new Error('no rate');
-    return { rate: +j.USDT.rate, ch: +j.USDT.rateChangePercent24h || 0, at: Date.now(), src: 'xRocket' };
-  } catch (e) { return cgFetch(base); }
+    const j = await (await fetch(u + base, { cache: 'no-store', signal: ac.signal })).json(); clearTimeout(tm);
+    const it = Array.isArray(j) ? j.find(x => x?.currency === 'USDT') : j?.USDT, rate = +it?.rate;
+    if (!(rate > 0)) continue;
+    let ch = +it.rateChangePercent24h;
+    if (it.rateChangePercent24h == null || !isFinite(ch)) { const old = await xrDayAgo(base).catch(() => 0); ch = old > 0 ? (rate - old) / old * 100 : 0; }
+    return { rate, ch, at: Date.now(), src: 'xRocket' };
+  } catch (e) { /* пробуем следующий адрес */ }
+  return cgFetch(base);
 }
 // CoinGecko: USDT в рублях, тенге, гривне и евро. Белорусского рубля там нет — считаем через официальный курс рубля
 let cgC = null;

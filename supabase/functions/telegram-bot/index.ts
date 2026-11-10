@@ -559,12 +559,29 @@ async function daySummary(userId: string, day: string) {
 // rateSrc — откуда взят последний курс: его название показываем в карточках и сообщениях
 let rateSrc = 'xRocket';
 const RS = () => rateSrc === 'xRocket' ? 'биржа xRocket' : 'CoinGecko';
+// Адреса курса xRocket: новый (с ноября 2026, внутри платёжного API; отдаёт список [{currency, rate}] без изменения за сутки)
+// и старый (объект {USDT: {rate, rateChangePercent24h}}) — на случай, если его вернут
+const XR_RATES = ['https://pay.api.xrocket.exchange/api/v1/rates?base=', 'https://exchange.api.xrocket.exchange/api/v1/rates?base='];
+// Курс сутки назад из нашей истории (rate_history) — чтобы самим посчитать «изменение за сутки». Обновляем раз в 5 минут
+let dayAgoC: { at: number; row: { usdt: number; fx: Record<string, number> | null } | null } | null = null;
+async function rateDayAgo(base: string) {
+  if (!dayAgoC || Date.now() - dayAgoC.at > 5 * 60e3) {
+    const { data } = await admin.from('rate_history').select('usdt, fx').gte('ts', new Date(Date.now() - DAY).toISOString()).order('ts').limit(1);
+    dayAgoC = { at: Date.now(), row: (data?.[0] as { usdt: number; fx: Record<string, number> | null } | undefined) ?? null };
+  }
+  const r = dayAgoC.row;
+  return r ? (base === 'RUB' ? +r.usdt : +(r.fx?.[base] ?? 0)) || 0 : 0;
+}
 async function xrRate(base: string): Promise<{ rate: number; ch: number } | null> {
-  try {
-    const j = await fetch(`https://exchange.api.xrocket.exchange/api/v1/rates?base=${base}`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
-    const rate = +j?.USDT?.rate;
-    return rate > 0 ? { rate, ch: +j.USDT.rateChangePercent24h || 0 } : null;
-  } catch (_) { return null; }
+  for (const u of XR_RATES) try {
+    const j = await fetch(u + base, { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
+    const it = Array.isArray(j) ? j.find((x: { currency?: string }) => x?.currency === 'USDT') : j?.USDT, rate = +it?.rate;
+    if (!(rate > 0)) continue;
+    if (it.rateChangePercent24h != null && isFinite(+it.rateChangePercent24h)) return { rate, ch: +it.rateChangePercent24h };
+    const old = await rateDayAgo(base).catch(() => 0);
+    return { rate, ch: old > 0 ? (rate - old) / old * 100 : 0 };
+  } catch (_) { /* пробуем следующий адрес */ }
+  return null;
 }
 // CoinGecko: USDT в рублях, тенге, гривне, евро. Белорусского рубля там нет — считаем через официальный курс рубля
 let cgCache: { at: number; t: Record<string, number> } | null = null;
