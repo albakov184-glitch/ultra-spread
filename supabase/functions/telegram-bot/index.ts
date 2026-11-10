@@ -658,7 +658,7 @@ const dayButtons = (off: boolean, back = false) => kb([[{ text: '🚀 Откры
   [off ? { text: '🔔 Присылать итоги каждый день', callback_data: 'don' } : { text: '🔕 Не присылать итоги', callback_data: 'doff' }], ...(back ? [[BACK]] : [])]);
 // «‹ Назад» в меню /start: экран, открытый кнопкой меню, превращается обратно в приветствие
 const BACK: Btn = { text: '‹ Назад', callback_data: 'my:back' };
-const BOT_BTNS = ['rate', 'day', 'month', 'pro', 'useful'];   // кнопки меню /start, которые считаем в статистике
+const BOT_BTNS = ['rate', 'day', 'month', 'pro', 'useful', 'subask', 'subok'];   // + просьба подписаться на канал и подтверждённые подписки   // кнопки меню /start, которые считаем в статистике
 // Статистика кнопок бота за последние n дней: люди и нажатия по каждой кнопке (+ всё время для одной кнопки)
 type BC = { day: string; action: string; tg_id: number; cnt: number };
 async function botClicks(only?: string) {
@@ -1300,6 +1300,45 @@ async function startKb(tgId: number, cfg?: WCfg) {
 }
 // Длина строки в единицах Telegram (UTF-16)
 const u16 = (x: string) => x.length;
+// Подписка на канал после /start: кто не подписан на CHANNEL — сначала карточка с просьбой подписаться и кнопкой проверки,
+// меню /start — после подписки. Выключить: SUB_GATE = false
+const SUB_GATE = true;
+async function isSubscribed(tgId: number) {
+  const r = await tg('getChatMember', { chat_id: CHANNEL, user_id: tgId });
+  if (!r?.ok) return true;   // бот не видит участников канала — не мешаем человеку пользоваться ботом
+  const st = r.result?.status;
+  return ['creator', 'administrator', 'member'].includes(st) || (st === 'restricted' && !!r.result?.is_member);
+}
+async function subPrompt(chat: number, name: string) {
+  const markup = kb([[{ text: '📢 Подписаться на канал', url: 'https://t.me/' + CHANNEL.slice(1) }], [{ text: '✅ Я подписался', callback_data: 'sub:chk' }]]);
+  const caption = `👋 ${esc(name.trim().slice(0, 40)) || 'Привет'}, рады видеть вас в <b>P2Pro</b>!\n\n` +
+    `Подпишитесь на наш канал ${CHANNEL}: курс USDT, база мошенников, советы и новости P2Pro.\n\nПотом нажмите «✅ Я подписался» — и откроется меню.`;
+  // Картинку загружаем в Telegram один раз и дальше шлём по её file_id
+  const fid = await stGet<string>('subcard', '');
+  let r = fid ? await tg('sendPhoto', { chat_id: chat, photo: fid, caption, parse_mode: 'HTML', reply_markup: markup }) : null;
+  if (!r?.ok) {
+    const img = await fetch(APP + 'img/sub-channel.jpg').then((x) => x.ok ? x.arrayBuffer() : null).catch(() => null);
+    if (img) {
+      const fd = new FormData();
+      fd.append('chat_id', String(chat)); fd.append('caption', caption); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(markup));
+      fd.append('photo', new Blob([img], { type: 'image/jpeg' }), 'P2Pro.jpg');
+      r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd }).then((x) => x.json()).catch(() => null);
+      const ph = r?.result?.photo as { file_id: string; width: number }[] | undefined;
+      if (r?.ok && ph?.length) await stSet('subcard', ph.sort((a, b) => b.width - a.width)[0].file_id);
+    }
+  }
+  if (!r?.ok) await tg('sendMessage', { chat_id: chat, text: caption, parse_mode: 'HTML', reply_markup: markup });
+  background(admin.rpc('bot_click', { p_action: 'subask', p_tg: chat }).then(() => {}, () => {}));
+}
+// Кнопка «✅ Я подписался»: проверяем подписку; есть — убираем просьбу и показываем меню /start
+async function subCheck(cq: { id: string; from: { id: number; first_name?: string }; message?: { chat: { id: number }; message_id: number } }) {
+  if (!await isSubscribed(cq.from.id)) return tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Пока не вижу подписки. Подпишитесь на канал кнопкой выше и нажмите ещё раз', show_alert: true });
+  await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Спасибо за подписку! 🎉' });
+  background(admin.rpc('bot_click', { p_action: 'subok', p_tg: cq.from.id }).then(() => {}, () => {}));
+  const chat = cq.message?.chat.id ?? cq.from.id;
+  if (cq.message) await tg('deleteMessage', { chat_id: chat, message_id: cq.message.message_id });
+  await sendWelcome(chat, cq.from.id, cq.from.first_name ?? '');
+}
 // Отправить приветствие. Если Telegram не принял премиум-эмодзи (в тексте или кнопках) — повторяем без них, а потом стандартное
 // Варианты приветствия по убыванию красоты: с премиум-эмодзи → без иконок на кнопках → без премиум-эмодзи → стандартное
 async function welcomeTries(tgId: number, rawName: string): Promise<Record<string, unknown>[]> {
@@ -3066,6 +3105,7 @@ Deno.serve(async (req) => {
   }
   if (cq && cq.data === 'pc:r' && SERVICE) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Обновляю…' }); await partnerCabinet(cq.from.id, cq.message?.message_id ?? null).catch((e) => console.error('pc', e)); return new Response('ok'); }
   if (cq && (cq.data === 'doff' || cq.data === 'don') && SERVICE) { await dailyToggle(cq).catch((e) => console.error('daily toggle', e)); return new Response('ok'); }
+  if (cq && cq.data === 'sub:chk' && SERVICE) { background(subCheck(cq).catch((e) => console.error('sub', e))); return new Response('ok'); }
   if (cq && /^wb:/.test(cq.data ?? '') && isAdmin(cq.from?.id)) { background(wbCallback(cq).catch((e) => console.error('wb', e))); return new Response('ok'); }
   if (cq) {
     if (isAdmin(cq.from?.id)) background(adminCallback(cq).catch((e) => console.error('admin cb', e)));
@@ -3099,7 +3139,8 @@ Deno.serve(async (req) => {
         // Первый запуск бота и метка ссылки (31-bot-starts.sql) — для воронки и источников в админке
         const src = (text.trim().split(/\s+/)[1] ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'direct';
         if (msg.from?.id && msg.chat.type === 'private' && SERVICE) background(admin.from('bot_starts').upsert({ tg_id: msg.from.id, src }, { onConflict: 'tg_id', ignoreDuplicates: true }).then(() => {}, () => {}));
-        await sendWelcome(msg.chat.id, msg.from?.id ?? 0, msg.from?.first_name ?? '');
+        if (SUB_GATE && SERVICE && msg.from?.id && !isAdmin(msg.from.id) && !(await isSubscribed(msg.from.id))) await subPrompt(msg.chat.id, msg.from.first_name ?? '');
+        else await sendWelcome(msg.chat.id, msg.from?.id ?? 0, msg.from?.first_name ?? '');
       }
       else await send(msg.chat.id, HELP);
     } catch (_) { /* сеть Telegram недоступна — пропускаем */ }
