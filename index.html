@@ -1467,7 +1467,7 @@ img { max-width: 100%; }
     </div>
     <div class="card">
       <span class="card-t">Отображение</span>
-      <div class="sw-row"><span>Биржевой курс USDT в калькуляторе<br><span class="muted small">Источник: CoinGecko, обновляется каждые 10 минут</span></span>
+      <div class="sw-row"><span>Биржевой курс USDT в калькуляторе<br><span class="muted small">Источник: биржа xRocket (запасной — CoinGecko), обновляется раз в минуту</span></span>
         <button class="toggle" role="switch" id="rateToggle" aria-checked="true" aria-label="Биржевой курс в калькуляторе"></button></div>
     </div>
     <div class="card">
@@ -3326,10 +3326,11 @@ const USER_KEY = KEY + '.user', SYNC_KEY = KEY + '.sync', REM_KEY = KEY + '.rem'
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
-/* ================= БИРЖЕВОЙ КУРС USDT (CoinGecko) ================= */
-// Ориентир для P2P: средний курс USDT по мировым биржам (CoinGecko). Бот раз в 10 минут берёт его с CoinGecko и пишет
-// в rate_history — приложение читает оттуда (у бесплатного CoinGecko строгий лимит запросов). Нет свежей записи —
-// спрашиваем CoinGecko напрямую. Последний курс хранится на устройстве. Выключается в Профиле → «Отображение»
+/* ================= БИРЖЕВОЙ КУРС USDT (xRocket) ================= */
+// Ориентир для P2P: средний курс USDT на бирже xRocket. Открытый API, ключ не нужен. Обновляется раз в минуту,
+// пока открыт калькулятор; последний курс хранится на устройстве. Выключается в Профиле → «Отображение»
+// Новый адрес (с ноября 2026, отдаёт список [{currency, rate}] без изменения за сутки) и старый ({USDT: {rate, rateChangePercent24h}})
+const XR_URLS = ['https://pay.api.xrocket.exchange/api/v1/rates?base=', 'https://exchange.api.xrocket.exchange/api/v1/rates?base='];
 // Курс сутки назад из нашей истории (её каждые 10 минут пишет бот) — чтобы самим посчитать «изменение за сутки»
 let xrDay = null;
 async function xrDayAgo(base) {
@@ -3355,18 +3356,17 @@ async function xrFxGet(c, maxAge = 55e3) {
   } catch (e) {}
   return rateOf(c);
 }
-// Курс из нашей истории (последняя запись бота, не старше 30 минут); нет — CoinGecko напрямую
+// Сначала биржа xRocket; не ответила за 6 секунд — запасной источник CoinGecko (src — откуда курс, его показываем)
 async function xrFetch(base) {
-  try {
-    if (sb) {
-      const { data } = await sb.from('rate_history').select('ts, usdt, fx').order('ts', { ascending: false }).limit(1);
-      const r = data?.[0], v = r ? (base === 'RUB' ? +r.usdt : +(r.fx?.[base] || 0)) : 0;
-      if (v > 0 && Date.now() - Date.parse(r.ts) < 30 * 60e3) {
-        const old = await xrDayAgo(base).catch(() => 0);
-        return { rate: v, ch: old > 0 ? (v - old) / old * 100 : 0, at: Date.parse(r.ts), src: 'CoinGecko' };
-      }
-    }
-  } catch (e) { /* нет связи с базой — пробуем CoinGecko */ }
+  for (const u of XR_URLS) try {
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+    const j = await (await fetch(u + base, { cache: 'no-store', signal: ac.signal })).json(); clearTimeout(tm);
+    const it = Array.isArray(j) ? j.find(x => x?.currency === 'USDT') : j?.USDT, rate = +it?.rate;
+    if (!(rate > 0)) continue;
+    let ch = +it.rateChangePercent24h;
+    if (it.rateChangePercent24h == null || !isFinite(ch)) { const old = await xrDayAgo(base).catch(() => 0); ch = old > 0 ? (rate - old) / old * 100 : 0; }
+    return { rate, ch, at: Date.now(), src: 'xRocket' };
+  } catch (e) { /* пробуем следующий адрес */ }
   return cgFetch(base);
 }
 // CoinGecko: USDT в рублях, тенге, гривне и евро. Белорусского рубля там нет — считаем через официальный курс рубля
@@ -3407,7 +3407,7 @@ function renderRate() {
   const age = Date.now() - R.at, up = R.ch >= 0, own2 = rc !== S.settings.cur;
   if (el.dataset.c && el.dataset.c !== rc && !reduceMotion) { el.classList.remove('fx'); void el.offsetWidth; el.classList.add('fx'); }
   el.dataset.c = rc;
-  el.innerHTML = `<span class="dot ${age < 15 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(R.rate)} ${SYM[rc]}</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(R.ch))}%</span>· ${own2 ? CUR_FLAG[rc] + ' ' : ''}${R.src || 'CoinGecko'}${age < 15 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
+  el.innerHTML = `<span class="dot ${age < 5 * 60e3 ? '' : 'off'}"></span>USDT <b>${nf2.format(R.rate)} ${SYM[rc]}</b><span class="${up ? 'up' : 'dn'}">${up ? '▲' : '▼'}${nf2.format(Math.abs(R.ch))}%</span>· ${own2 ? CUR_FLAG[rc] + ' ' : ''}${R.src || 'xRocket'}${age < 5 * 60e3 ? '' : ' · ' + xrAgo(age)}<span class="ar">›</span>`;
 }
 // Окно с подробностями: источник, сравнение сделки с биржей, другие валюты, подстановка курса
 function rateSheet() {
@@ -3420,7 +3420,7 @@ function rateSheet() {
   sheet(`<h3>Биржевой курс USDT${v === 'RUB' ? '' : ` · ${CUR_FLAG[v]} ${CUR_NAME[v].toLowerCase()}`}</h3>
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="font-family:var(--f-display);font-size:34px">${nf2.format(r)} ${sym}</b>
       <span style="color:${R.ch >= 0 ? '#3CD38A' : '#FF6B6B'};font-weight:600;white-space:nowrap">${R.ch >= 0 ? '▲' : '▼'} ${nf2.format(Math.abs(R.ch))}% за сутки</span></div>
-    <span class="muted small">Источник: <b style="color:var(--fg)">CoinGecko</b> — средний курс USDT по мировым биржам, обновляется каждые 10 минут. Обновлено ${xrAgo(Date.now() - R.at)}.<br>Это средний курс USDT по биржам — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
+    <span class="muted small">Источник: ${R.src === 'CoinGecko' ? '<b style="color:var(--fg)">CoinGecko</b> (запасной: биржа xRocket сейчас не отвечает)' : 'биржа <b style="color:var(--fg)">xRocket</b> (@xRocket в Telegram)'}. Обновлено ${xrAgo(Date.now() - R.at)}.<br>Это средний курс USDT на бирже — ориентир. P2P-курсы на Bybit, HTX и других площадках обычно отличаются на 1–3%.</span>
     <div class="kpi"><span class="label">График за сутки${S.settings.pro ? '' : ' · PRO'}</span><div class="xr-ch" id="xrCh"><span class="muted small">Загружаем…</span></div></div>
     <div class="kpi" id="xrAl"><span class="label">🔔 Уведомить в Telegram${S.settings.pro ? '' : ' · PRO'}</span>
       ${v === 'RUB' ? `<span class="muted small">Бот напишет, когда курс USDT станет выше или ниже вашей цены (проверка раз в 10 минут)</span>
@@ -4306,7 +4306,7 @@ function showLanding(authMode) {
     ['🔒', 'Защита и облако', 'PIN-код и Face ID. Сделки в облаке — на телефоне и компьютере одни и те же.']];
   const S3 = [['Откройте бота', '@P2ProAppBot в Telegram — вход в один тап, без паролей'], ['Вбейте сделку', 'Курс покупки, продажи и сумму — комиссии посчитаются сами'], ['Смотрите прибыль', 'По дням и месяцам в календаре — и итоги каждый вечер']];
   const li = a => a.map(x => `<li>${x}</li>`).join('');
-const FAQ = [['Нужно ли давать доступ к бирже или API-ключи?', 'Нет. Вы сами вписываете курс покупки, продажи и сумму. P2Pro не подключается к вашим аккаунтам на биржах и не видит балансы.'], ['P2Pro проводит сделки или хранит деньги?', 'Нет. P2Pro — калькулятор и журнал. Сделки вы проводите на бирже как обычно, деньги и USDT остаются у вас.'], ['Как считается прибыль?', 'Разница между продажей и покупкой минус комиссия биржи (в процентах или фиксированная) и комиссия вывода USDT, если переводите между биржами. Есть режимы «Сделка», «Круг» — продажа частями — и «Треугольник».'], ['Где хранятся мои сделки?', 'В облаке, под вашим аккаунтом: они одинаковые на телефоне и компьютере. Можно включить PIN-код и Face ID. Аккаунт вместе со всеми данными удаляется в профиле в один шаг.'], ['Что есть в бесплатной версии?', 'Калькулятор сделки, круга и треугольника, подбор курса, биржевой курс USDT и итоги дня в боте. Сохранять сделки можно без ограничений, история и аналитика видны за последние 7 дней.'], ['Как работает пробный PRO на 7 дней?', 'Включается в приложении одной кнопкой, один раз на человека. Платить ничего не нужно и ничего не спишется: через 7 дней вы просто вернётесь на Free, сделки сохранятся.'], ['Как оплатить PRO?', 'Через СБП, банковской картой (Visa, Mastercard, МИР) или криптовалютой (USDT и др.), а в Telegram ещё и звёздами. Это разовая оплата за месяц или год, без автоматических списаний.'], ['Можно ли пользоваться с компьютера?', 'Да. Откройте этот сайт и нажмите «Войти» → «Войти через Telegram»: бот пришлёт подтверждение. Сделки те же, что в телефоне.'], ['Откуда берётся курс USDT?', 'С CoinGecko — это средний курс USDT по мировым биржам, обновляется каждые 10 минут. Цены в P2P-объявлениях могут от него отличаться.']];
+const FAQ = [['Нужно ли давать доступ к бирже или API-ключи?', 'Нет. Вы сами вписываете курс покупки, продажи и сумму. P2Pro не подключается к вашим аккаунтам на биржах и не видит балансы.'], ['P2Pro проводит сделки или хранит деньги?', 'Нет. P2Pro — калькулятор и журнал. Сделки вы проводите на бирже как обычно, деньги и USDT остаются у вас.'], ['Как считается прибыль?', 'Разница между продажей и покупкой минус комиссия биржи (в процентах или фиксированная) и комиссия вывода USDT, если переводите между биржами. Есть режимы «Сделка», «Круг» — продажа частями — и «Треугольник».'], ['Где хранятся мои сделки?', 'В облаке, под вашим аккаунтом: они одинаковые на телефоне и компьютере. Можно включить PIN-код и Face ID. Аккаунт вместе со всеми данными удаляется в профиле в один шаг.'], ['Что есть в бесплатной версии?', 'Калькулятор сделки, круга и треугольника, подбор курса, биржевой курс USDT и итоги дня в боте. Сохранять сделки можно без ограничений, история и аналитика видны за последние 7 дней.'], ['Как работает пробный PRO на 7 дней?', 'Включается в приложении одной кнопкой, один раз на человека. Платить ничего не нужно и ничего не спишется: через 7 дней вы просто вернётесь на Free, сделки сохранятся.'], ['Как оплатить PRO?', 'Через СБП, банковской картой (Visa, Mastercard, МИР) или криптовалютой (USDT и др.), а в Telegram ещё и звёздами. Это разовая оплата за месяц или год, без автоматических списаний.'], ['Можно ли пользоваться с компьютера?', 'Да. Откройте этот сайт и нажмите «Войти» → «Войти через Telegram»: бот пришлёт подтверждение. Сделки те же, что в телефоне.'], ['Откуда берётся курс USDT?', 'С биржи xRocket, обновляется раз в минуту. Это биржевой курс — цены в P2P-объявлениях могут от него отличаться.']];
   const W = ['Узнай', '<em>реальную</em>', 'прибыль', 'с P2P'].map((w, i) => w.startsWith('<em>') ? `<em class="w" style="--i:${i}">${w.slice(4, -5)}</em>` : `<span class="w" style="--i:${i}">${w}</span>`).join(' ');
   const MQ = ['Bybit', 'HTX', 'OKX', 'Bitget', 'Т-Банк', 'Сбер', 'Альфа', 'Озон Банк', 'Райффайзен', 'USDT'];
   el.innerHTML = `<div class="ld-cur" id="ldCur" aria-hidden="true"></div><div class="ld-bg" aria-hidden="true"><div class="ld-blob a"></div><div class="ld-blob b"></div><div class="ld-gridbg"></div></div>
@@ -4330,7 +4330,7 @@ const FAQ = [['Нужно ли давать доступ к бирже или AP
   <div class="ld-mq" aria-hidden="true"><div>${[0, 1].map(() => `<span>${MQ.map(x => `${x}<i>✦</i>`).join('')}</span>`).join('')}</div></div>
   <div class="ld-w ld-sec" id="ldFeat"><div class="ld-st rv">Всё для P2P — в одном месте</div><div class="ld-ss rv" style="--i:1">Больше никаких заметок, Excel и калькулятора в голове</div>
     <div class="ld-grid">${F.map(([i, b, t], k) => `<div class="ld-f rv" style="--i:${k % 3}"><i>${i}</i><b>${b}</b><span>${t}</span></div>`).join('')}</div></div>
-  <div class="ld-w ld-sec" id="ldLive"><div class="ld-st rv">Курс USDT прямо сейчас</div><div class="ld-ss rv" style="--i:1">Данные CoinGecko · обновляются каждые 10 минут</div>
+  <div class="ld-w ld-sec" id="ldLive"><div class="ld-st rv">Курс USDT прямо сейчас</div><div class="ld-ss rv" style="--i:1">Биржа xRocket · обновляется каждую минуту</div>
     <div class="ld-lv rv" style="--i:2"><div class="ld-lv-top"><div><span class="ld-lv-l"><span class="ld-live"></span>USDT / RUB</span>
         <div class="ld-lv-r"><b id="ldLvR">—</b><span class="ld-lv-c" id="ldLvC" hidden></span></div></div>
       <div class="ld-lv-mm" id="ldLvMM" hidden><span>Мин за сутки<b id="ldLvMin">—</b></span><span>Макс за сутки<b id="ldLvMax">—</b></span></div></div>
