@@ -128,6 +128,9 @@ button { cursor: pointer; border: 0; background: none; }
 .seg.sm button { padding: 6px 10px; font-size: 13px; white-space: nowrap; }
 .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
+/* Способы оплаты: четыре кнопки (в Telegram) — сеткой 2×2, чтобы одна не уезжала на вторую строку */
+.pay-chips.g4 { display: grid; grid-template-columns: 1fr 1fr; }
+.pay-chips.g4 .pay-chip { justify-content: center; }
 .xr-fiats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .xr-fiats button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.1)); background: transparent; color: var(--fg); font: inherit; font-family: var(--f-mono); font-size: 14px; text-align: left; cursor: pointer; }
 .xr-fiats button:active { transform: scale(.97); }
@@ -2672,7 +2675,8 @@ function payIcon(k, z = 18) {
   const sv = (body, extra = '') => `<svg width="${z}" height="${z}" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${body}</svg>`;
   if (k === 'usdt') return sv('<circle cx="12" cy="12" r="12" fill="#26A17B"/><path fill="#fff" d="M6.4 5.9h11.2v2.7h-4.2v2.15c2.55.15 4.45.7 4.45 1.35s-1.9 1.2-4.45 1.35v4.7h-2.8v-4.7C8 13.3 6.15 12.75 6.15 12.1s1.85-1.2 4.45-1.35V8.6H6.4zm4.2 5.6c-1.95.12-3.3.42-3.3.6 0 .2 1.5.52 3.3.62V11.5zm2.8 0v1.22c1.8-.1 3.3-.42 3.3-.62 0-.18-1.35-.48-3.3-.6z"/>');
   if (k === 'stars') return sv('<defs><linearGradient id="stG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD84D"/><stop offset="1" stop-color="#F5A300"/></linearGradient></defs><path fill="url(#stG)" d="m12 1.8 3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8l-6.2 3.3 1.2-7-5.1-4.9 7-1z"/>');
-  if (k === 'crypto') return sv('<circle cx="12" cy="12" r="12" fill="#0098EA"/><path fill="#fff" d="M7.6 7h8.8c.8 0 1.3.9.9 1.6l-4.6 8a.8.8 0 0 1-1.4 0l-4.6-8C6.3 7.9 6.8 7 7.6 7zm3.6 1.6H8.4l2.8 5zm1.6 0v5l2.8-5z"/>');
+  // Криптовалюта (через Platega — любые монеты): нейтральный значок из двух монет, без логотипа конкретной сети
+  if (k === 'crypto') return sv('<defs><linearGradient id="crG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs><circle cx="12" cy="12" r="12" fill="url(#crG)"/><circle cx="10" cy="10.4" r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M14.7 8.9a4.5 4.5 0 1 1-5.3 7" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>');
   if (k === 'sbp') return `<img src="icons/sbp.png" width="${z}" height="${z}" alt="" style="display:block">`;
   return sv('<rect x="2" y="5" width="20" height="14" rx="3" fill="#F2B54B"/><rect x="2" y="8.2" width="20" height="2.6" fill="#1B1405" opacity=".75"/><rect x="5" y="14" width="6" height="1.8" rx=".9" fill="#1B1405" opacity=".55"/>');
 }
@@ -2732,13 +2736,13 @@ function giftSheet() {
   // Подарок — всегда по обычной цене, если скидка у человека только по промокоду
   const giftPrices = () => { if (myOnce) { myStars = { ...STARS }; myRub = { ...RUB }; } };
   giftPrices();
-  const M = inTelegram() ? [['sbp', 'СБП'], ['card', 'Карта'], ['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['sbp', 'СБП'], ['card', 'Карта'], ['crypto', 'Крипта · USDT']];
+  const M = inTelegram() ? [['sbp', 'СБП'], ['card', 'Карта'], ['stars', 'Звёзды'], ['crypto', 'Криптовалюта']] : [['sbp', 'СБП'], ['card', 'Карта'], ['crypto', 'Криптовалюта']];
   sheet(`<div class="pw-hero"><div class="pw-badge">🎁</div><h3>Подарить PRO</h3><span class="muted small">Друг получит PRO и сообщение от бота @P2ProAppBot</span></div>
     <label class="field"><span>Ник друга в Telegram</span><div class="inp text"><input id="gfNick" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="@username"></div></label>
     <span class="muted small" id="gfWho">Друг должен хотя бы раз открыть P2Pro через Telegram — так мы его найдём</span>
     <div class="pw-plans" id="payPlans">${payStars() ? starsPlans() : rubPlans()}</div>
     <span class="label">Способ оплаты</span>
-    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
+    <div class="chips pay-chips${M.length > 3 ? ' g4' : ''}" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>`);
   loadMyStars().then(() => { giftPrices(); payRefresh(); });
 }
@@ -2764,7 +2768,7 @@ function openPlans(why) {
   if (S.settings.pro && why !== 'renew') return showSub();
   if (why !== 'end') payPeriod = why === 'renew' ? 'y' : 'm';
   const F = PRO_FEATS;
-  const M = inTelegram() ? [['sbp', 'СБП'], ['card', 'Карта'], ['stars', 'Звёзды'], ['crypto', 'Крипта · USDT']] : [['sbp', 'СБП'], ['card', 'Карта'], ['crypto', 'Крипта · USDT']];
+  const M = inTelegram() ? [['sbp', 'СБП'], ['card', 'Карта'], ['stars', 'Звёзды'], ['crypto', 'Криптовалюта']] : [['sbp', 'СБП'], ['card', 'Карта'], ['crypto', 'Криптовалюта']];
   payMethod = 'sbp';   // по умолчанию СБП — цена в рублях; звёзды и крипта рядом
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>P2Pro PRO</h3><span class="muted small">Для тех, кто торгует каждый день${trialAvail() ? ' · 7 дней бесплатно' : ''}</span></div>
     ${why === 'renew' ? `<div class="pw-why">PRO активен до ${fmtLong(S.settings.proUntil)} — новый срок добавится к текущему</div>` : PW_WHY[why] ? `<div class="pw-why">${PW_WHY[why]}</div>` : ''}
@@ -2772,7 +2776,7 @@ function openPlans(why) {
     ${trialAvail() ? '<button class="trial-cta" data-trial><b>🎁 Сначала 7 дней бесплатно</b><span>Без оплаты. Потом решите, оставлять ли PRO</span></button>' : ''}
     <div class="pw-plans" id="payPlans">${payStars() ? starsPlans() : rubPlans()}</div>
     <span class="label">Способ оплаты</span>
-    <div class="chips" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
+    <div class="chips pay-chips${M.length > 3 ? ' g4' : ''}" style="flex-wrap:wrap">${M.map(([k, l]) => `<button class="chip pay-chip ${k === payMethod ? 'on' : ''}" data-pay="${k}">${payIcon(k, 16)}${l}</button>`).join('')}</div>
     <span class="muted small" id="payHint" style="display:flex;align-items:center;gap:6px">${payHint()}</span>
     <button class="btn primary pw-go" id="payBtn">${payLabel()}</button>
     <button class="btn" id="giftOpen">🎁 Подарить PRO другу</button>`);
