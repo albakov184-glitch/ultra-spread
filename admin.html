@@ -684,6 +684,31 @@ async function openUser(id) {
   $('drawer').innerHTML = '<div class="sk" style="height:60px;flex:none"></div><div class="sk" style="height:140px;flex:none"></div><div class="sk" style="height:220px;flex:none"></div>';
   try { drawUser(await api('user', { id })); } catch (e) { $('drawer').innerHTML = `<div class="dr-head"><button class="x" data-close>×</button></div><p class="neg">${esc(e.message)}</p>`; }
 }
+// Подробности о человеке: активность по сделкам, откуда пришёл, канал, чем пользуется в приложении и в боте
+const CURS = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', EUR: '€', USD: '$' };
+const MODES = { deal: 'Сделка', circle: 'Круг', tri: 'Треугольник' };
+function userMore(m) {
+  const sym = CURS[m.cur] || m.cur, money = v => `${v >= 0 ? '+' : '−'}${nf0.format(Math.abs(Math.round(v)))} ${sym}`;
+  const list = (a, f = x => esc(x.name)) => a && a.length ? a.map(x => `${f(x)} <span class="muted">${x.n}</span>`).join(' · ') : '—';
+  const src = !m.source ? 'неизвестно — пришёл до начала учёта или с сайта' : m.source.kind === 'partner' ? `🤝 партнёр ${esc(m.source.name)}` : m.source.name === 'direct' ? 'напрямую, без метки' : m.source.name === 'channel' ? 'из канала' : `ссылка с меткой «${esc(m.source.name)}»`;
+  const bot = Object.entries(m.clicks || {}).filter(([, n]) => n > 0).map(([k, n]) => `${(BOTF[k] || [k])[0]} <span class="muted">${n}</span>`).join(' · ') || '—';
+  return `<div class="sec"><h4>📊 Активность</h4><div class="facts">
+      <div class="fact"><div class="lb">Сделок за 7 / 30 дней</div><div class="v mono">${m.n7} / ${m.n30}</div></div>
+      <div class="fact"><div class="lb">Дней со сделками</div><div class="v mono">${m.days}${m.days30 !== m.days ? ` <span class="muted small">(${m.days30} за 30 дн)</span>` : ''}</div></div>
+      <div class="fact"><div class="lb">Первая сделка</div><div class="v">${m.first ? dShort(m.first) : '—'}</div></div>
+      <div class="fact"><div class="lb">Последняя сделка</div><div class="v">${m.last ? ago(m.last) : '—'}</div></div>
+      <div class="fact"><div class="lb">Оборот</div><div class="v mono" style="font-size:13.5px">${nf0.format(Math.round(m.turnover?.[m.cur] || 0))} ${sym}</div></div>
+      <div class="fact"><div class="lb">Средняя сделка</div><div class="v mono ${m.avg >= 0 ? 'pos' : 'neg'}">${money(m.avg)}</div></div>
+      <div class="fact"><div class="lb">Лучший день</div><div class="v mono" style="font-size:13.5px">${m.best ? `<span class="pos">${money(m.best.sum)}</span> <span class="muted small">${dShort(m.best.day)}</span>` : '—'}</div></div>
+      <div class="fact"><div class="lb">Сделок в плюсе</div><div class="v mono">${m.plusPct}%</div></div></div>
+    <p class="muted small" style="margin-top:10px;line-height:1.7">Биржи: ${list(m.ex)}<br>Банки: ${list(m.bank)}<br>Режимы: ${Object.entries(m.mode || {}).map(([k, n]) => `${MODES[k] || esc(k)} <span class="muted">${n}</span>`).join(' · ') || '—'}</p></div>
+    <div class="sec"><h4>🧭 Откуда и как пользуется</h4><p class="muted small" style="line-height:1.8">
+      <b style="color:var(--fg)">Пришёл:</b> ${src}${m.source?.at ? ` · ${dShort(m.source.at)}` : ''}<br>
+      <b style="color:var(--fg)">Канал @P2ProChannel:</b> ${m.channel === true ? '✅ подписан' : m.channel === false ? '❌ не подписан' : 'не проверить'}<br>
+      <b style="color:var(--fg)">В приложении за 30 дней:</b> ${m.feats?.length ? list(m.feats, x => esc((FEAT[x.name] || [x.name])[0])) : 'нет данных'}${m.lastUse ? ` · последний раз ${dShort(m.lastUse)}` : ''}<br>
+      <b style="color:var(--fg)">Кнопки бота:</b> ${bot}<br>
+      <b style="color:var(--fg)">Напоминание «давно не виделись»:</b> ${m.winback ? 'отправлено ' + dShort(m.winback) : 'не отправлялось'}</p></div>`;
+}
 function drawUser(u) {
   CUR = u;
   const s = u.sub, pro = !!s?.pro, [c, t] = statusOf({ banned: u.banned, pro, method: s?.method });
@@ -694,13 +719,14 @@ function drawUser(u) {
       <div style="min-width:0"><h3>${esc(u.name)}</h3><div class="muted small">${u.nick ? `<a href="https://t.me/${esc(u.nick)}" target="_blank" rel="noopener">@${esc(u.nick)}</a>` : esc(u.email || 'без ника')}${u.tg ? ` · id ${u.tg}` : ''}</div>
         <div style="margin-top:6px"><span class="badge ${c}">${t}</span></div></div><button class="x" data-close aria-label="Закрыть">×</button></div>
     <div class="facts">
-      <div class="fact"><div class="lb">PRO до</div><div class="v">${pro ? dLong(s.until) : '—'}</div></div>
-      <div class="fact"><div class="lb">Способ</div><div class="v">${s?.method ? (METHOD[s.method] || esc(s.method)) : '—'}</div></div>
+      <div class="fact"><div class="lb">${pro ? 'PRO до' : 'Тариф'}</div><div class="v">${pro ? dLong(s.until) : s?.until ? 'Free · PRO закончился ' + dShort(s.until) : 'Free'}</div></div>
+      <div class="fact"><div class="lb">${pro ? 'Способ' : 'Последний PRO'}</div><div class="v">${s?.method ? (METHOD[s.method] || esc(s.method)) : '—'}</div></div>
       <div class="fact"><div class="lb">Сделок</div><div class="v mono">${nf0.format(u.tradeCount)}</div></div>
       <div class="fact"><div class="lb">Прибыль</div><div class="v mono" style="font-size:13.5px">${prof}</div></div>
       <div class="fact"><div class="lb">Регистрация</div><div class="v">${dLong(u.created)}</div></div>
-      <div class="fact"><div class="lb">Заходил</div><div class="v">${ago(u.seen)}</div></div>
+      <div class="fact"><div class="lb">Был активен</div><div class="v">${ago([u.seen, u.more?.last, u.more?.lastUse].filter(Boolean).sort().pop())}</div></div>
     </div>
+    ${u.more ? userMore(u.more) : ''}
     <div class="sec"><h4>🎁 Подарить PRO ${pro ? `<button class="btn danger small" data-a="revoke">Отключить PRO</button>` : ''}</h4>
       <div class="inl"><input class="inp n" id="gDays" type="number" min="1" max="3650" value="30"><span class="muted">дней</span>
         ${[7, 30, 90, 365].map(n => `<button class="chip" data-gd="${n}">${n}</button>`).join('')}<button class="btn pri" data-a="give">Подарить</button></div>

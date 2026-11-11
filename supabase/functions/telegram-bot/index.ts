@@ -1674,12 +1674,54 @@ async function adminUsers() {
 
 // Аватарку в профиле человек может подменить на любой адрес (например, чтобы узнать IP владельца) — показываем только из нашего хранилища
 const ownAvatar = (v: unknown) => typeof v === 'string' && v.startsWith(`${SB_URL}/storage/v1/object/public/avatars/`) ? v : null;
+const nk0 = (nicks: Map<string, { tg_id?: number; username?: string | null }>, id: string) => Number(nicks.get(id)?.tg_id ?? 0) || null;
+// Подробности для карточки пользователя в админке: активность по сделкам, откуда пришёл, канал, функции, кнопки бота
+async function adminUserMore(id: string, tgId: number | null, list: { ts: string; data: ATrade['data'] }[]) {
+  const now = Date.now(), d7 = now - 7 * DAY, d30 = now - 30 * DAY;
+  const cnt = (m: Record<string, number>, k?: string) => { if (k) m[k] = (m[k] ?? 0) + 1; };
+  const ex: Record<string, number> = {}, bank: Record<string, number> = {}, mode: Record<string, number> = {}, curN: Record<string, number> = {};
+  const days = new Set<string>(), days30 = new Set<string>(), turnover: Record<string, number> = {};
+  let n7 = 0, n30 = 0;
+  for (const t of list) {
+    const ts = Date.parse(t.ts), c = t.data?.cur ?? 'RUB', dk = mskDay(ts);
+    if (ts >= d7) n7++; if (ts >= d30) { n30++; days30.add(dk); }
+    days.add(dk); cnt(ex, t.data?.ex); cnt(bank, t.data?.bank && t.data.bank !== '—' ? t.data.bank : undefined); cnt(mode, t.data?.mode ?? 'deal'); cnt(curN, c);
+    turnover[c] = (turnover[c] ?? 0) + (+(t.data?.sum ?? 0) || 0);
+  }
+  const top = (m: Record<string, number>, k = 3) => Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, k).map(([name, n]) => ({ name, n }));
+  const cur = top(curN, 1)[0]?.name ?? 'RUB', main = list.filter((t) => (t.data?.cur ?? 'RUB') === cur);
+  const byDay: Record<string, number> = {}; let plus = 0, sumP = 0;
+  for (const t of main) { const p = +(t.data?.profit ?? 0) || 0; sumP += p; if (p > 0) plus++; const k = mskDay(Date.parse(t.ts)); byDay[k] = (byDay[k] ?? 0) + p; }
+  const best = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
+  // Откуда пришёл, подписка на канал, кнопки бота, напоминание ушедшим, чем пользуется в приложении
+  const [ref, start, chan, clicks, wb, usage] = await Promise.all([
+    tgId ? admin.from('partner_refs').select('code, at').eq('tg_id', tgId).maybeSingle().then((r: { data: { code: string; at: string } | null }) => r.data) : null,
+    tgId ? admin.from('bot_starts').select('src, at').eq('tg_id', tgId).maybeSingle().then((r: { data: { src: string; at: string } | null }) => r.data, () => null) : null,
+    tgId ? tg('getChatMember', { chat_id: CHANNEL, user_id: tgId }).then((r) => r?.ok ? ['creator', 'administrator', 'member'].includes(r.result?.status) || (r.result?.status === 'restricted' && !!r.result?.is_member) : null) : null,
+    tgId ? rowsAll<{ action: string; cnt: number }>('bot_clicks', 'action, cnt', 'day', (q) => q.eq('tg_id', tgId)).catch(() => []) : [],
+    stGet<{ at?: number } | null>('wb:' + id, null).catch(() => null),
+    rowsAll<{ day: string; feature: string; cnt: number }>('feature_usage', 'day, feature, cnt', 'day', (q) => q.eq('user_id', id).gte('day', mskDay(d30))).catch(() => []),
+  ]);
+  let pName: string | null = null;
+  if (ref?.code) pName = (await admin.from('partners').select('name').eq('code', ref.code).maybeSingle()).data?.name || ref.code;
+  const clickBy: Record<string, number> = {}; for (const c of clicks) clickBy[c.action] = (clickBy[c.action] ?? 0) + c.cnt;
+  const featBy: Record<string, number> = {}; let lastUse = ''; for (const f of usage) { featBy[f.feature] = (featBy[f.feature] ?? 0) + f.cnt; if (f.day > lastUse) lastUse = f.day; }
+  return {
+    n7, n30, days: days.size, days30: days30.size, first: list.length ? list[list.length - 1].ts : null, last: list[0]?.ts ?? null,
+    cur, turnover, avg: main.length ? sumP / main.length : 0, plusPct: main.length ? Math.round(plus / main.length * 100) : 0,
+    best: best && best[1] > 0 ? { day: best[0], sum: best[1] } : null, ex: top(ex), bank: top(bank), mode,
+    source: ref?.code ? { kind: 'partner', name: pName, at: ref.at } : start ? { kind: 'link', name: start.src, at: start.at } : null,
+    channel: chan, clicks: clickBy, winback: wb?.at ?? null, feats: top(featBy, 6), lastUse: lastUse || null,
+  };
+}
 async function adminUser(id: string) {
   const u = await userById(id); if (!u) return null;
   const [s, price, nicks] = await Promise.all([subOf(id), priceOf(id), nicksMap()]);
-  const { data: tr } = await admin.from('trades').select('ts, data').eq('user_id', id).eq('deleted', false).order('ts', { ascending: false }).limit(500);
-  const list = (tr ?? []) as { ts: string; data: ATrade['data'] }[], profit: Record<string, number> = {};
-  for (const t of list) { const c = t.data.cur ?? 'RUB'; profit[c] = (profit[c] ?? 0) + (+(t.data.profit ?? 0) || 0); }
+  // Все сделки постранично (база отдаёт не больше 1000 строк за раз), новые — первыми
+  const list = (await rowsAll<{ ts: string; data: ATrade['data'] }>('trades', 'ts, data', 'ts', (q) => q.eq('user_id', id).eq('deleted', false))).reverse();
+  const profit: Record<string, number> = {};
+  for (const t of list) { const c = t.data?.cur ?? 'RUB'; profit[c] = (profit[c] ?? 0) + (+(t.data?.profit ?? 0) || 0); }
+  const more = await adminUserMore(id, nk0(nicks, id), list).catch((e) => { console.error('user more', e); return null; });
   const { data: promos } = await admin.from('promo_uses').select('code, used_at').eq('user_id', id);
   const { data: trial } = await admin.from('pro_trials').select('started_at, ends_at').eq('user_id', id).maybeSingle();
   const nk = nicks.get(id);
@@ -1687,7 +1729,7 @@ async function adminUser(id: string) {
     created: u.created_at, seen: u.last_sign_in_at ?? null, banned: isBanned(u), avatar: ownAvatar(u.user_metadata?.avatar),
     sub: s ? { pro: isPro(s), since: s.pro_since, until: s.pro_until, method: s.pay_method, period: s.period, payments: s.payments ?? [] } : null,
     price, trial: trial ?? null, promos: promos ?? [], tradeCount: list.length, profit,
-    trades: list.slice(0, 15).map((t) => ({ ts: t.ts, ex: t.data.ex ?? '', bank: t.data.bank ?? '', mode: t.data.mode ?? 'deal', sum: +(t.data.sum ?? 0), profit: +(t.data.profit ?? 0), cur: t.data.cur ?? 'RUB' })) };
+    more, trades: list.slice(0, 15).map((t) => ({ ts: t.ts, ex: t.data.ex ?? '', bank: t.data.bank ?? '', mode: t.data.mode ?? 'deal', sum: +(t.data.sum ?? 0), profit: +(t.data.profit ?? 0), cur: t.data.cur ?? 'RUB' })) };
 }
 
 // Рассылка текстом со страницы: тот же список получателей, что и в боте, итог придёт владельцу в бот
