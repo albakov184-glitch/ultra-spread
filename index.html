@@ -4218,6 +4218,8 @@ async function dropSession() {
 }
 // «Запомнить меня» выключено и браузер закрывали: просто выходим. Данные устройства не трогаем —
 // неотправленные сделки уйдут после входа; если войдёт другой аккаунт, cloudStart сам их уберёт
+function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
 async function signOutOnly() {
   try { await sb?.auth.signOut({ scope: 'local' }); } catch (e) {}
   try { localStorage.removeItem(SB_TOKEN); } catch (e) {}
@@ -4233,6 +4235,7 @@ async function deleteAccount() {
   await logout(); toast('Аккаунт удалён');
 }
 async function logout() {
+  ssSet('p2noAuto', 1);   // сам вышел — после перезагрузки страницы не входим обратно автоматически
   await dropSession(); renderAcc(); render(); show('calc'); showAuth('in');
 }
 // Смена пароля по ссылке из письма «Сброс пароля»
@@ -4298,6 +4301,8 @@ function bootAccount() {
     const mode = SH || lsGet(REM_KEY) !== null ? 'in' : 'up';
     if (!inTelegram() && !isStandalone() && !URL_ERR && !FROM_RECOVERY) showLanding(mode); else showAuth(mode);
     if (URL_ERR) auErr(URL_ERR);
+    // В Telegram входим сами, без нажатия: Telegram уже сообщил, кто открыл приложение. Не вышло — остаётся экран с кнопкой и текстом ошибки
+    else if (inTelegram() && !FROM_RECOVERY && !ssGet('p2noAuto')) { const b = $('auth')?.querySelector('[data-au=tg]'); if (b) tgLogin(b); }
   });
 }
 
