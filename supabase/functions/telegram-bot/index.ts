@@ -1624,7 +1624,7 @@ async function adminGrowth(days: number) {
   const [users, subs, trades, trials, tgs, refs, partners, starts] = await Promise.all([allUsers(), allSubs(), allTrades('user_id'),
     rowsAll<{ user_id: string }>('pro_trials', 'user_id', 'user_id'), rowsAll<TgRow>('tg_users', 'tg_id, user_id', 'tg_id'),
     rowsAll<{ tg_id: number; code: string }>('partner_refs', 'tg_id, code', 'tg_id'), rowsAll<{ code: string; name: string }>('partners', 'code, name', 'code'),
-    rowsAll<St>('bot_starts', 'tg_id, src, at', 'tg_id').catch(() => null)]);
+    rowsAll<St>('bot_starts', 'tg_id, src, at', 'tg_id').catch((): St[] | null => null)]);
   const tgOf = new Map(tgs.map((t) => [t.user_id, Number(t.tg_id)])), refOf = new Map(refs.map((r) => [Number(r.tg_id), r.code]));
   const pName = new Map(partners.map((p) => [p.code, p.name || p.code])), startOf = new Map((starts ?? []).map((x) => [Number(x.tg_id), x]));
   const withTrade = new Set(trades.map((t) => t.user_id)), trialSet = new Set(trials.map((t) => t.user_id));
