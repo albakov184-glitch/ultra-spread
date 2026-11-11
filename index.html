@@ -1458,7 +1458,7 @@ img { max-width: 100%; }
       <span class="card-t">Подписка</span>
       <div id="subBox" class="app" style="gap:12px" hidden></div>
       <div class="plans" id="plansInline"></div>
-      <div class="kpi"><span class="label">Сделок в этом месяце</span><span class="v" id="freeUse">0</span><span class="muted small" id="freeNote" hidden></span></div>
+      <div class="kpi"><span class="label">Сделок в этом месяце</span><span class="v" id="freeUse">0</span><div class="bar" id="freeBar"><i style="width:0"></i></div><span class="muted small" id="freeNote" hidden></span></div>
       <button class="btn" id="promoBtn">🎟 Есть промокод?</button>
     </div>
     <div class="card">
@@ -1600,7 +1600,8 @@ const DEFAULT = {
   },
   cps: []
 };
-const FREE_DAYS = 7;   // в Free история и аналитика видны за последние 7 дней, сохранять можно без ограничений
+const FREE_DAYS = 7;    // в Free история и аналитика видны за последние 7 дней
+const FREE_LIMIT = 15;  // и сохранить можно не больше 15 сделок за календарный месяц
 
 function load() {
   try {
@@ -1980,6 +1981,11 @@ function cpSwap(d, mode) {
 function save() {
   const { t, err } = buildTrade();
   if (err) return toast(err);
+  if (!S.settings.pro && monthCount() >= FREE_LIMIT) {
+    return sheet(`<div class="pw-hero"><div class="pw-badge">🔒</div><h3>Лимит Free на этот месяц</h3><span class="muted small">В Free можно сохранить ${FREE_LIMIT} сделок в месяц — вы сохранили ${monthCount()}. Новый месяц — новый лимит. В PRO сделок без ограничений</span></div>
+      ${trialAvail() ? '<button class="trial-cta" data-trial><b>🎁 PRO на 7 дней — бесплатно</b><span>Сохраняйте сделки без лимита. Без оплаты</span></button>' : ''}
+      <div class="plans">${plansHtml()}</div><button class="btn" data-close>Не сейчас</button>`);
+  }
   const go = () => {
     if ($('saveBtn').disabled) return;
     $('saveBtn').disabled = true;
@@ -2665,9 +2671,9 @@ const GLOSS = [
 
 function plansHtml() {
   const pro = S.settings.pro;
-  return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор: сделка, круг, треугольник</li><li>Подбор курса и курс USDT</li><li>История и аналитика за 7 дней</li><li>Итоги дня с карточкой</li></ul>
+  return `<div class="plan"><h4>Free</h4><span class="price">0 ₽</span><ul><li>Калькулятор: сделка, круг, треугольник</li><li>Подбор курса и курс USDT</li><li>До ${FREE_LIMIT} сделок в месяц</li><li>История и аналитика за 7 дней</li><li>Итоги дня с карточкой</li></ul>
     ${pro ? '<button class="btn" data-plan="free">Перейти</button>' : '<span class="muted small">Текущий тариф</span>'}</div>
-    <div class="plan pro"><h4>PRO</h4><span class="price">${nf0.format(myRub.m)} ₽<span class="muted small">/мес</span></span><ul><li>Вся история и аналитика</li><li>Календарь прибыли и связки</li><li>Контрагенты и чёрный список</li><li>График курса и уведомления</li><li>Excel и карточки без водяного знака</li></ul>
+    <div class="plan pro"><h4>PRO</h4><span class="price">${nf0.format(myRub.m)} ₽<span class="muted small">/мес</span></span><ul><li>Сделок без ограничений</li><li>Вся история и аналитика</li><li>Календарь прибыли и связки</li><li>Контрагенты и чёрный список</li><li>График курса и уведомления</li><li>Excel и карточки без водяного знака</li></ul>
     ${pro ? '<span class="muted small">Текущий тариф</span>' : '<button class="btn primary" data-plan="pro">Подключить PRO</button>'}</div>`;   // пробный период — отдельной плашкой над тарифами
 }
 // Значки способов оплаты: узнаваемые логотипы в цвете
@@ -3021,9 +3027,12 @@ function renderProfile() {
   $('workNow').textContent = w ? `${w[1]}. ${w[2]}.` : 'Не выбрано';
   $('limitsCard').hidden = st.work === 'tri';
   const used = monthCount(), hid = st.pro ? 0 : S.trades.filter(t => !freeSees(t)).length;
-  $('freeUse').textContent = st.pro ? `${used} · вся история открыта` : `${used} · без лимита`;
+  $('freeUse').textContent = st.pro ? `${used} · без ограничений` : `${used} из ${FREE_LIMIT}`;
+  $('freeBar').hidden = st.pro;
+  $('freeBar').className = 'bar ' + (used >= FREE_LIMIT ? 'neg' : used >= FREE_LIMIT * .8 ? 'warn' : '');
+  $('freeBar').firstElementChild.style.width = Math.min(100, used / FREE_LIMIT * 100) + '%';
   $('freeNote').hidden = st.pro;
-  $('freeNote').innerHTML = hid ? `🔒 Старше 7 дней: ${hid} ${plural(hid, 'сделка', 'сделки', 'сделок')} — видны в PRO` : 'Free показывает историю и аналитику за последние 7 дней. Сохранять можно сколько угодно';
+  $('freeNote').innerHTML = hid ? `🔒 Старше 7 дней: ${hid} ${plural(hid, 'сделка', 'сделки', 'сделок')} — видны в PRO` : `Free: до ${FREE_LIMIT} сделок в месяц, история и аналитика — за последние 7 дней`;
   $('glossary').innerHTML = GLOSS.map(([t, d]) => `<details><summary>${t}</summary><p>${d}</p></details>`).join('');
   document.querySelectorAll('[data-theme-set]').forEach(b => b.classList.toggle('on', b.dataset.themeSet === st.theme));
 }
@@ -4306,7 +4315,7 @@ function showLanding(authMode) {
     ['🔒', 'Защита и облако', 'PIN-код и Face ID. Сделки в облаке — на телефоне и компьютере одни и те же.']];
   const S3 = [['Откройте бота', '@P2ProAppBot в Telegram — вход в один тап, без паролей'], ['Вбейте сделку', 'Курс покупки, продажи и сумму — комиссии посчитаются сами'], ['Смотрите прибыль', 'По дням и месяцам в календаре — и итоги каждый вечер']];
   const li = a => a.map(x => `<li>${x}</li>`).join('');
-const FAQ = [['Нужно ли давать доступ к бирже или API-ключи?', 'Нет. Вы сами вписываете курс покупки, продажи и сумму. P2Pro не подключается к вашим аккаунтам на биржах и не видит балансы.'], ['P2Pro проводит сделки или хранит деньги?', 'Нет. P2Pro — калькулятор и журнал. Сделки вы проводите на бирже как обычно, деньги и USDT остаются у вас.'], ['Как считается прибыль?', 'Разница между продажей и покупкой минус комиссия биржи (в процентах или фиксированная) и комиссия вывода USDT, если переводите между биржами. Есть режимы «Сделка», «Круг» — продажа частями — и «Треугольник».'], ['Где хранятся мои сделки?', 'В облаке, под вашим аккаунтом: они одинаковые на телефоне и компьютере. Можно включить PIN-код и Face ID. Аккаунт вместе со всеми данными удаляется в профиле в один шаг.'], ['Что есть в бесплатной версии?', 'Калькулятор сделки, круга и треугольника, подбор курса, биржевой курс USDT и итоги дня в боте. Сохранять сделки можно без ограничений, история и аналитика видны за последние 7 дней.'], ['Как работает пробный PRO на 7 дней?', 'Включается в приложении одной кнопкой, один раз на человека. Платить ничего не нужно и ничего не спишется: через 7 дней вы просто вернётесь на Free, сделки сохранятся.'], ['Как оплатить PRO?', 'Через СБП, банковской картой (Visa, Mastercard, МИР) или криптовалютой (USDT и др.), а в Telegram ещё и звёздами. Это разовая оплата за месяц или год, без автоматических списаний.'], ['Можно ли пользоваться с компьютера?', 'Да. Откройте этот сайт и нажмите «Войти» → «Войти через Telegram»: бот пришлёт подтверждение. Сделки те же, что в телефоне.'], ['Откуда берётся курс USDT?', 'С биржи xRocket, обновляется раз в минуту. Это биржевой курс — цены в P2P-объявлениях могут от него отличаться.']];
+const FAQ = [['Нужно ли давать доступ к бирже или API-ключи?', 'Нет. Вы сами вписываете курс покупки, продажи и сумму. P2Pro не подключается к вашим аккаунтам на биржах и не видит балансы.'], ['P2Pro проводит сделки или хранит деньги?', 'Нет. P2Pro — калькулятор и журнал. Сделки вы проводите на бирже как обычно, деньги и USDT остаются у вас.'], ['Как считается прибыль?', 'Разница между продажей и покупкой минус комиссия биржи (в процентах или фиксированная) и комиссия вывода USDT, если переводите между биржами. Есть режимы «Сделка», «Круг» — продажа частями — и «Треугольник».'], ['Где хранятся мои сделки?', 'В облаке, под вашим аккаунтом: они одинаковые на телефоне и компьютере. Можно включить PIN-код и Face ID. Аккаунт вместе со всеми данными удаляется в профиле в один шаг.'], ['Что есть в бесплатной версии?', 'Калькулятор сделки, круга и треугольника, подбор курса, биржевой курс USDT и итоги дня в боте. Можно сохранить до 15 сделок в месяц, история и аналитика видны за последние 7 дней.'], ['Как работает пробный PRO на 7 дней?', 'Включается в приложении одной кнопкой, один раз на человека. Платить ничего не нужно и ничего не спишется: через 7 дней вы просто вернётесь на Free, сделки сохранятся.'], ['Как оплатить PRO?', 'Через СБП, банковской картой (Visa, Mastercard, МИР) или криптовалютой (USDT и др.), а в Telegram ещё и звёздами. Это разовая оплата за месяц или год, без автоматических списаний.'], ['Можно ли пользоваться с компьютера?', 'Да. Откройте этот сайт и нажмите «Войти» → «Войти через Telegram»: бот пришлёт подтверждение. Сделки те же, что в телефоне.'], ['Откуда берётся курс USDT?', 'С биржи xRocket, обновляется раз в минуту. Это биржевой курс — цены в P2P-объявлениях могут от него отличаться.']];
   const W = ['Узнай', '<em>реальную</em>', 'прибыль', 'с P2P'].map((w, i) => w.startsWith('<em>') ? `<em class="w" style="--i:${i}">${w.slice(4, -5)}</em>` : `<span class="w" style="--i:${i}">${w}</span>`).join(' ');
   const MQ = ['Bybit', 'HTX', 'OKX', 'Bitget', 'Т-Банк', 'Сбер', 'Альфа', 'Озон Банк', 'Райффайзен', 'USDT'];
   el.innerHTML = `<div class="ld-cur" id="ldCur" aria-hidden="true"></div><div class="ld-bg" aria-hidden="true"><div class="ld-blob a"></div><div class="ld-blob b"></div><div class="ld-gridbg"></div></div>
@@ -4345,8 +4354,8 @@ const FAQ = [['Нужно ли давать доступ к бирже или AP
   <div class="ld-w ld-sec"><div class="ld-st rv">Как начать</div>
     <div class="ld-steps rv">${S3.map(([b, t], k) => `<div class="ld-step rv" style="--i:${k}"><div class="ld-n">${k + 1}</div><b>${b}</b><p>${t}</p></div>`).join('')}</div></div>
   <div class="ld-w ld-sec" id="ldPrice"><div class="ld-st rv">Тарифы</div><div class="ld-ss rv" style="--i:1">PRO можно попробовать 7 дней бесплатно</div>
-    <div class="ld-price"><div class="ld-pl rv"><h3>Free</h3><div class="ld-pr">0 ₽</div><ul>${li(['Калькулятор: сделка, круг, треугольник', 'Подбор курса и курс USDT', 'История и аналитика за 7 дней', 'Итоги дня в боте'])}</ul><a class="ld-b2" href="${BOT_URL}" target="_blank" rel="noopener">Начать бесплатно</a></div>
-    <div class="ld-pl pro rv" style="--i:1"><h3>PRO</h3><div class="ld-pr">490 ₽ <small>/ месяц</small></div><span style="color:#9AA4B4">или 3 990 ₽ в год · 350 ⭐ в Telegram</span><span class="ld-badge">🎁 7 дней бесплатно</span><ul>${li(['Вся история и аналитика', 'Календарь прибыли и связки', 'Контрагенты и чёрный список', 'График и уведомления о курсе', 'Excel и карточки без водяного знака'])}</ul><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">Попробовать бесплатно</a></div></div></div>
+    <div class="ld-price"><div class="ld-pl rv"><h3>Free</h3><div class="ld-pr">0 ₽</div><ul>${li(['Калькулятор: сделка, круг, треугольник', 'Подбор курса и курс USDT', 'До 15 сделок в месяц', 'История и аналитика за 7 дней', 'Итоги дня в боте'])}</ul><a class="ld-b2" href="${BOT_URL}" target="_blank" rel="noopener">Начать бесплатно</a></div>
+    <div class="ld-pl pro rv" style="--i:1"><h3>PRO</h3><div class="ld-pr">490 ₽ <small>/ месяц</small></div><span style="color:#9AA4B4">или 3 990 ₽ в год · 350 ⭐ в Telegram</span><span class="ld-badge">🎁 7 дней бесплатно</span><ul>${li(['Сделок без ограничений', 'Вся история и аналитика', 'Календарь прибыли и связки', 'Контрагенты и чёрный список', 'График и уведомления о курсе', 'Excel и карточки без водяного знака'])}</ul><a class="ld-b1" href="${BOT_URL}" target="_blank" rel="noopener">Попробовать бесплатно</a></div></div></div>
   <div class="ld-w ld-sec" id="ldFaq"><div class="ld-st rv">Частые вопросы</div>
     <div class="ld-faq">${FAQ.map(([q, a], k) => `<div class="ld-q rv" style="--i:${k % 4}"><button aria-expanded="false">${q}<i aria-hidden="true"></i></button><div><p>${a}</p></div></div>`).join('')}</div>
     <div class="ld-ss rv" style="margin-top:34px">Не нашли ответ? Напишите нам</div>
@@ -4541,7 +4550,7 @@ function trialEndCheck() {
   const rub = T.filter(t => t.cur === 'RUB').reduce((a, t) => a + (+t.profit || 0), 0);
   sheet(`<div class="pw-hero"><div class="pw-badge">PRO</div><h3>Пробный период закончился</h3>
       <span class="muted small">${T.length ? `За 7 дней вы записали <b style="color:var(--fg)">${T.length} ${plural(T.length, 'сделку', 'сделки', 'сделок')}</b>${rub ? ` и заработали <b class="${cls(rub)}">${money(rub, 'RUB', true)}</b>` : ''}` : 'Спасибо, что попробовали PRO'}</span></div>
-    <div class="pw-why">Сейчас тариф Free: история и аналитика — за последние 7 дней, календарь, связки, контрагенты и график курса закрыты. Сделки сохранены</div>
+    <div class="pw-why">Сейчас тариф Free: до 15 сделок в месяц, история и аналитика — за последние 7 дней, календарь, связки, контрагенты и график курса закрыты. Сделки сохранены</div>
     <div class="pw-plans">${inTelegram() ? starsPlans() : rubPlans()}</div>
     <button class="btn primary pw-go" data-open-plans="end">Оставить PRO</button><button class="btn" data-close>Остаться на Free</button>`);
   loadMyStars().then(() => { const el = document.querySelector('.sheet .pw-plans'); if (el) el.innerHTML = inTelegram() ? starsPlans() : rubPlans(); });
