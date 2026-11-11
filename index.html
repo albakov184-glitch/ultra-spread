@@ -787,12 +787,8 @@ html.tg-fs .sheet { max-height: calc(100vh - var(--fs-top) - 24px); padding-bott
 .sp-name span { display: inline-block; animation: rise .5s cubic-bezier(.2,.9,.3,1) both; }
 @keyframes rise { from { transform: translateY(110%); } }
 .sp-bar { margin-top: 22px; width: 160px; height: 3px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; animation: fade .4s .6s both; }
-.sp-bar i { position: relative; display: block; height: 100%; width: 0; border-radius: 2px; overflow: hidden;
-  background: linear-gradient(90deg, #C98A2B, #F2B54B 60%, #FFD98A); box-shadow: 0 0 10px rgba(242,181,75,.55); animation: spFill var(--sp-t, 1.2s) cubic-bezier(.55,.1,.25,1) forwards; }
-.sp-bar i::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: spShine 1s .3s ease-in-out infinite; }
-@keyframes spFill { to { width: 100%; } }
-@keyframes spShine { from { transform: translateX(-120%); } to { transform: translateX(320%); } }
-@media (prefers-reduced-motion: reduce) { .sp-bar i { animation-duration: .01s; } .sp-bar i::after { display: none; } }
+.sp-bar i { display: block; height: 100%; width: 0; background: #F2B54B; border-radius: 2px; transition: width .35s ease; }
+.sp-msg { margin-top: 12px; font-size: 13px; color: #8691A2; min-height: 18px; animation: fade .4s .7s both; }
 @keyframes fade { from { opacity: 0; } }
 
 .pin { position: fixed; inset: 0; z-index: 101; background: #0C0F14; color: #E8ECF2; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
@@ -1128,7 +1124,8 @@ img { max-width: 100%; }
   <div class="glow"></div><div class="grid"></div>
   <div class="sp-tile" aria-hidden="true"><b>P2</b><i>PRO</i></div>
   <div class="sp-name" aria-hidden="true"><span style="animation-delay:.35s">P</span><span style="animation-delay:.4s">2</span><span style="animation-delay:.45s">P</span><span style="animation-delay:.5s">r</span><span style="animation-delay:.55s">o</span></div>
-  <div class="sp-bar" role="progressbar" aria-label="Загрузка"><i id="spBar"></i></div>
+  <div class="sp-bar"><i id="spBar"></i></div>
+  <div class="sp-msg" id="spMsg" role="status">Загружаем сделки…</div>
 </div>
 
 
@@ -3909,8 +3906,8 @@ document.addEventListener('visibilitychange', () => {
 // Заставка: плитка, название и полоска загрузки
 function runSplash(done) {
   const el = $('splash'); if (!el) { if (pinGet()) pinOpen('unlock'); return done(); }
-  const T = me() ? 1200 : 1900;
-  $('spBar').style.setProperty('--sp-t', (T - 450) + 'ms');   // полоска плавно заполняется к концу заставки, без надписей
+  const T = me() ? 1200 : 1900, msgs = ['Загружаем сделки…', 'Считаем прибыль…', 'Готово'];
+  msgs.forEach((m, i) => setTimeout(() => { $('spBar').style.width = [35, 72, 100][i] + '%'; $('spMsg').textContent = m; }, 300 + i * (T - 500) / 3));
   setTimeout(() => { if (pinGet()) pinOpen('unlock'); el.classList.add('out'); done(); setTimeout(() => el.remove(), 500); }, T);   // PIN — сразу после заставки, поверх всего
 }
 
