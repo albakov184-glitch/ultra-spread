@@ -1131,6 +1131,42 @@ async function adminMessage(msg: Msg): Promise<boolean> {
 }
 
 /* ================= ПО РАСПИСАНИЮ (09-cron.sql, каждые 10 минут) ================= */
+// Оплата не прошла: Platega отменила счёт (СБП, карта или крипта). Через 20 минут пишем человеку — вдруг нужна помощь.
+// Не пишем, если он потом оплатил или пробовал ещё раз (тогда напишем про последнюю попытку), и не чаще раза в сутки
+const PF_METHOD: Record<string, string> = { platega: 'СБП', platega_card: 'карта', platega_crypto: 'криптовалюта' };
+async function payFails(now: number) {
+  type Inv = { id: string; user_id: string | null; gift_from: string | null; provider: string; price_rub: number; created_at: string; status: string };
+  const { data, error } = await admin.from('crypto_invoices').select('id, user_id, gift_from, provider, price_rub, created_at, status')
+    .gte('created_at', new Date(now - 6 * 3600e3).toISOString()).like('provider', 'platega%');
+  if (error) throw error;
+  const rows = (data ?? []) as Inv[];
+  const due = rows.filter((r) => r.status === 'canceled' && now - Date.parse(r.created_at) > 20 * 60e3);
+  if (!due.length) return;
+  const st = await stGet<{ inv: string[]; who: Record<string, number> }>('payfail', { inv: [], who: {} });
+  const fresh = due.filter((r) => !st.inv.includes(r.id));
+  if (!fresh.length) return;
+  st.inv = [...fresh.map((r) => r.id), ...st.inv].slice(0, 300);
+  for (const k of Object.keys(st.who)) if (now - st.who[k] > 2 * DAY) delete st.who[k];
+  await stSet('payfail', st);   // сначала запоминаем: следующий запуск не напишет второй раз
+  for (const r of fresh) {
+    const payer = r.gift_from ?? r.user_id;
+    if (!payer || (st.who[payer] && now - st.who[payer] < DAY)) continue;
+    const later = rows.some((x) => (x.gift_from ?? x.user_id) === payer && x.id !== r.id && Date.parse(x.created_at) > Date.parse(r.created_at));
+    if (later) continue;
+    const { data: t } = await admin.from('tg_users').select('tg_id').eq('user_id', payer).maybeSingle();
+    const tgId = Number(t?.tg_id);
+    if (!tgId || tgId === ADMIN_ID) continue;
+    st.who[payer] = now;
+    const res = await tg('sendMessage', { chat_id: tgId, parse_mode: 'HTML',
+      text: '<b>Оплата PRO не завершилась</b>\n\nЕсли что-то пошло не так — банк отклонил платёж, не открылась страница оплаты или появился вопрос, — напишите нам. Поможем разобраться и оформить PRO.\n\nЕсли вы просто передумали, ничего делать не нужно 🙂',
+      reply_markup: kb([[{ text: '💬 Написать в поддержку', url: 'https://t.me/MVSR_P2P' }], [{ text: '🔄 Попробовать снова', web_app: { url: APP + '?plans=1' } }]]) });
+    const u = await userById(payer);
+    await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
+      text: `😕 <b>Не прошла оплата</b> · ${PF_METHOD[r.provider] ?? r.provider} · ${r.price_rub.toLocaleString('ru-RU')} ₽\n${u ? who(u) : payer}\n${res?.ok ? 'Написал ему в бот с кнопкой поддержки' : 'Написать в бот не получилось (бот заблокирован?)'}` });
+  }
+  await stSet('payfail', { ...(await stGet('payfail', st)), who: st.who });
+}
+
 async function tick() {
   const now = Date.now();
   // 1. Новые пользователи и оплаты — уведомления владельцу. При первом запуске только запоминаем время
@@ -1193,6 +1229,8 @@ async function tick() {
   if (today.endsWith('-01') && hourMsk >= 11 && mo.m !== lastM) { await stSet('monthly', { m: lastM }); background(monthlyFanout(lastM).catch((e) => console.error('monthly', e))); }
   // 9. Сторож: всё ли работает
   await watchdog().catch((e) => console.error('watchdog', e));
+  // 11. Оплата не прошла — предлагаем помощь
+  await payFails(now).catch((e) => console.error('payfails', e));
   // 10. Возврат ушедших — раз в день после 12:00 МСК
   const wb = await stGet('winback', { day: '' });
   if (hourMsk >= 12 && wb.day !== today) { await stSet('winback', { day: today }); background(wbCandidates().then((c) => c.some((x) => !x.skip) ? wbShow(ADMIN_ID, null, false, c) : undefined).catch((e) => console.error('winback', e))); background(cardsCleanup().catch((e) => console.error('cards cleanup', e))); }
