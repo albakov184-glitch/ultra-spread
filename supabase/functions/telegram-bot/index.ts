@@ -1098,6 +1098,7 @@ async function adminMessage(msg: Msg): Promise<boolean> {
       await stSet('await', null);
       await show(chatId, null, ADMIN_HELP, MENU());
     } else if (c === '/cancel') { await stSet('await', null); await stTake('draft'); await show(chatId, null, 'Отменено.', MENU()); }
+    else if (c === '/payfail') await payFailMsg(chatId);   // пример сообщения «оплата не прошла»
     else if (c === '/stats') await show(chatId, null, await statsText(), toMenu([{ text: '🔄 Обновить', callback_data: 'st' }]));
     else if (c === '/promo') await show(chatId, null, await promoCreate(args), kb([[{ text: '🎟 Промокоды', callback_data: 'pl' }]]));
     else if (c === '/refund') await show(chatId, null, await refund(a), null);
@@ -1133,6 +1134,10 @@ async function adminMessage(msg: Msg): Promise<boolean> {
 /* ================= ПО РАСПИСАНИЮ (09-cron.sql, каждые 10 минут) ================= */
 // Оплата не прошла: Platega отменила счёт (СБП, карта или крипта). Через 20 минут пишем человеку — вдруг нужна помощь.
 // Не пишем, если он потом оплатил или пробовал ещё раз (тогда напишем про последнюю попытку), и не чаще раза в сутки
+// Сообщение человеку, у которого не прошла оплата. Владелец может посмотреть его командой /payfail
+const payFailMsg = (chat: number) => tg('sendMessage', { chat_id: chat, parse_mode: 'HTML',
+  text: '<b>Оплата PRO не завершилась</b>\n\nЕсли что-то пошло не так — банк отклонил платёж, не открылась страница оплаты или появился вопрос, — напишите нам. Поможем разобраться и оформить PRO.\n\nЕсли вы просто передумали, ничего делать не нужно 🙂',
+  reply_markup: kb([[{ text: '💬 Написать в поддержку', url: 'https://t.me/MVSR_P2P' }], [{ text: '🔄 Попробовать снова', web_app: { url: APP + '?plans=1' } }]]) });
 const PF_METHOD: Record<string, string> = { platega: 'СБП', platega_card: 'карта', platega_crypto: 'криптовалюта' };
 async function payFails(now: number) {
   type Inv = { id: string; user_id: string | null; gift_from: string | null; provider: string; price_rub: number; created_at: string; status: string };
@@ -1157,9 +1162,7 @@ async function payFails(now: number) {
     const tgId = Number(t?.tg_id);
     if (!tgId || tgId === ADMIN_ID) continue;
     st.who[payer] = now;
-    const res = await tg('sendMessage', { chat_id: tgId, parse_mode: 'HTML',
-      text: '<b>Оплата PRO не завершилась</b>\n\nЕсли что-то пошло не так — банк отклонил платёж, не открылась страница оплаты или появился вопрос, — напишите нам. Поможем разобраться и оформить PRO.\n\nЕсли вы просто передумали, ничего делать не нужно 🙂',
-      reply_markup: kb([[{ text: '💬 Написать в поддержку', url: 'https://t.me/MVSR_P2P' }], [{ text: '🔄 Попробовать снова', web_app: { url: APP + '?plans=1' } }]]) });
+    const res = await payFailMsg(tgId);
     const u = await userById(payer);
     await tg('sendMessage', { chat_id: ADMIN_ID, parse_mode: 'HTML',
       text: `😕 <b>Не прошла оплата</b> · ${PF_METHOD[r.provider] ?? r.provider} · ${r.price_rub.toLocaleString('ru-RU')} ₽\n${u ? who(u) : payer}\n${res?.ok ? 'Написал ему в бот с кнопкой поддержки' : 'Написать в бот не получилось (бот заблокирован?)'}` });
