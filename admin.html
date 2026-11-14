@@ -685,7 +685,7 @@ async function openUser(id) {
   try { drawUser(await api('user', { id })); } catch (e) { $('drawer').innerHTML = `<div class="dr-head"><button class="x" data-close>×</button></div><p class="neg">${esc(e.message)}</p>`; }
 }
 // Подробности о человеке: активность по сделкам, откуда пришёл, канал, чем пользуется в приложении и в боте
-const CURS = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', EUR: '€', USD: '$' };
+const CURS = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', UZS: 'сум', EUR: '€', USD: '$' };
 const MODES = { deal: 'Сделка', circle: 'Круг', tri: 'Треугольник' };
 function userMore(m) {
   const sym = CURS[m.cur] || m.cur, money = v => `${v >= 0 ? '+' : '−'}${nf0.format(Math.abs(Math.round(v)))} ${sym}`;

@@ -530,7 +530,7 @@ async function loginAnswer(cq: { id: string; data?: string; from: { id: number; 
 // В 23:59 МСК расписание будит бота ({cron:'daily'}): он находит всех, у кого сегодня были сделки, и для каждого
 // вызывает сам себя ({daily_user}) — каждая карточка рисуется в отдельном запуске, чтобы хватило ресурсов.
 // Команда /itogi присылает итоги прямо сейчас. Карточка — PNG из SVG (resvg), шрифты лежат на сайте в /fonts
-const CUR: Record<string, string> = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', EUR: '€', USD: '$' };
+const CUR: Record<string, string> = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', UZS: 'сум', EUR: '€', USD: '$' };
 const money = (v: number, cur: string, dec = 2) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toLocaleString('ru-RU', { minimumFractionDigits: dec, maximumFractionDigits: dec })} ${CUR[cur] ?? cur}`;
 const plural = (n: number, a: string, b: string, c: string) => { const m = n % 100, k = n % 10; return m > 10 && m < 20 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
 type DayTrade = { ts: string; data: { profit?: number; sum?: number; cur?: string; ex?: string; bank?: string } };
@@ -583,12 +583,12 @@ async function xrRate(base: string): Promise<{ rate: number; ch: number } | null
   } catch (_) { /* пробуем следующий адрес */ }
   return null;
 }
-// CoinGecko: USDT в рублях, тенге, гривне, евро. Белорусского рубля там нет — считаем через официальный курс рубля
+// CoinGecko: USDT в рублях, тенге, гривне, сумах, евро. Белорусского рубля там нет — считаем через официальный курс рубля
 let cgCache: { at: number; t: Record<string, number> } | null = null;
 async function cgRate(base: string): Promise<{ rate: number; ch: number } | null> {
   try {
     if (!cgCache || Date.now() - cgCache.at > 60e3) {
-      const j = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub,kzt,uah,eur&include_24hr_change=true', { signal: AbortSignal.timeout(6000) }).then((r) => r.json());
+      const j = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub,kzt,uah,uzs,eur&include_24hr_change=true', { signal: AbortSignal.timeout(6000) }).then((r) => r.json());
       if (!(+j?.tether?.rub > 0)) return null;
       cgCache = { at: Date.now(), t: j.tether };
     }
@@ -760,7 +760,7 @@ type RatePost = { on: boolean; times: number[]; done: Record<string, string> }; 
 const RP_DEF: RatePost = { on: false, times: [10, 20], done: {} };
 const RP_HOURS = [8, 9, 10, 12, 14, 16, 18, 20, 22];
 const RP_FIATS: [string, string, string][] = [['KZT', 'Тенге', '₸'], ['UAH', 'Гривна', '₴'], ['BYN', 'Бел. рубль', 'Br'], ['EUR', 'Евро', '€'], ['KGS', 'Сом', 'с'], ['UZS', 'Сум', 'сум']];
-const FX_HIST = ['KZT', 'UAH', 'BYN', 'EUR'];   // такие же валюты курса, как в приложении (XR_CURS без рубля)
+const FX_HIST = ['KZT', 'UAH', 'BYN', 'UZS', 'EUR'];   // такие же валюты курса, как в приложении (XR_CURS без рубля)
 async function fiatRate(base: string) {
   return (rateSrc === 'xRocket' ? await xrRate(base) : null)?.rate || (await cgRate(base))?.rate || 0;
 }

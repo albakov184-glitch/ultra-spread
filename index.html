@@ -1575,9 +1575,9 @@ img { max-width: 100%; }
 <script>
 /* ================= СОСТОЯНИЕ ================= */
 const KEY = 'ultraSpread.v2';
-const SYM = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', EUR: '€', USD: '$' };
+const SYM = { RUB: '₽', KZT: '₸', UAH: '₴', BYN: 'Br', UZS: 'сум', EUR: '€', USD: '$' };
 // Валюты сделок. Каждая сделка хранит свою валюту — при смене валюты старые сделки не пересчитываются
-const CURS = [['RUB', '🇷🇺', 'Рубли'], ['KZT', '🇰🇿', 'Тенге'], ['UAH', '🇺🇦', 'Гривны'], ['BYN', '🇧🇾', 'Бел. рубли'], ['EUR', '🇪🇺', 'Евро'], ['USD', '🇺🇸', 'Доллары']];
+const CURS = [['RUB', '🇷🇺', 'Рубли'], ['KZT', '🇰🇿', 'Тенге'], ['UAH', '🇺🇦', 'Гривны'], ['BYN', '🇧🇾', 'Бел. рубли'], ['UZS', '🇺🇿', 'Сумы'], ['EUR', '🇪🇺', 'Евро'], ['USD', '🇺🇸', 'Доллары']];
 const CUR_FLAG = Object.fromEntries(CURS.map(c => [c[0], c[1]])), CUR_NAME = Object.fromEntries(CURS.map(c => [c[0], c[2]]));
 // Своё свойство объекта (Object.hasOwn нет в Safari до 15.4): имена вроде «toString» не должны считаться допустимыми
 const own = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k);
@@ -3351,7 +3351,7 @@ async function xrDayAgo(base) {
   const r = xrDay.row;
   return r ? (base === 'RUB' ? +r.usdt : +(r.fx?.[base] || 0)) || 0 : 0;
 }
-const XR_CURS = ['RUB', 'KZT', 'UAH', 'BYN', 'EUR'];   // в этих валютах показываем курс USDT
+const XR_CURS = ['RUB', 'KZT', 'UAH', 'BYN', 'UZS', 'EUR'];   // в этих валютах показываем курс USDT
 let xrRate = lsGet(KEY + '.xr'), xrBusy = false;   // курс к рублю — основной (его пишет бот для графика и уведомлений)
 let xrFx = (() => { const v = lsGet(KEY + '.xrfx'); return v && typeof v === 'object' ? v : {}; })();   // курсы к другим валютам
 // Валюта курса: как в калькуляторе, если человек не выбрал другую в окне курса. Для долларов курс не показываем
@@ -3378,11 +3378,11 @@ async function xrFetch(base) {
   } catch (e) { /* пробуем следующий адрес */ }
   return cgFetch(base);
 }
-// CoinGecko: USDT в рублях, тенге, гривне и евро. Белорусского рубля там нет — считаем через официальный курс рубля
+// CoinGecko: USDT в рублях, тенге, гривне, сумах и евро. Белорусского рубля там нет — считаем через официальный курс рубля
 let cgC = null;
 async function cgFetch(base) {
   if (!cgC || Date.now() - cgC.at > 55e3) {
-    const j = await (await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub,kzt,uah,eur&include_24hr_change=true', { cache: 'no-store' })).json();
+    const j = await (await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub,kzt,uah,uzs,eur&include_24hr_change=true', { cache: 'no-store' })).json();
     if (!(+j?.tether?.rub > 0)) throw new Error('no rate');
     cgC = { at: Date.now(), t: j.tether };
   }
