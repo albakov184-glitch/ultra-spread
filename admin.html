@@ -997,12 +997,13 @@ function pickBox(title, text, opts, { input, okText = 'Готово', danger, de
     };
   });
 }
+const FX_NAMES = { bybit: 'Bybit', htx: 'HTX', bitget: 'Bitget', okx: 'OKX', gate: 'Gate', mexc: 'MEXC', binance: 'Binance', kucoin: 'KuCoin', rapira: 'Rapira', abcex: 'ABCEX', cryptobot: 'CryptoBot', xrocket: 'xRocket', other: 'Другая' };
 async function blDecideUi(id, act, extra = {}) {
   if (act === 'approve') {
     const rw = extra.reward ?? (extra.reporter === false ? 'no' : await pickBox('Одобрить жалобу?', 'Ник попадёт в общую базу. Наградить автора?', BL_REWARDS, { okText: '✅ Одобрить', def: 'd3' }));
     if (!rw) return false;
     const r = await api('bl_decide', { id, act, reward: rw, kind: extra.kind, kind_text: extra.kind_text });
-    toast(`Одобрено ✓${r.warned ? ` · предупредили ${r.warned}` : ''}${r.sent === false ? ' · автору не дошло' : ''}`);
+    toast(`Одобрено ✓${r.warned ? ` · предупредили ${r.warned}` : ''}${r.sent === false ? ' · автору не дошло' : ''}${r.fx === 'sent' ? ' · ушло во Fraudex' : /^err/.test(r.fx || '') ? ' · во Fraudex не ушло' : ''}`);
   } else {
     const v = await pickBox('Отклонить жалобу?', 'Причину увидит автор. «Ложная жалоба» — это ещё и предупреждение: после 3-х человек не сможет жаловаться', BL_REASONS.map(t => [t, BL_REASON_LABEL[t] || t]), { input: 'или напишите свою причину', okText: '❌ Отклонить', danger: true });
     if (!v) return false;
@@ -1097,6 +1098,13 @@ document.addEventListener('click', async e => {
     return;
   }
   if (n) return openBlNick(n.dataset.bln);
+  const fx = e.target.closest('[data-blfx]');
+  if (fx) {
+    fx.disabled = true;
+    try { const r = await api('bl_fdx', { id: +fx.dataset.blfx }); toast(r.fx === 'sent' ? 'Отправлено во Fraudex ✓' : r.fx ? 'Fraudex не принял: ' + r.fx.slice(4) : 'Не хватает данных: нужна биржа с UID/маской или карта, телефон', !r.fx || r.fx !== 'sent'); openBl(+fx.dataset.blfx); }
+    catch (er) { toast(er.message, true); fx.disabled = false; }
+    return;
+  }
   const wr = e.target.closest('[data-blwr]');
   if (wr) { if (!await confirmBox('Сбросить предупреждения?', 'Автор снова сможет подавать жалобы.', 'Сбросить')) return; try { await api('bl_warns_reset', { uid: wr.dataset.blwr }); toast('Предупреждения сброшены'); wr.parentElement.textContent = '0'; } catch (er) { toast(er.message, true); } return; }
   if (card && !e.target.closest('button')) openBl(+card.dataset.blr);
@@ -1127,6 +1135,11 @@ async function openBl(id) {
       ${r.note ? `<div class="sec"><h4>Описание</h4><div>${esc(r.note)}</div></div>` : ''}
       <div class="facts"><div class="fact"><div class="lb">Тип</div><div class="v">${esc(r.kindLabel)}</div></div><div class="fact"><div class="lb">В базе на этот ник</div><div class="v">${r.inBase} ${plural(r.inBase, 'жалоба', 'жалобы', 'жалоб')}</div></div>
         <div class="fact"><div class="lb">Подана</div><div class="v">${dTime(r.created_at)}</div></div>
+        ${r.exchange ? `<div class="fact"><div class="lb">Биржа</div><div class="v">${esc(FX_NAMES[r.exchange] || r.exchange)}</div></div>` : ''}
+        ${r.uid ? `<div class="fact"><div class="lb">UID</div><div class="v">${esc(r.uid)}</div></div>` : ''}
+        ${r.mask ? `<div class="fact"><div class="lb">Маска профиля</div><div class="v" style="word-break:break-all">${esc(r.mask)}</div></div>` : ''}
+        ${r.req ? `<div class="fact"><div class="lb">Карта / телефон</div><div class="v">${esc(r.req)}</div></div>` : ''}
+        ${r.status === 'approved' || r.fdx ? `<div class="fact"><div class="lb">Fraudex</div><div class="v">${r.fdx === 'sent' ? '<span class="pos">отправлено</span>' : r.fdx === 'deleted' ? 'удалено оттуда' : /^err/.test(r.fdx) ? `<span class="neg">ошибка</span> <span class="muted small">${esc(r.fdx.slice(4))}</span>` : 'не отправлялось'}${r.status === 'approved' && r.fdx !== 'sent' ? ` <button class="btn ghost small" data-blfx="${r.id}">отправить</button>` : ''}</div></div>` : ''}
         ${r.reporter ? `<div class="fact"><div class="lb">Предупреждений у автора</div><div class="v">${r.warns ? `<span class="${r.warns >= 3 ? 'neg' : ''}">${r.warns} из 3</span> <button class="btn ghost small" data-blwr="${esc(r.reporter)}">сбросить</button>` : '0'}</div></div>` : ''}<div class="fact"><div class="lb">${r.status === 'rejected' ? 'Причина отказа' : 'Награда'}</div><div class="v">${esc(r.status === 'rejected' ? r.reason : ({ d3: '+3 дня PRO', d7: '+7 дней PRO', d30: '+30 дней PRO', p20: 'скидка 20%', p50: 'скидка 50%', no: 'без награды' }[r.reward] || '—'))}</div></div></div>
       ${pend ? `<div class="sec"><h4>Тип нарушения — можно поправить</h4><div class="chips" id="bdK">${Object.entries(BL_KINDS).map(([k, l]) => `<button class="chip ${k === kind ? 'on' : ''}" data-dk="${k}">${l}</button>`).join('')}<button class="chip ${kind === 'other' ? 'on' : ''}" data-dk="other">✏️ Свой</button></div>
           <input class="inp" id="bdKT" placeholder="Свой тип нарушения" maxlength="60" value="${esc(r.kind === 'other' ? r.kind_text : '')}" ${kind === 'other' ? '' : 'hidden'}></div>

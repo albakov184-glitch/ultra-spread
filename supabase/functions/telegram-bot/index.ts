@@ -1948,13 +1948,85 @@ async function blWarn(uid: string, text: string) {
 }
 const BL_REWARDS: Record<string, string> = { d3: '+3 дня PRO', d7: '+7 дней PRO', d30: '+30 дней PRO', p20: 'скидка 20%', p50: 'скидка 50%', no: 'без награды' };
 type BlRow = { id: number; nick: string; shown: string; kind: string; kind_text: string; note: string; proofs: string[]; reporter: string | null;
-  status: string; reason: string; reward: string; created_at: string; decided_at: string | null };
+  status: string; reason: string; reward: string; created_at: string; decided_at: string | null; exchange: string; uid: string; mask: string; req: string; fdx: string };
 type BlSum = { nick: string; shown: string; n: number; first: string; last: string; added: string; kinds: Record<string, number> };
 // Ник для поиска: без @, без лишних пробелов, в нижнем регистре. Так же ник ищется у контрагентов в приложении
 const blNick = (v: unknown) => String(v ?? '').trim().replace(/^@+/, '').replace(/\s+/g, ' ').slice(0, 40).toLowerCase();
 const blOkNick = (n: string) => n.length >= 2 && !/[\u0000-\u001f<>]/.test(n);
 const blKind = (r: { kind: string; kind_text: string }) => (r.kind === 'other' && r.kind_text) ? r.kind_text : BL_KINDS[r.kind] ?? 'Другое';
 const blAt = (n: string) => '@' + n;
+
+/* ---------- Fraudex: база мошенников партнёра. Проверка контрагента и отправка наших одобренных жалоб ---------- */
+// Ключ — в Supabase → Edge Functions → Secrets (FRAUDEX_API_KEY). Без ключа всё работает как раньше, просто без Fraudex
+const FDX_KEY = Deno.env.get('FRAUDEX_API_KEY') ?? '';
+const FDX_URL = 'https://fraudex-api.fraudex-service.top';
+// Что кроме ника нужно Fraudex на каждой бирже, и сколько символов может быть в маске (по их документации)
+const FDX_EX: Record<string, { uid?: boolean; mask?: number; nick: number }> = {
+  bybit: { uid: true, mask: 50, nick: 100 }, htx: { uid: true, nick: 100 }, gate: { mask: 100, nick: 100 }, mexc: { mask: 64, nick: 100 }, bitget: { mask: 64, nick: 100 },
+  rapira: { mask: 64, nick: 100 }, cryptobot: { mask: 128, nick: 255 }, binance: { mask: 64, nick: 255 }, xrocket: { mask: 128, nick: 255 }, abcex: { mask: 64, nick: 255 }, kucoin: { mask: 128, nick: 255 } };
+const BL_EXCH = [...Object.keys(FDX_EX), 'okx', 'other'];   // биржи, которые можно выбрать в жалобе
+const FDX_BIG = (d: string) => /^[1-9][0-9]{0,18}$/.test(d) && (d.length < 19 || d <= '9223372036854775807');   // число до 2^63−1, как просит Fraudex
+const fdxCtl = (v: string) => /[\u0000-\u001f\u007f]/.test(v);
+type FdxIds = { exchange?: unknown; nick?: unknown; uid?: unknown; mask?: unknown };
+// Контрагент на бирже — только с полным набором полей для этой биржи, иначе null
+function fdxAgent(o: FdxIds) {
+  const ex = String(o.exchange ?? '').toLowerCase(), r = FDX_EX[ex]; if (!r) return null;
+  const nick = String(o.nick ?? '').trim().replace(/^@+/, ''), uid = String(o.uid ?? '').trim(), mask = String(o.mask ?? '').trim();
+  if (!nick || nick.length > r.nick || fdxCtl(nick)) return null;
+  const t: Record<string, string> = { type: 'agent', exchange: ex, nick };
+  if (r.uid) { if (!FDX_BIG(uid)) return null; t.uid = uid; }
+  if (r.mask) { if (!mask || mask.length > r.mask || fdxCtl(mask) || /\s/.test(mask)) return null; t.mask = mask; }
+  return t;
+}
+// Реквизит: карта — 16 или 19 цифр, телефон — 10–12 цифр (Россия, Казахстан, Узбекистан)
+function fdxReq(v: unknown) {
+  const raw = String(v ?? '').trim(), d = raw.replace(/[\s()+-]/g, '');
+  if (!raw || raw.length > 24 || !/^\d+$/.test(d)) return null;
+  if ((d.length === 16 || d.length === 19) && FDX_BIG(d)) return { type: 'requisite', kind: 'card', value: d };
+  if (d.length >= 10 && d.length <= 12) return { type: 'requisite', kind: 'phone', value: raw };
+  return null;
+}
+function fdxTg(v: unknown) {
+  const raw = String(v ?? '').trim().replace(/^@+/, '');
+  if (/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(raw)) return { type: 'telegram', username: '@' + raw };
+  if (FDX_BIG(raw)) return { type: 'telegram', telegram_id: raw };
+  return null;
+}
+async function fdx(path: string, body: unknown): Promise<{ status: number; data: Record<string, unknown> }> {
+  try {
+    const r = await fetch(FDX_URL + path, { method: 'POST', headers: { 'X-API-KEY': FDX_KEY, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(12000) });
+    return { status: r.status, data: await r.json().catch(() => ({})) };
+  } catch (e) { return { status: 0, data: { detail: String((e as Error)?.message ?? e) } }; }
+}
+// Одобренную жалобу — во Fraudex: ник с данными биржи и/или карта, телефон. ID отзыва у них — p2pro-<номер жалобы>
+async function fdxPush(r: BlRow) {
+  if (!FDX_KEY || r.fdx === 'sent') return r.fdx;
+  const targets = [fdxAgent({ exchange: r.exchange, nick: r.shown || r.nick, uid: r.uid, mask: r.mask }), fdxReq(r.req)].filter(Boolean);
+  if (!targets.length) return '';
+  const text = (blKind(r) + (r.note ? '. ' + r.note : '')).replace(/[\u0000-\u0008\u000b-\u001f]/g, ' ').slice(0, 5000);
+  const res = await fdx('/v1/blacklist/reviews/add', { id: 'p2pro-' + r.id, text, targets });
+  const mark = res.status === 200 || res.status === 201 ? 'sent' : ('err:' + res.status + ' ' + JSON.stringify(res.data?.detail ?? '')).slice(0, 290);
+  await admin.from('bl_reports').update({ fdx: mark }).eq('id', r.id);
+  if (mark !== 'sent') console.error('fdx add', r.id, mark);
+  return mark;
+}
+// Снятые жалобы — удаляем и из Fraudex (404 — значит, там её уже нет)
+async function fdxDrop(rows: BlRow[]) {
+  for (const r of rows) {
+    if (!FDX_KEY || r.fdx !== 'sent') continue;
+    const res = await fdx('/v1/blacklist/reviews/delete', { id: 'p2pro-' + r.id });
+    if (res.status === 200 || res.status === 404) await admin.from('bl_reports').update({ fdx: 'deleted' }).eq('id', r.id);
+    else console.error('fdx delete', r.id, res.status, res.data);
+  }
+}
+// Не больше 20 проверок во Fraudex в минуту на человека
+const fdxHits = new Map<string, number[]>();
+function fdxFlood(uid: string) {
+  const now = Date.now(), list = (fdxHits.get(uid) ?? []).filter((t) => now - t < 60e3);
+  list.push(now); fdxHits.set(uid, list);
+  if (fdxHits.size > 5000) for (const [k, v] of fdxHits) if (now - v[v.length - 1] > 60e3) fdxHits.delete(k);
+  return list.length > 20;
+}
 
 // Сводка по одобренным жалобам: сколько, когда первая и последняя, какие нарушения
 function blSummary(rows: BlRow[]) {
@@ -1968,7 +2040,7 @@ function blSummary(rows: BlRow[]) {
   }
   return m;
 }
-const BL_COLS = 'id, nick, shown, kind, kind_text, note, proofs, reporter, status, reason, reward, created_at, decided_at';
+const BL_COLS = 'id, nick, shown, kind, kind_text, note, proofs, reporter, status, reason, reward, created_at, decided_at, exchange, uid, mask, req, fdx';
 async function blApproved(nicks?: string[]): Promise<BlRow[]> {
   if (nicks && !nicks.length) return [];
   if (nicks) {   // частями по 100: длинный список ников не влезет в один адрес запроса
@@ -2090,7 +2162,8 @@ async function blDecide(id: number, act: 'approve' | 'reject', o: { reason?: str
   const sum = blSummary(await blApproved([r.nick])).get(r.nick)!;
   const sent = r.reporter ? await notify(r.reporter, `✅ <b>Ваша жалоба одобрена</b>\n${esc(blAt(r.shown))} добавлен в общую базу мошенников P2Pro. Спасибо, что помогаете другим!`, openBtn()) : false;
   const warned = sum.n === 1 ? await blWarnContacts(r.nick, sum, r.reporter) : 0;
-  return { r, sent, warned, n: sum.n };
+  const fx = await fdxPush(r).catch((e) => { console.error('fdx', e); return 'err'; });
+  return { r, sent, warned, n: sum.n, fx };
 }
 // Награда автору одобренной жалобы — один раз
 async function blReward(id: number, reward: string) {
@@ -2124,6 +2197,7 @@ async function blRemove(nick: string, appeal = false) {
     .eq('nick', blNick(nick)).eq('status', 'approved').select(BL_COLS);
   if (error) throw error;
   const rows = (data ?? []) as BlRow[];
+  await fdxDrop(rows).catch((e) => console.error('fdx drop', e));
   let warned = 0;
   if (appeal) for (const uid of new Set(rows.map((r) => r.reporter).filter(Boolean) as string[])) {
     await blWarn(uid, `ℹ️ <b>Жалоба на ${esc(blAt(rows[0].shown || rows[0].nick))} снята</b>\nЧеловек обжаловал её и предоставил доказательства, что не обманывал, поэтому он убран из общей базы.\n\n⚠️ Пожалуйста, подавайте жалобы только при реальном мошенничестве и с понятными доказательствами.`);
@@ -2244,6 +2318,23 @@ async function blApi(body: Record<string, unknown>) {
       return aj({ nick, found: !!s, n: s?.n ?? 0, first: s?.first ?? null, last: s?.last ?? null, kinds: s?.kinds ?? {},
         items: rows.slice(0, 30).map((r) => ({ at: r.created_at, kind: blKind(r), note: r.note })) });
     }
+    if (act === 'fdx') {   // проверка во Fraudex: биржа (ник + UID/маска), карта, телефон или Telegram
+      if (!FDX_KEY) throw new Error('Проверка Fraudex пока не подключена');
+      const k = String(body.kind ?? '');
+      const t = k === 'agent' ? fdxAgent(body) : k === 'req' ? fdxReq(body.value) : k === 'tg' ? fdxTg(body.value) : null;
+      if (!t) {
+        if (k === 'agent') { const r = FDX_EX[String(body.exchange ?? '').toLowerCase()]; throw new Error(r ? `Заполните: ник${r.uid ? ', UID (только цифры)' : ''}${r.mask ? ', маску профиля' : ''}` : 'Выберите биржу'); }
+        throw new Error(k === 'tg' ? 'Впишите @username (от 5 символов) или числовой Telegram ID' : 'Карта — 16 или 19 цифр, телефон — с кодом страны');
+      }
+      if (fdxFlood(u.id)) throw new Error('Слишком много проверок — подождите минуту');
+      const res = await fdx('/v1/blacklist/check', { target: t });
+      if (res.status !== 200) {
+        console.error('fdx check', res.status, res.data);
+        throw new Error(res.status === 422 ? 'Fraudex не принял данные — проверьте, что всё вписано верно' : 'Fraudex сейчас не отвечает — попробуйте позже');
+      }
+      const url = typeof res.data.bot_url === 'string' && /^https:\/\/t\.me\//.test(res.data.bot_url) ? res.data.bot_url : null;
+      return aj({ found: res.data.is_blacklisted === true, n: Number(res.data.comments_count ?? 0) || 0, last: typeof res.data.last_comment_at === 'string' ? res.data.last_comment_at : null, url });
+    }
     if (act === 'mine') {
       const { data, error } = await admin.from('bl_reports').select(BL_COLS).eq('reporter', u.id).order('created_at', { ascending: false }).limit(50);
       if (error) throw error;
@@ -2257,6 +2348,13 @@ async function blApi(body: Record<string, unknown>) {
       const kindText = kind === 'other' ? String(body.kind_text ?? '').trim().slice(0, 60) : '';
       if (kind === 'other' && !kindText) throw new Error('Напишите, что случилось');
       const note = String(body.note ?? '').trim().slice(0, 1000);
+      // Биржа и данные профиля — по желанию. С полным набором жалоба после проверки уйдёт и во Fraudex
+      const exchange = String(body.exchange ?? '').toLowerCase().trim();
+      if (exchange && !BL_EXCH.includes(exchange)) throw new Error('Неизвестная биржа');
+      const uid = String(body.uid ?? '').replace(/\s/g, ''), mask = String(body.mask ?? '').trim(), req = String(body.req ?? '').trim();
+      if (uid && !FDX_BIG(uid)) throw new Error('UID — это только цифры');
+      if (mask && (mask.length > 128 || fdxCtl(mask) || /\s/.test(mask))) throw new Error('Маска профиля указана неверно');
+      if (req && !fdxReq(req)) throw new Error('Карта — 16 или 19 цифр, телефон — с кодом страны');
       const imgs = (Array.isArray(body.images) ? body.images : []).slice(0, 3).map(blImage);
       if (!imgs.length) throw new Error('Приложите хотя бы один скрин');
       if (imgs.some((x) => !x)) throw new Error('Скрин должен быть картинкой JPG или PNG до 2 МБ');
@@ -2266,7 +2364,7 @@ async function blApi(body: Record<string, unknown>) {
       if ((count ?? 0) >= 10) throw new Error('Не больше 10 жалоб в сутки — попробуйте завтра');
       const { data: dup } = await admin.from('bl_reports').select('id').eq('reporter', u.id).eq('nick', nick).eq('status', 'pending').limit(1);
       if (dup?.length) throw new Error('Ваша жалоба на этот ник уже на проверке');
-      const { data: ins, error } = await admin.from('bl_reports').insert({ nick, shown, kind, kind_text: kindText, note, reporter: u.id }).select(BL_COLS).single();
+      const { data: ins, error } = await admin.from('bl_reports').insert({ nick, shown, kind, kind_text: kindText, note, reporter: u.id, exchange, uid, mask, req }).select(BL_COLS).single();
       if (error) throw error;
       const r = ins as BlRow, ok = imgs as { bytes: Uint8Array; type: string; ext: string }[];
       try { r.proofs = await blUpload(u.id, r.id, ok); }
@@ -2306,7 +2404,11 @@ async function blAdmin(act: string, body: Record<string, unknown>) {
     const d = await blDecide(id, a, { reason: String(body.reason ?? ''), kind: body.kind ? String(body.kind) : undefined, kindText: String(body.kind_text ?? '') });
     let rewarded = false;
     if (a === 'approve' && d.r.reporter && typeof body.reward === 'string' && body.reward in BL_REWARDS) rewarded = !!(await blReward(id, body.reward)).sent;
-    return { ok: true, sent: d.sent, warned: d.warned, n: d.n, rewarded };
+    return { ok: true, sent: d.sent, warned: d.warned, n: d.n, rewarded, fx: d.fx ?? '' };
+  }
+  if (act === 'bl_fdx') {   // повторить отправку одобренной жалобы во Fraudex
+    const r = await blGet(Number(body.id)); if (!r || r.status !== 'approved') throw new Error('Жалоба не одобрена');
+    return { ok: true, fx: await fdxPush({ ...r, fdx: '' }) };
   }
   if (act === 'bl_kind') { await blSetKind(Number(body.id), String(body.kind ?? ''), String(body.kind_text ?? '')); return { ok: true }; }
   if (act === 'bl_search') {

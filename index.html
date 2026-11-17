@@ -1433,6 +1433,14 @@ img { max-width: 100%; }
           <button class="btn primary bl-btn" id="blGo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>Проверить</button>
           <div id="blRes" class="bl-res"></div>
         </div>
+        <div class="card" data-pane="check" hidden>
+          <div class="card-h"><span class="card-t">Проверить во Fraudex</span><button class="info" data-info="fdx" aria-label="Что такое Fraudex">i</button></div>
+          <span class="muted small" style="margin-top:-4px">Большая база мошенников по P2P-биржам, картам и телефонам</span>
+          <div class="seg sm" id="fxKind"><button data-fxk="agent" class="on">Биржа</button><button data-fxk="req">Карта / телефон</button><button data-fxk="tg">Telegram</button></div>
+          <div id="fxForm" style="display:flex;flex-direction:column;gap:10px"></div>
+          <button class="btn primary bl-btn" id="fxGo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>Проверить</button>
+          <div id="fxRes" class="bl-res"></div>
+        </div>
         <div data-pane="reports" hidden class="bl-reps"><div id="blMine" class="list"></div><button class="btn danger bl-btn" data-blreport=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>Новая жалоба</button></div>
       </div>
       <div class="paywall" id="cpPaywall">
@@ -2387,6 +2395,7 @@ function renderCp(fromBase) {
   $('blTotal').textContent = BL.total != null ? `${BL.total} ${plural(BL.total, 'мошенник', 'мошенника', 'мошенников')} · проверено модератором` : 'мошенники, проверенные модератором';
   if (pro && !fromBase) blRefresh();
   if (pro && cpTab === 'reports' && !fromBase) blMine();
+  if (cpTab === 'check' && !$('fxForm').innerHTML) fxRender();
   document.querySelectorAll('[data-cps]').forEach(b => b.classList.toggle('on', b.dataset.cps === cpStatus));
   const q = $('cpQ').value.trim().toLowerCase();
   const base = S.cps;
@@ -2505,6 +2514,68 @@ async function blCheck(nick, into) {
     if (box) box.innerHTML = html + tail; else if ($('blSheetRes')) $('blSheetRes').innerHTML = html + tail;
   } catch (e) { const t = `<div class="note-box bad">${esc(e.message)}</div>`; if (box) box.innerHTML = t; else if ($('blSheetRes')) $('blSheetRes').innerHTML = t; }
 }
+/* ---------- Fraudex: проверка контрагента в базе партнёра (через наш сервер, только PRO) ---------- */
+// [ключ, название, нужен UID, нужна маска] — как требует Fraudex
+const FX_EX = [['bybit', 'Bybit', 1, 1], ['htx', 'HTX', 1, 0], ['bitget', 'Bitget', 0, 1], ['gate', 'Gate', 0, 1], ['mexc', 'MEXC', 0, 1], ['binance', 'Binance', 0, 1],
+  ['kucoin', 'KuCoin', 0, 1], ['rapira', 'Rapira', 0, 1], ['abcex', 'ABCEX', 0, 1], ['cryptobot', 'CryptoBot', 0, 1], ['xrocket', 'xRocket', 0, 1]];
+const fxEx = k => FX_EX.find(x => x[0] === k);
+// Маску можно вставить ссылкой на профиль — достаём ID из ссылки
+function fxMask(v) {
+  v = String(v || '').trim();
+  if (!/^https?:\/\//i.test(v)) return v.replace(/\s/g, '');
+  try {
+    const u = new URL(v);
+    for (const k of ['userId', 'advertiserId', 'advNo', 'biz_uid']) { const q = u.searchParams.get(k); if (q) return q.trim(); }
+    const seg = u.pathname.split('/').filter(Boolean), i = seg.findIndex(x => /^(profile|user|advertiser|merchant|userinfo)$/i.test(x));
+    return decodeURIComponent(i >= 0 && seg[i + 1] ? seg[i + 1] : seg[seg.length - 1] || '');
+  } catch (e) { return v; }
+}
+// Поля UID и маски для выбранной биржи (pre — приставка id полей, opt — в жалобе они по желанию)
+function fxIdsHtml(pre, ex, opt) {
+  const e = fxEx(ex); if (!e) return '';
+  const tail = opt ? ' · по желанию' : '';
+  return (e[2] ? `<div class="inp text"><input id="${pre}Uid" type="text" inputmode="numeric" placeholder="UID${tail}" maxlength="19" aria-label="UID"></div>` : '')
+    + (e[3] ? `<div class="inp text"><input id="${pre}Mask" type="text" placeholder="${ex === 'gate' ? 'biz_uid' : 'Маска'} или ссылка на профиль${tail}" maxlength="400" aria-label="Маска профиля"></div>` : '');
+}
+let fxK = 'agent', fxX = 'bybit';
+function fxRender() {
+  document.querySelectorAll('[data-fxk]').forEach(b => b.classList.toggle('on', b.dataset.fxk === fxK));
+  const v = { nick: $('fxNick')?.value || '', uid: $('fxUid')?.value || '', mask: $('fxMask')?.value || '' };
+  $('fxForm').innerHTML = fxK === 'agent'
+    ? `<div class="chips" id="fxEx" style="flex-wrap:wrap">${FX_EX.map(([k, l]) => `<button class="chip ${k === fxX ? 'on' : ''}" data-fxx="${k}">${l}</button>`).join('')}</div>
+       <div class="inp text"><input id="fxNick" type="text" placeholder="Ник на бирже" maxlength="100" aria-label="Ник на бирже"></div>${fxIdsHtml('fx', fxX)}`
+    : `<div class="inp text"><input id="fxVal" type="text" ${fxK === 'req' ? 'inputmode="tel" placeholder="Номер карты или телефона"' : 'placeholder="@username или Telegram ID"'} maxlength="40" aria-label="Что проверить"></div>`;
+  if ($('fxNick')) $('fxNick').value = v.nick; if ($('fxUid')) $('fxUid').value = v.uid; if ($('fxMask')) $('fxMask').value = v.mask;
+  $('fxRes').innerHTML = '';
+}
+async function fxCheck() {
+  const box = $('fxRes'), b = { kind: fxK };
+  if (fxK === 'agent') {
+    const e = fxEx(fxX);
+    Object.assign(b, { exchange: fxX, nick: $('fxNick').value.trim().replace(/^@+/, ''), uid: ($('fxUid')?.value || '').replace(/\s/g, ''), mask: fxMask($('fxMask')?.value) });
+    if (!b.nick) return toast('Впишите ник');
+    if (e[2] && !/^\d{1,19}$/.test(b.uid)) return toast('Впишите UID — только цифры');
+    if (e[3] && !b.mask) return toast('Вставьте маску или ссылку на профиль');
+    if ($('fxMask')) $('fxMask').value = b.mask;
+  } else { b.value = $('fxVal').value.trim(); if (!b.value) return toast(fxK === 'req' ? 'Впишите карту или телефон' : 'Впишите @username или ID'); }
+  box.innerHTML = '<div class="sk" style="height:90px;border-radius:14px"></div>';
+  try {
+    const j = await blCall('fdx', b);
+    box.innerHTML = (j.found
+      ? `<div class="bl-warn"><div class="bl-ic">${BLI.alert}</div><div><b>Есть жалобы во Fraudex</b><span>${j.n} ${plural(j.n, 'отзыв', 'отзыва', 'отзывов')}${j.last ? ` · последний ${fmtDay(dayKey(j.last))}` : ''}</span></div></div>`
+      : `<div class="bl-ok"><span class="bl-ok-ic">${BLI.check}</span><span>Во Fraudex жалоб нет</span></div><span class="muted small">Это не гарантия честности — проверьте ник и в общей базе P2Pro выше.</span>`)
+      + (j.url ? `<button class="btn" data-fxopen="${esc(j.url)}">${j.found ? 'Читать отзывы во Fraudex' : 'Открыть карточку во Fraudex'}</button>` : '');
+  } catch (e) { box.innerHTML = `<div class="note-box bad">${esc(e.message)}</div>`; }
+}
+document.addEventListener('click', e => {
+  const k = e.target.closest('[data-fxk]'), x = e.target.closest('[data-fxx]'), o = e.target.closest('[data-fxopen]');
+  if (k) { if (k.dataset.fxk !== fxK) { fxK = k.dataset.fxk; fxRender(); } return; }
+  if (x && x.closest('#fxEx')) { fxX = x.dataset.fxx; fxRender(); return; }
+  if (o) return xrOpen(o.dataset.fxopen, o.dataset.fxopen);
+  if (e.target.closest('#fxGo')) fxCheck();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.closest?.('#fxForm')) fxCheck(); });
+
 // Жалоба: ник, что случилось, описание и обязательно скрин (до 3). Скрины ужимаем до 1600 px в JPEG
 function shrinkImg(file) {
   return new Promise((res, rej) => {
@@ -2515,10 +2586,16 @@ function shrinkImg(file) {
     img.src = url;
   });
 }
+const BR_EX = [...FX_EX.slice(0, 3).map(x => [x[0], x[1]]), ['okx', 'OKX'], ...FX_EX.slice(3).map(x => [x[0], x[1]]), ['other', 'Другая']];
 function blReportSheet(nick = '') {
-  let kind = 'fake', shots = [], busy = false;
+  let kind = 'fake', shots = [], busy = false, ex = '';
   sheet(`<h3>Пожаловаться</h3><span class="muted small">После проверки ник попадёт в общую базу, и его увидят все пользователи PRO</span>
     <div class="inp text"><input id="brNick" type="text" placeholder="Ник мошенника на бирже" value="${esc(nick)}" aria-label="Ник мошенника" maxlength="40"></div>
+    <b style="font-size:14px">Биржа <span class="muted" style="font-weight:500">· по желанию</span></b>
+    <div class="chips" id="brEx" style="flex-wrap:wrap">${BR_EX.map(([k, l]) => `<button class="chip" data-brx="${k}">${l}</button>`).join('')}</div>
+    <div id="brIds" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="inp text"><input id="brReq" type="text" inputmode="tel" placeholder="Карта или телефон мошенника · по желанию" maxlength="24" aria-label="Карта или телефон мошенника"></div>
+    <span class="muted small" style="margin-top:-4px">С UID и маской профиля, картой или телефоном жалоба после проверки попадёт и в базу Fraudex</span>
     <b style="font-size:14px">Что случилось</b>
     <div class="chips" id="brKind" style="flex-wrap:wrap">${Object.entries(BL_KINDS).map(([k, l]) => `<button class="chip ${k === kind ? 'on' : ''}" data-brk="${k}">${l}</button>`).join('')}<button class="chip" data-brk="other">Другое…</button></div>
     <div class="inp text" id="brOtherW" hidden><input id="brOther" type="text" placeholder="Коротко: что сделал" maxlength="60" aria-label="Своё нарушение"></div>
@@ -2532,6 +2609,12 @@ function blReportSheet(nick = '') {
     $('brShots').innerHTML = shots.map((s, i) => `<div class="br-shot"><img src="${s}" alt=""><button data-brdel="${i}" aria-label="Убрать скрин">×</button></div>`).join('');
     $('brAdd').hidden = shots.length >= 3;
   };
+  $('brEx').onclick = e => {
+    const b = e.target.closest('[data-brx]'); if (!b) return;
+    ex = ex === b.dataset.brx ? '' : b.dataset.brx;
+    $('brEx').querySelectorAll('[data-brx]').forEach(x => x.classList.toggle('on', x.dataset.brx === ex));
+    $('brIds').innerHTML = fxIdsHtml('br', ex, true);
+  };
   $('brKind').onclick = e => { const b = e.target.closest('[data-brk]'); if (!b) return; kind = b.dataset.brk; $('brKind').querySelectorAll('[data-brk]').forEach(x => x.classList.toggle('on', x === b)); $('brOtherW').hidden = kind !== 'other'; };
   $('brFile').onchange = async e => {
     try { for (const f of [...e.target.files].slice(0, 3 - shots.length)) shots.push(await shrinkImg(f)); drawShots(); } catch (er) { toast(er.message); }
@@ -2544,9 +2627,12 @@ function blReportSheet(nick = '') {
     if (blKey(n).length < 2) return toast('Впишите ник мошенника');
     if (kind === 'other' && !$('brOther').value.trim()) return toast('Напишите, что случилось');
     if (!shots.length) return toast('Приложите хотя бы один скрин');
+    const uid = ($('brUid')?.value || '').replace(/\s/g, ''), mask = fxMask($('brMask')?.value), req = $('brReq').value.trim();
+    if (uid && !/^\d{1,19}$/.test(uid)) return toast('UID — только цифры');
+    if (req && !/^\+?[\d\s()-]{10,24}$/.test(req)) return toast('Карта — 16 или 19 цифр, телефон — с кодом страны');
     busy = true; $('brGo').disabled = true; $('brGo').textContent = 'Отправляем…';
     try {
-      await blCall('report', { nick: n, kind, kind_text: $('brOther').value, note: $('brNote').value, images: shots });
+      await blCall('report', { nick: n, kind, kind_text: $('brOther').value, note: $('brNote').value, images: shots, exchange: ex, uid, mask, req });
       closeSheet(); toast('Жалоба отправлена на проверку ✓'); cpTab = 'reports'; renderCp();
     } catch (er) { toast(er.message); busy = false; if ($('brGo')) { $('brGo').disabled = false; $('brGo').textContent = 'Отправить на проверку'; } }
   };
@@ -2578,6 +2664,7 @@ document.addEventListener('click', e => {
 
 /* ================= ПОДСКАЗКИ ================= */
 const INFO = {
+  fdx: ['Fraudex', 'Fraudex — отдельная большая база мошенников, наш партнёр. Там собраны жалобы по P2P-биржам, номерам карт, телефонам и Telegram-аккаунтам.\n\nДля проверки по бирже Fraudex просит точные данные профиля: ник, а на Bybit ещё UID и маску, на HTX — UID, на остальных биржах — маску (ID профиля). Маску можно не искать — просто вставьте ссылку на профиль контрагента.\n\nТексты жалоб открываются в боте Fraudex — кнопкой под результатом.'],
   goal: ['Сегодня и цель', 'Прибыль за сегодня по всем сохранённым сделкам. Цель на день задаётся в Профиле, полоска показывает, сколько осталось до цели.\n\nЕсли сделки в разных валютах — например, часть в рублях, часть в тенге — они пересчитываются в валюту, выбранную в калькуляторе, по текущему биржевому курсу USDT. Поэтому перед суммой стоит «≈», а справа видно, из чего она сложилась: «632 ₽ + 1 820 ₸».\n\nЦель тоже показывается в выбранной валюте. Сами сделки не меняются — в истории каждая остаётся в своей валюте.'],
   mode: ['Сделка или круг', '«Сделка» — купил и продал весь объём по одному курсу.\n\n«Круг» — купил USDT одним объёмом, а продаёшь частями по разным курсам. Пример: купил 1 000 USDT по 93 ₽, продал 600 по 94 и 400 по 94,5. Прибыль 1 200 ₽. Приложение покажет, сколько USDT ещё осталось.'],
   fees: ['Комиссии', 'Комиссия биржи — что берёт P2P-площадка за сделку: процент от суммы продажи или фиксированная сумма. Подставляется сама при выборе биржи, а настраивается в Профиле → Комиссии бирж.\n\nКомиссия вывода — плата за перевод USDT на другую биржу, обычно около 1 USDT в сети TRC20. Если покупаете и продаёте на одной бирже, нажмите «Без вывода».'],
