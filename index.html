@@ -1435,8 +1435,8 @@ img { max-width: 100%; }
         </div>
         <div class="card" data-pane="check" hidden>
           <div class="card-h"><span class="card-t">Проверить во Fraudex</span><button class="info" data-info="fdx" aria-label="Что такое Fraudex">i</button></div>
-          <span class="muted small" style="margin-top:-4px">Большая база мошенников по P2P-биржам, картам и телефонам</span>
-          <div class="seg sm" id="fxKind"><button data-fxk="agent" class="on">Биржа</button><button data-fxk="req">Карта / телефон</button><button data-fxk="tg">Telegram</button></div>
+          <span class="muted small" style="margin-top:-4px">Большая база мошенников: проверка по номеру карты, телефону или Telegram</span>
+          <div class="seg sm" id="fxKind"><button data-fxk="req" class="on">Карта / телефон</button><button data-fxk="tg">Telegram</button></div>
           <div id="fxForm" style="display:flex;flex-direction:column;gap:10px"></div>
           <button class="btn primary bl-btn" id="fxGo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>Проверить</button>
           <div id="fxRes" class="bl-res"></div>
@@ -2537,7 +2537,7 @@ function fxIdsHtml(pre, ex, opt) {
   return (e[2] ? `<div class="inp text"><input id="${pre}Uid" type="text" inputmode="numeric" placeholder="UID${tail}" maxlength="19" aria-label="UID"></div>` : '')
     + (e[3] ? `<div class="inp text"><input id="${pre}Mask" type="text" placeholder="${ex === 'gate' ? 'biz_uid' : 'Маска'} или ссылка на профиль${tail}" maxlength="400" aria-label="Маска профиля"></div>` : '');
 }
-let fxK = 'agent', fxX = 'bybit';
+let fxK = 'req', fxX = 'bybit';   // проверка по бирже (agent) скрыта, пока Fraudex не сделает поиск только по нику
 function fxRender() {
   document.querySelectorAll('[data-fxk]').forEach(b => b.classList.toggle('on', b.dataset.fxk === fxK));
   const v = { nick: $('fxNick')?.value || '', uid: $('fxUid')?.value || '', mask: $('fxMask')?.value || '' };
@@ -2664,7 +2664,7 @@ document.addEventListener('click', e => {
 
 /* ================= ПОДСКАЗКИ ================= */
 const INFO = {
-  fdx: ['Fraudex', 'Fraudex — отдельная большая база мошенников, наш партнёр. Там собраны жалобы по P2P-биржам, номерам карт, телефонам и Telegram-аккаунтам.\n\nДля проверки по бирже Fraudex просит точные данные профиля: ник, а на Bybit ещё UID и маску, на HTX — UID, на остальных биржах — маску (ID профиля). Маску можно не искать — просто вставьте ссылку на профиль контрагента.\n\nТексты жалоб открываются в боте Fraudex — кнопкой под результатом.'],
+  fdx: ['Fraudex', 'Fraudex — отдельная большая база мошенников, наш партнёр. Там собраны жалобы по P2P-биржам, номерам карт, телефонам и Telegram-аккаунтам.\n\nВпишите карту или телефон, на которые просят перевести деньги, или Telegram контрагента — и сразу увидите, есть ли на него жалобы.\n\nТексты жалоб открываются в боте Fraudex — кнопкой под результатом.'],
   goal: ['Сегодня и цель', 'Прибыль за сегодня по всем сохранённым сделкам. Цель на день задаётся в Профиле, полоска показывает, сколько осталось до цели.\n\nЕсли сделки в разных валютах — например, часть в рублях, часть в тенге — они пересчитываются в валюту, выбранную в калькуляторе, по текущему биржевому курсу USDT. Поэтому перед суммой стоит «≈», а справа видно, из чего она сложилась: «632 ₽ + 1 820 ₸».\n\nЦель тоже показывается в выбранной валюте. Сами сделки не меняются — в истории каждая остаётся в своей валюте.'],
   mode: ['Сделка или круг', '«Сделка» — купил и продал весь объём по одному курсу.\n\n«Круг» — купил USDT одним объёмом, а продаёшь частями по разным курсам. Пример: купил 1 000 USDT по 93 ₽, продал 600 по 94 и 400 по 94,5. Прибыль 1 200 ₽. Приложение покажет, сколько USDT ещё осталось.'],
   fees: ['Комиссии', 'Комиссия биржи — что берёт P2P-площадка за сделку: процент от суммы продажи или фиксированная сумма. Подставляется сама при выборе биржи, а настраивается в Профиле → Комиссии бирж.\n\nКомиссия вывода — плата за перевод USDT на другую биржу, обычно около 1 USDT в сети TRC20. Если покупаете и продаёте на одной бирже, нажмите «Без вывода».'],
