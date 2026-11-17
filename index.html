@@ -1433,7 +1433,7 @@ img { max-width: 100%; }
           <button class="btn primary bl-btn" id="blGo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>Проверить</button>
           <div id="blRes" class="bl-res"></div>
         </div>
-        <div class="card" data-pane="check" hidden>
+        <div class="card" data-pane="fdx-off" hidden>
           <div class="card-h"><span class="card-t">Проверить во Fraudex</span><button class="info" data-info="fdx" aria-label="Что такое Fraudex">i</button></div>
           <span class="muted small" style="margin-top:-4px">Большая база мошенников: проверка по номеру карты, телефону или Telegram</span>
           <div class="seg sm" id="fxKind"><button data-fxk="req" class="on">Карта / телефон</button><button data-fxk="tg">Telegram</button></div>
@@ -1609,6 +1609,8 @@ const DEFAULT = {
   cps: []
 };
 const FREE_DAYS = 7;    // в Free история и аналитика видны за последние 7 дней
+// Fraudex в приложении пока выключен: ждём от них поиск только по нику. Включить — FDX_ON = true и вернуть блоку проверки data-pane="check"
+const FDX_ON = false;
 const FREE_LIMIT = 15;  // и сохранить можно не больше 15 сделок за календарный месяц
 
 function load() {
@@ -2395,7 +2397,7 @@ function renderCp(fromBase) {
   $('blTotal').textContent = BL.total != null ? `${BL.total} ${plural(BL.total, 'мошенник', 'мошенника', 'мошенников')} · проверено модератором` : 'мошенники, проверенные модератором';
   if (pro && !fromBase) blRefresh();
   if (pro && cpTab === 'reports' && !fromBase) blMine();
-  if (cpTab === 'check' && !$('fxForm').innerHTML) fxRender();
+  if (FDX_ON && cpTab === 'check' && !$('fxForm').innerHTML) fxRender();
   document.querySelectorAll('[data-cps]').forEach(b => b.classList.toggle('on', b.dataset.cps === cpStatus));
   const q = $('cpQ').value.trim().toLowerCase();
   const base = S.cps;
@@ -2591,11 +2593,11 @@ function blReportSheet(nick = '') {
   let kind = 'fake', shots = [], busy = false, ex = '';
   sheet(`<h3>Пожаловаться</h3><span class="muted small">После проверки ник попадёт в общую базу, и его увидят все пользователи PRO</span>
     <div class="inp text"><input id="brNick" type="text" placeholder="Ник мошенника на бирже" value="${esc(nick)}" aria-label="Ник мошенника" maxlength="40"></div>
-    <b style="font-size:14px">Биржа <span class="muted" style="font-weight:500">· по желанию</span></b>
+    ${FDX_ON ? `<b style="font-size:14px">Биржа <span class="muted" style="font-weight:500">· по желанию</span></b>
     <div class="chips" id="brEx" style="flex-wrap:wrap">${BR_EX.map(([k, l]) => `<button class="chip" data-brx="${k}">${l}</button>`).join('')}</div>
     <div id="brIds" style="display:flex;flex-direction:column;gap:10px"></div>
     <div class="inp text"><input id="brReq" type="text" inputmode="tel" placeholder="Карта или телефон мошенника · по желанию" maxlength="24" aria-label="Карта или телефон мошенника"></div>
-    <span class="muted small" style="margin-top:-4px">С UID и маской профиля, картой или телефоном жалоба после проверки попадёт и в базу Fraudex</span>
+    <span class="muted small" style="margin-top:-4px">С UID и маской профиля, картой или телефоном жалоба после проверки попадёт и в базу Fraudex</span>` : ''}
     <b style="font-size:14px">Что случилось</b>
     <div class="chips" id="brKind" style="flex-wrap:wrap">${Object.entries(BL_KINDS).map(([k, l]) => `<button class="chip ${k === kind ? 'on' : ''}" data-brk="${k}">${l}</button>`).join('')}<button class="chip" data-brk="other">Другое…</button></div>
     <div class="inp text" id="brOtherW" hidden><input id="brOther" type="text" placeholder="Коротко: что сделал" maxlength="60" aria-label="Своё нарушение"></div>
@@ -2609,7 +2611,7 @@ function blReportSheet(nick = '') {
     $('brShots').innerHTML = shots.map((s, i) => `<div class="br-shot"><img src="${s}" alt=""><button data-brdel="${i}" aria-label="Убрать скрин">×</button></div>`).join('');
     $('brAdd').hidden = shots.length >= 3;
   };
-  $('brEx').onclick = e => {
+  if ($('brEx')) $('brEx').onclick = e => {
     const b = e.target.closest('[data-brx]'); if (!b) return;
     ex = ex === b.dataset.brx ? '' : b.dataset.brx;
     $('brEx').querySelectorAll('[data-brx]').forEach(x => x.classList.toggle('on', x.dataset.brx === ex));
@@ -2627,7 +2629,7 @@ function blReportSheet(nick = '') {
     if (blKey(n).length < 2) return toast('Впишите ник мошенника');
     if (kind === 'other' && !$('brOther').value.trim()) return toast('Напишите, что случилось');
     if (!shots.length) return toast('Приложите хотя бы один скрин');
-    const uid = ($('brUid')?.value || '').replace(/\s/g, ''), mask = fxMask($('brMask')?.value), req = $('brReq').value.trim();
+    const uid = ($('brUid')?.value || '').replace(/\s/g, ''), mask = fxMask($('brMask')?.value), req = ($('brReq')?.value || '').trim();
     if (uid && !/^\d{1,19}$/.test(uid)) return toast('UID — только цифры');
     if (req && !/^\+?[\d\s()-]{10,24}$/.test(req)) return toast('Карта — 16 или 19 цифр, телефон — с кодом страны');
     busy = true; $('brGo').disabled = true; $('brGo').textContent = 'Отправляем…';
