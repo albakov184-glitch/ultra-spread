@@ -2000,7 +2000,7 @@ async function fdx(path: string, body: unknown): Promise<{ status: number; data:
 }
 // Одобренную жалобу — во Fraudex: ник с данными биржи и/или карта, телефон. ID отзыва у них — p2pro-<номер жалобы>
 async function fdxPush(r: BlRow) {
-  if (!FDX_KEY || r.fdx === 'sent') return r.fdx;
+  if (!FDX_KEY || !BL_NEW || r.fdx === 'sent') return r.fdx ?? '';
   const targets = [fdxAgent({ exchange: r.exchange, nick: r.shown || r.nick, uid: r.uid, mask: r.mask }), fdxReq(r.req)].filter(Boolean);
   if (!targets.length) return '';
   const text = (blKind(r) + (r.note ? '. ' + r.note : '')).replace(/[\u0000-\u0008\u000b-\u001f]/g, ' ').slice(0, 5000);
@@ -2013,7 +2013,7 @@ async function fdxPush(r: BlRow) {
 // Снятые жалобы — удаляем и из Fraudex (404 — значит, там её уже нет)
 async function fdxDrop(rows: BlRow[]) {
   for (const r of rows) {
-    if (!FDX_KEY || r.fdx !== 'sent') continue;
+    if (!FDX_KEY || !BL_NEW || r.fdx !== 'sent') continue;
     const res = await fdx('/v1/blacklist/reviews/delete', { id: 'p2pro-' + r.id });
     if (res.status === 200 || res.status === 404) await admin.from('bl_reports').update({ fdx: 'deleted' }).eq('id', r.id);
     else console.error('fdx delete', r.id, res.status, res.data);
@@ -2040,7 +2040,18 @@ function blSummary(rows: BlRow[]) {
   }
   return m;
 }
-const BL_COLS = 'id, nick, shown, kind, kind_text, note, proofs, reporter, status, reason, reward, created_at, decided_at, exchange, uid, mask, req, fdx';
+const BL_COLS_OLD = 'id, nick, shown, kind, kind_text, note, proofs, reporter, status, reason, reward, created_at, decided_at';
+let BL_COLS = BL_COLS_OLD + ', exchange, uid, mask, req, fdx';
+// Новые колонки (SQL-шаг 32) могли ещё не добавить — тогда работаем по-старому, без данных биржи и Fraudex
+let BL_NEW: boolean | null = null, blColsAt = 0;
+async function blCols() {
+  if (BL_NEW || (BL_NEW === false && Date.now() - blColsAt < 5 * 60e3)) return BL_NEW;   // нет колонок — перепроверяем раз в 5 минут
+  blColsAt = Date.now();
+  const { error } = await admin.from('bl_reports').select('fdx').limit(1);
+  BL_NEW = !error; BL_COLS = BL_NEW ? BL_COLS_OLD + ', exchange, uid, mask, req, fdx' : BL_COLS_OLD;
+  if (!BL_NEW) console.error('bl_reports: нет колонок шага 32', error?.message);
+  return BL_NEW;
+}
 async function blApproved(nicks?: string[]): Promise<BlRow[]> {
   if (nicks && !nicks.length) return [];
   if (nicks) {   // частями по 100: длинный список ников не влезет в один адрес запроса
@@ -2299,6 +2310,7 @@ async function blCallback(chatId: number, msgId: number | null, act: string, idR
 // Запросы приложения (только PRO): проверка ников, подробности, свои жалобы, новая жалоба
 async function blApi(body: Record<string, unknown>) {
   if (!SERVICE || !TOKEN) return aj({ error: 'server' }, 500);
+  await blCols();
   const { data: ud, error: ue } = await admin.auth.getUser(typeof body.access_token === 'string' ? body.access_token : '');
   if (ue || !ud?.user) return aj({ error: 'auth' }, 401);
   const u = ud.user as AUser;
@@ -2364,7 +2376,7 @@ async function blApi(body: Record<string, unknown>) {
       if ((count ?? 0) >= 10) throw new Error('Не больше 10 жалоб в сутки — попробуйте завтра');
       const { data: dup } = await admin.from('bl_reports').select('id').eq('reporter', u.id).eq('nick', nick).eq('status', 'pending').limit(1);
       if (dup?.length) throw new Error('Ваша жалоба на этот ник уже на проверке');
-      const { data: ins, error } = await admin.from('bl_reports').insert({ nick, shown, kind, kind_text: kindText, note, reporter: u.id, exchange, uid, mask, req }).select(BL_COLS).single();
+      const { data: ins, error } = await admin.from('bl_reports').insert({ nick, shown, kind, kind_text: kindText, note, reporter: u.id, ...(BL_NEW ? { exchange, uid, mask, req } : {}) }).select(BL_COLS).single();
       if (error) throw error;
       const r = ins as BlRow, ok = imgs as { bytes: Uint8Array; type: string; ext: string }[];
       try { r.proofs = await blUpload(u.id, r.id, ok); }
@@ -2378,6 +2390,7 @@ async function blApi(body: Record<string, unknown>) {
 
 // Админка: очередь, карточка жалобы со скринами, решение, поиск, ручное добавление, снятие, пост
 async function blAdmin(act: string, body: Record<string, unknown>) {
+  await blCols();
   const withNicks = async (rows: BlRow[]) => {
     const nicks = await nicksMap(), counts = blSummary(await blApproved([...new Set(rows.map((r) => r.nick))]));
     const thumbs = await blSigned(rows.map((r) => r.proofs[0]).filter(Boolean));
@@ -3243,6 +3256,7 @@ async function adminApi(body: Record<string, unknown>) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: ACORS });
+  if (SERVICE) await blCols().catch(() => {});   // один раз на запуск: есть ли колонки шага 32
   const raw = await req.text().catch(() => '');
   // deno-lint-ignore no-explicit-any
   let update: any = null;
